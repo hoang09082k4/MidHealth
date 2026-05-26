@@ -1,0 +1,17 @@
+{
+  "name": "midhealth-backend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/server.js",
+    "start": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.1",
+    "nodemailer": "^8.0.8"
+  }
+}
