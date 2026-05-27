@@ -4,6 +4,7 @@ import {
   editorialPolicies,
   experts,
   hospitals,
+  clinics,
   medicines,
   securityItems,
   specialties,
@@ -16,9 +17,10 @@ import MucTinTuong from './muc_tin_tuong';
 import MucTinYTe from './muc_tin_y_te';
 import TheBacSi from './the_bac_si';
 import TheBenhVien from './the_benh_vien';
+import ThePhongKham from './the_phong_kham';
 import TieuDeMuc from './tieu_de_muc';
 
-function TrangChu({ onBookDoctor, onBookHospital }) {
+function TrangChu({ onBookDoctor, onBookHospital, onBookClinic }) {
   return (
     <>
       <section className="hero">
@@ -40,7 +42,7 @@ function TrangChu({ onBookDoctor, onBookHospital }) {
 
       <section className="intro" id="booking">
         <h2>Đặt lịch khám trực tuyến</h2>
-        <p>Tìm bác sĩ chính xác - Đặt lịch khám dễ dàng</p>
+        <p>Tìm Bác sĩ chính xác - Đặt lịch khám dễ dàng</p>
       </section>
 
       <section className="content-section" id="doctor">
@@ -54,6 +56,13 @@ function TrangChu({ onBookDoctor, onBookHospital }) {
         <TieuDeMuc title="Đặt khám bệnh viện" subtitle="Đặt khám và thanh toán để có phiếu khám trước khi đi khám các bệnh viện kết nối chính thức với MidHealth." />
         <div className="horizontal-list hospital-list">
           {hospitals.map((hospital) => <TheBenhVien hospital={hospital} key={hospital.name} onBook={onBookHospital} />)}
+        </div>
+      </section>
+
+      <section className="content-section">
+        <TieuDeMuc title="Đặt khám phòng khám" subtitle="Đa dạng phòng khám với nhiều chuyên khoa khác nhau như Sản - Nhi, Tai Mũi Họng, Da Liễu, Tiêu Hoá..." />
+        <div className="horizontal-list clinic-list">
+          {clinics.map((clinic) => <ThePhongKham clinic={clinic} key={clinic.name} onBook={onBookClinic} />)}
         </div>
       </section>
 

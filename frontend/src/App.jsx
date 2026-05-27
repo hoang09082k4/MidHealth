@@ -1,9 +1,10 @@
-﻿import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useEffect, useState } from 'react';
 import BieuTuongLogo from './components/bieu_tuong_logo';
 import DangNhapDangKy from './components/dang_nhap_dang_ky';
-import TrangDatLichBenhVien from './components/trang_dat_lich_benh_vien';
 import TrangDatLichBacSi from './components/trang_dat_lich_bac_si';
+import TrangDatLichBenhVien from './components/trang_dat_lich_benh_vien';
+import TrangDatLichPhongKham from './components/trang_dat_lich_phong_kham';
 import TrangChu from './components/trang_chu';
 import { firebaseAuth } from './lib/firebase';
 
@@ -11,6 +12,7 @@ function App() {
   const [isAuthPage, setIsAuthPage] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState(null);
   const [selectedHospital, setSelectedHospital] = useState(null);
+  const [selectedClinic, setSelectedClinic] = useState(null);
   const [user, setUser] = useState(null);
 
   useEffect(() => {
@@ -30,12 +32,14 @@ function App() {
     setIsAuthPage(false);
     setSelectedDoctor(null);
     setSelectedHospital(null);
+    setSelectedClinic(null);
   };
 
   const showDoctorBooking = (doctor) => {
     setIsAuthPage(false);
     setSelectedDoctor(doctor);
     setSelectedHospital(null);
+    setSelectedClinic(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -43,6 +47,15 @@ function App() {
     setIsAuthPage(false);
     setSelectedDoctor(null);
     setSelectedHospital(hospital);
+    setSelectedClinic(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const showClinicBooking = (clinic) => {
+    setIsAuthPage(false);
+    setSelectedDoctor(null);
+    setSelectedHospital(null);
+    setSelectedClinic(clinic);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -74,8 +87,10 @@ function App() {
           <TrangDatLichBacSi doctor={selectedDoctor} user={user} onBackHome={showHome} onSignOut={handleSignOut} />
         ) : selectedHospital ? (
           <TrangDatLichBenhVien hospital={selectedHospital} user={user} onBackHome={showHome} />
+        ) : selectedClinic ? (
+          <TrangDatLichPhongKham clinic={selectedClinic} user={user} onBackHome={showHome} />
         ) : (
-          <TrangChu onBookDoctor={showDoctorBooking} onBookHospital={showHospitalBooking} />
+          <TrangChu onBookDoctor={showDoctorBooking} onBookHospital={showHospitalBooking} onBookClinic={showClinicBooking} />
         )}
       </main>
     </div>
