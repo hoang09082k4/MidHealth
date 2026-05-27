@@ -1,0 +1,62 @@
+@startuml
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #F8FBFF
+  BorderColor #1D7BE0
+  ArrowColor #1D7BE0
+}
+
+title Activity Diagram - Quy trình đặt lịch khám trực tuyến MidHealth
+
+start
+:Bệnh nhân truy cập MidHealth;
+:Tìm kiếm hoặc chọn bác sĩ/bệnh viện/phòng khám;
+:Xem thông tin chi tiết;
+
+if (Người dùng đã đăng nhập?) then (Có)
+  :Hiển thị form đặt lịch;
+else (Chưa)
+  :Chuyển đến đăng nhập/đăng ký;
+  if (Có tài khoản?) then (Có)
+    :Đăng nhập bằng email/mật khẩu hoặc Google;
+  else (Chưa)
+    :Nhập email đăng ký;
+    :Hệ thống gửi OTP email;
+    :Nhập OTP;
+    if (OTP hợp lệ?) then (Có)
+      :Đặt mật khẩu;
+      :Tạo hồ sơ điện tử;
+    else (Không)
+      :Thông báo OTP không hợp lệ;
+      stop
+    endif
+  endif
+endif
+
+:Chọn dịch vụ/chuyên khoa;
+:Chọn bác sĩ hoặc cơ sở khám;
+:Chọn ngày khám;
+:Chọn giờ khám;
+:Chọn hồ sơ bệnh nhân;
+
+if (Hồ sơ thiếu thông tin bắt buộc?) then (Có)
+  :Thông báo thiếu họ tên, ngày sinh, số điện thoại,\nCCCD/BHYT/người giám hộ nếu cơ sở yêu cầu;
+  :Bệnh nhân cập nhật hồ sơ;
+endif
+
+:Nhập ghi chú triệu chứng nếu có;
+:Upload tập tin đính kèm nếu có;
+:Bấm xác nhận đặt khám;
+
+if (Thông tin đặt khám hợp lệ?) then (Có)
+  :Hệ thống tạo mã phiếu khám;
+  :Hệ thống tạo số thứ tự khám;
+  :Lưu lịch hẹn vào cơ sở dữ liệu;
+  :Hiển thị đặt lịch thành công;
+  :Bệnh nhân xem hoặc lưu phiếu khám;
+else (Không)
+  :Thông báo lỗi và yêu cầu kiểm tra lại;
+endif
+
+stop
+@enduml

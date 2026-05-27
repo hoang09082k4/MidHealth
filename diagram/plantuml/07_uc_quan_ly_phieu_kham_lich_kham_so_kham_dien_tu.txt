@@ -1,0 +1,56 @@
+﻿@startuml
+left to right direction
+skinparam actorStyle awesome
+skinparam shadowing false
+skinparam usecase {
+  BackgroundColor #F8FBFF
+  BorderColor #1D7BE0
+  ArrowColor #1D7BE0
+}
+
+title UC07 - Quản lý phiếu khám, lịch khám và số khám điện tử
+
+actor "Bệnh nhân" as Patient
+actor "Nhân viên/Lễ tân" as Staff
+actor "Bác sĩ" as Doctor
+actor "Admin" as Admin
+
+rectangle "UC07 - Quản lý phiếu khám, lịch khám và số khám điện tử" {
+  usecase "Xem lịch khám" as UC_Schedule
+  usecase "Tìm kiếm lịch khám" as UC_SearchSchedule
+  usecase "Xem phiếu khám" as UC_ViewTicket
+  usecase "Lưu/tải phiếu khám" as UC_SaveTicket
+  usecase "Hủy lịch khám" as UC_Cancel
+  usecase "Xem trạng thái đặt lịch" as UC_Status
+  usecase "Theo dõi số khám điện tử" as UC_Queue
+  usecase "Tra cứu bằng mã phiếu" as UC_SearchTicket
+  usecase "Xem số đang gọi" as UC_CurrentNumber
+  usecase "Xem phòng khám/bác sĩ phụ trách" as UC_RoomDoctor
+  usecase "Xem lịch sử thanh toán" as UC_PaymentHistory
+  usecase "Cập nhật trạng thái tiếp nhận" as UC_CheckIn
+  usecase "Cập nhật trạng thái đang khám" as UC_InProgress
+  usecase "Cập nhật trạng thái hoàn tất" as UC_Done
+  usecase "Thống kê số lượt đặt khám" as UC_ReportBooking
+  usecase "Xuất báo cáo lịch khám" as UC_ExportReport
+}
+
+Patient --> UC_Schedule
+Patient --> UC_SearchSchedule
+Patient --> UC_ViewTicket
+Patient --> UC_SaveTicket
+Patient --> UC_Cancel
+Patient --> UC_Status
+Patient --> UC_Queue
+Patient --> UC_PaymentHistory
+Staff --> UC_CheckIn
+Staff --> UC_Cancel
+Doctor --> UC_InProgress
+Doctor --> UC_Done
+Admin --> UC_ReportBooking
+Admin --> UC_ExportReport
+
+UC_Queue .> UC_SearchTicket : <<include>>
+UC_Queue .> UC_CurrentNumber : <<include>>
+UC_Queue .> UC_RoomDoctor : <<include>>
+UC_ViewTicket .> UC_SaveTicket : <<extend>>
+@enduml

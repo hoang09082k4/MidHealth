@@ -1,0 +1,83 @@
+@startuml
+left to right direction
+skinparam actorStyle awesome
+skinparam shadowing false
+skinparam usecase {
+  BackgroundColor #F8FBFF
+  BorderColor #1D7BE0
+  ArrowColor #1D7BE0
+}
+
+title Use case đặt lịch khám MidHealth
+
+actor "Bệnh nhân" as Patient
+actor "Khách truy cập" as Guest
+actor "Nhân viên/Lễ tân" as Staff
+actor "Bác sĩ" as Doctor
+
+rectangle "Chức năng đặt lịch khám" {
+  usecase "Xem danh sách bác sĩ" as UC_ListDoctor
+  usecase "Xem danh sách bệnh viện" as UC_ListHospital
+  usecase "Xem danh sách phòng khám" as UC_ListClinic
+  usecase "Xem chi tiết bác sĩ" as UC_DoctorDetail
+  usecase "Xem chi tiết bệnh viện" as UC_HospitalDetail
+  usecase "Xem chi tiết phòng khám" as UC_ClinicDetail
+  usecase "Xem hình ảnh cơ sở y tế" as UC_ViewImages
+  usecase "Xem thêm giới thiệu" as UC_ReadMore
+  usecase "Chọn dịch vụ" as UC_Service
+  usecase "Chọn chuyên khoa" as UC_Specialty
+  usecase "Chọn bác sĩ" as UC_Doctor
+  usecase "Chọn ngày khám" as UC_Date
+  usecase "Chọn giờ khám" as UC_Time
+  usecase "Chọn hồ sơ bệnh nhân" as UC_Profile
+  usecase "Xem chi tiết hồ sơ" as UC_ProfileDetail
+  usecase "Thêm hồ sơ mới" as UC_AddProfile
+  usecase "Sửa hồ sơ" as UC_EditProfile
+  usecase "Thêm người giám hộ" as UC_Guardian
+  usecase "Nhập ghi chú triệu chứng" as UC_Note
+  usecase "Upload tập tin đính kèm" as UC_Upload
+  usecase "Kiểm tra thông tin bắt buộc" as UC_Validate
+  usecase "Xác nhận đặt khám" as UC_Confirm
+  usecase "Tạo số thứ tự khám" as UC_Number
+  usecase "Tạo phiếu khám" as UC_Ticket
+  usecase "Xem phiếu khám" as UC_ViewTicket
+  usecase "Lưu phiếu khám" as UC_SaveTicket
+  usecase "Hủy lịch khám" as UC_Cancel
+  usecase "Cập nhật trạng thái lịch khám" as UC_UpdateStatus
+}
+
+Guest --> UC_ListDoctor
+Guest --> UC_ListHospital
+Guest --> UC_ListClinic
+Guest --> UC_DoctorDetail
+Guest --> UC_HospitalDetail
+Guest --> UC_ClinicDetail
+Guest --> UC_ViewImages
+Guest --> UC_ReadMore
+
+Patient --> UC_Service
+Patient --> UC_Specialty
+Patient --> UC_Doctor
+Patient --> UC_Date
+Patient --> UC_Time
+Patient --> UC_Profile
+Patient --> UC_Note
+Patient --> UC_Upload
+Patient --> UC_Confirm
+Patient --> UC_ViewTicket
+Patient --> UC_SaveTicket
+Patient --> UC_Cancel
+
+Staff --> UC_UpdateStatus
+Staff --> UC_ViewTicket
+Doctor --> UC_UpdateStatus
+
+UC_Profile .> UC_ProfileDetail : <<extend>>
+UC_Profile .> UC_AddProfile : <<extend>>
+UC_Profile .> UC_EditProfile : <<extend>>
+UC_EditProfile .> UC_Guardian : <<extend>>
+UC_Confirm .> UC_Validate : <<include>>
+UC_Confirm .> UC_Number : <<include>>
+UC_Confirm .> UC_Ticket : <<include>>
+UC_Ticket .> UC_ViewTicket : <<include>>
+@enduml

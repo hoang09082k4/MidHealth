@@ -1,0 +1,61 @@
+@startuml
+left to right direction
+skinparam actorStyle awesome
+skinparam shadowing false
+skinparam usecase {
+  BackgroundColor #F8FBFF
+  BorderColor #1D7BE0
+  ArrowColor #1D7BE0
+}
+
+title Use case quản lý người dùng và xác thực
+
+actor "Khách truy cập" as Guest
+actor "Bệnh nhân" as Patient
+actor "Bác sĩ" as Doctor
+actor "Nhân viên/Lễ tân" as Staff
+actor "Admin" as Admin
+
+rectangle "Quản lý người dùng và xác thực" {
+  usecase "Đăng ký bằng email" as UC_Register
+  usecase "Gửi mã OTP qua email" as UC_SendOtp
+  usecase "Xác thực mã OTP" as UC_VerifyOtp
+  usecase "Đặt mật khẩu" as UC_SetPassword
+  usecase "Tạo hồ sơ điện tử" as UC_CreateProfile
+  usecase "Đăng nhập bằng email/mật khẩu" as UC_Login
+  usecase "Đăng nhập bằng Google" as UC_GoogleLogin
+  usecase "Quên mật khẩu" as UC_ForgotPassword
+  usecase "Đổi mật khẩu" as UC_ChangePassword
+  usecase "Cập nhật thông tin tài khoản" as UC_UpdateAccount
+  usecase "Đăng xuất" as UC_Logout
+  usecase "Phân quyền tài khoản" as UC_Role
+  usecase "Khóa/mở tài khoản" as UC_Lock
+}
+
+Guest --> UC_Register
+Guest --> UC_Login
+Guest --> UC_GoogleLogin
+Guest --> UC_ForgotPassword
+
+Patient --> UC_UpdateAccount
+Patient --> UC_ChangePassword
+Patient --> UC_Logout
+
+Doctor --> UC_UpdateAccount
+Doctor --> UC_ChangePassword
+Doctor --> UC_Logout
+
+Staff --> UC_UpdateAccount
+Staff --> UC_Logout
+
+Admin --> UC_Role
+Admin --> UC_Lock
+Admin --> UC_UpdateAccount
+Admin --> UC_Logout
+
+UC_Register .> UC_SendOtp : <<include>>
+UC_SendOtp .> UC_VerifyOtp : <<include>>
+UC_VerifyOtp .> UC_SetPassword : <<include>>
+UC_SetPassword .> UC_CreateProfile : <<include>>
+UC_Login .> UC_GoogleLogin : <<extend>>
+@enduml

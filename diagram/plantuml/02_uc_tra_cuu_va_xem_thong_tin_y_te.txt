@@ -1,0 +1,61 @@
+﻿@startuml
+left to right direction
+skinparam actorStyle awesome
+skinparam shadowing false
+skinparam usecase {
+  BackgroundColor #F8FBFF
+  BorderColor #1D7BE0
+  ArrowColor #1D7BE0
+}
+
+title UC02 - Tra cứu và xem thông tin y tế
+
+actor "Khách truy cập" as Guest
+actor "Bệnh nhân" as Patient
+actor "Admin" as Admin
+
+rectangle "UC02 - Tra cứu và xem thông tin y tế" {
+  usecase "Xem trang chủ" as UC_Home
+  usecase "Tìm kiếm triệu chứng,
+bác sĩ, bệnh viện, phòng khám" as UC_Search
+  usecase "Xem danh sách bác sĩ" as UC_Doctors
+  usecase "Xem danh sách bệnh viện" as UC_Hospitals
+  usecase "Xem danh sách phòng khám" as UC_Clinics
+  usecase "Xem danh sách chuyên khoa" as UC_Specialties
+  usecase "Xem tin y tế" as UC_News
+  usecase "Tìm kiếm thuốc/bệnh/cơ thể" as UC_Medicine
+  usecase "Xem chi tiết bác sĩ" as UC_DoctorDetail
+  usecase "Xem chi tiết bệnh viện" as UC_HospitalDetail
+  usecase "Xem chi tiết phòng khám" as UC_ClinicDetail
+  usecase "Xem hình ảnh cơ sở y tế" as UC_ViewImages
+  usecase "Xem thêm giới thiệu" as UC_ReadMore
+  usecase "Cập nhật dữ liệu hiển thị" as UC_UpdateContent
+}
+
+Guest --> UC_Home
+Guest --> UC_Search
+Guest --> UC_Doctors
+Guest --> UC_Hospitals
+Guest --> UC_Clinics
+Guest --> UC_Specialties
+Guest --> UC_News
+Guest --> UC_Medicine
+Guest --> UC_DoctorDetail
+Guest --> UC_HospitalDetail
+Guest --> UC_ClinicDetail
+Guest --> UC_ViewImages
+Guest --> UC_ReadMore
+Patient --> UC_Search
+Patient --> UC_DoctorDetail
+Patient --> UC_HospitalDetail
+Patient --> UC_ClinicDetail
+Admin --> UC_UpdateContent
+
+UC_Search .> UC_Doctors : <<extend>>
+UC_Search .> UC_Hospitals : <<extend>>
+UC_Search .> UC_Clinics : <<extend>>
+UC_HospitalDetail .> UC_ViewImages : <<include>>
+UC_ClinicDetail .> UC_ViewImages : <<include>>
+UC_HospitalDetail .> UC_ReadMore : <<extend>>
+UC_ClinicDetail .> UC_ReadMore : <<extend>>
+@enduml

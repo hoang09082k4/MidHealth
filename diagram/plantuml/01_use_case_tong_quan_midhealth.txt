@@ -1,0 +1,122 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+skinparam shadowing false
+skinparam usecase {
+  BackgroundColor #F8FBFF
+  BorderColor #1D7BE0
+  ArrowColor #1D7BE0
+}
+
+title Use case tổng quan hệ thống MidHealth
+
+actor "Khách truy cập" as Guest
+actor "Bệnh nhân" as Patient
+actor "Bác sĩ" as Doctor
+actor "Nhân viên/Lễ tân" as Staff
+actor "Admin" as Admin
+
+rectangle "MidHealth - Website đặt khám trực tuyến" {
+  usecase "Xem trang chủ" as UC_Home
+  usecase "Tìm kiếm bác sĩ,\nbệnh viện, phòng khám" as UC_Search
+  usecase "Xem danh sách bác sĩ" as UC_DoctorList
+  usecase "Xem danh sách bệnh viện" as UC_HospitalList
+  usecase "Xem danh sách phòng khám" as UC_ClinicList
+  usecase "Xem chi tiết cơ sở y tế" as UC_Detail
+  usecase "Đăng ký tài khoản" as UC_Register
+  usecase "Xác thực OTP email" as UC_VerifyOtp
+  usecase "Đặt mật khẩu" as UC_SetPassword
+  usecase "Tạo hồ sơ điện tử" as UC_CreateProfile
+  usecase "Đăng nhập" as UC_Login
+  usecase "Đăng nhập Google" as UC_Google
+  usecase "Đăng xuất" as UC_Logout
+  usecase "Quên mật khẩu" as UC_Forgot
+  usecase "Quản lý hồ sơ bệnh nhân" as UC_Profile
+  usecase "Thêm hồ sơ bệnh nhân" as UC_AddProfile
+  usecase "Sửa hồ sơ bệnh nhân" as UC_EditProfile
+  usecase "Xem chi tiết hồ sơ" as UC_ViewProfile
+  usecase "Đặt lịch khám bác sĩ" as UC_BookDoctor
+  usecase "Đặt lịch khám bệnh viện" as UC_BookHospital
+  usecase "Đặt lịch khám phòng khám" as UC_BookClinic
+  usecase "Chọn chuyên khoa/dịch vụ" as UC_SelectService
+  usecase "Chọn bác sĩ/cơ sở y tế" as UC_SelectProvider
+  usecase "Chọn ngày giờ khám" as UC_SelectTime
+  usecase "Upload tập tin đính kèm" as UC_Upload
+  usecase "Xác nhận đặt khám" as UC_Confirm
+  usecase "Xem phiếu khám" as UC_Ticket
+  usecase "Lưu/tải phiếu khám" as UC_SaveTicket
+  usecase "Hủy lịch khám" as UC_Cancel
+  usecase "Xem lịch sử đặt khám" as UC_History
+  usecase "Xem lịch sử thanh toán" as UC_PaymentHistory
+  usecase "Theo dõi số khám điện tử" as UC_Queue
+  usecase "Quản lý lịch khám" as UC_ManageSchedule
+  usecase "Cập nhật trạng thái khám" as UC_UpdateStatus
+  usecase "Quản lý dữ liệu hệ thống" as UC_AdminData
+  usecase "Quản lý tài khoản" as UC_AccountAdmin
+  usecase "Thống kê báo cáo" as UC_Report
+}
+
+Guest --> UC_Home
+Guest --> UC_Search
+Guest --> UC_DoctorList
+Guest --> UC_HospitalList
+Guest --> UC_ClinicList
+Guest --> UC_Detail
+Guest --> UC_Register
+Guest --> UC_Login
+Guest --> UC_Forgot
+
+Patient --> UC_Logout
+Patient --> UC_Profile
+Patient --> UC_BookDoctor
+Patient --> UC_BookHospital
+Patient --> UC_BookClinic
+Patient --> UC_Ticket
+Patient --> UC_SaveTicket
+Patient --> UC_Cancel
+Patient --> UC_History
+Patient --> UC_PaymentHistory
+Patient --> UC_Queue
+
+Doctor --> UC_ManageSchedule
+Doctor --> UC_UpdateStatus
+Doctor --> UC_Profile
+
+Staff --> UC_ManageSchedule
+Staff --> UC_UpdateStatus
+Staff --> UC_Ticket
+Staff --> UC_History
+
+Admin --> UC_AdminData
+Admin --> UC_AccountAdmin
+Admin --> UC_Report
+Admin --> UC_ManageSchedule
+
+UC_Register .> UC_VerifyOtp : <<include>>
+UC_VerifyOtp .> UC_SetPassword : <<include>>
+UC_SetPassword .> UC_CreateProfile : <<include>>
+UC_Login .> UC_Google : <<extend>>
+
+UC_Profile .> UC_AddProfile : <<include>>
+UC_Profile .> UC_EditProfile : <<include>>
+UC_Profile .> UC_ViewProfile : <<include>>
+
+UC_BookDoctor .> UC_SelectProvider : <<include>>
+UC_BookDoctor .> UC_SelectTime : <<include>>
+UC_BookDoctor .> UC_Confirm : <<include>>
+
+UC_BookHospital .> UC_SelectService : <<include>>
+UC_BookHospital .> UC_SelectTime : <<include>>
+UC_BookHospital .> UC_Upload : <<extend>>
+UC_BookHospital .> UC_Confirm : <<include>>
+
+UC_BookClinic .> UC_SelectService : <<include>>
+UC_BookClinic .> UC_SelectProvider : <<include>>
+UC_BookClinic .> UC_SelectTime : <<include>>
+UC_BookClinic .> UC_Upload : <<extend>>
+UC_BookClinic .> UC_Confirm : <<include>>
+
+UC_Confirm .> UC_Ticket : <<include>>
+UC_Ticket .> UC_SaveTicket : <<extend>>
+@enduml

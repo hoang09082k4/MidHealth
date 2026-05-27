@@ -1,0 +1,63 @@
+﻿@startuml
+left to right direction
+skinparam actorStyle awesome
+skinparam shadowing false
+skinparam usecase {
+  BackgroundColor #F8FBFF
+  BorderColor #1D7BE0
+  ArrowColor #1D7BE0
+}
+
+title UC03 - Quản lý hồ sơ bệnh nhân
+
+actor "Bệnh nhân" as Patient
+actor "Nhân viên/Lễ tân" as Staff
+actor "Admin" as Admin
+
+rectangle "UC03 - Quản lý hồ sơ bệnh nhân" {
+  usecase "Xem danh sách hồ sơ" as UC_List
+  usecase "Tìm nhanh hồ sơ" as UC_Search
+  usecase "Xem chi tiết hồ sơ" as UC_View
+  usecase "Thêm hồ sơ mới" as UC_Add
+  usecase "Sửa thông tin hồ sơ" as UC_Edit
+  usecase "Nhập họ tên" as UC_Name
+  usecase "Nhập số điện thoại" as UC_Phone
+  usecase "Nhập ngày sinh" as UC_Dob
+  usecase "Chọn giới tính" as UC_Gender
+  usecase "Chọn tỉnh/thành phố" as UC_Province
+  usecase "Chọn quận/huyện" as UC_District
+  usecase "Chọn phường/xã" as UC_Ward
+  usecase "Nhập địa chỉ cụ thể" as UC_Address
+  usecase "Nhập CCCD" as UC_Cccd
+  usecase "Nhập mã BHYT" as UC_Bhyt
+  usecase "Chọn dân tộc" as UC_Ethnic
+  usecase "Chọn nghề nghiệp" as UC_Job
+  usecase "Thêm người giám hộ" as UC_Guardian
+  usecase "Xóa hồ sơ phụ" as UC_Delete
+}
+
+Patient --> UC_List
+Patient --> UC_Search
+Patient --> UC_View
+Patient --> UC_Add
+Patient --> UC_Edit
+Patient --> UC_Delete
+Staff --> UC_View
+Staff --> UC_Edit
+Admin --> UC_Delete
+
+UC_Add .> UC_Name : <<include>>
+UC_Add .> UC_Phone : <<include>>
+UC_Add .> UC_Dob : <<include>>
+UC_Add .> UC_Gender : <<include>>
+UC_Add .> UC_Province : <<include>>
+UC_Add .> UC_District : <<include>>
+UC_Add .> UC_Ward : <<include>>
+UC_Add .> UC_Address : <<include>>
+UC_Add .> UC_Cccd : <<extend>>
+UC_Add .> UC_Bhyt : <<extend>>
+UC_Add .> UC_Ethnic : <<include>>
+UC_Add .> UC_Job : <<extend>>
+UC_Add .> UC_Guardian : <<extend>>
+UC_Edit .> UC_Guardian : <<extend>>
+@enduml

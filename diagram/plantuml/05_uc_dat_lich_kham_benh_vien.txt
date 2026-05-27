@@ -1,0 +1,62 @@
+﻿@startuml
+left to right direction
+skinparam actorStyle awesome
+skinparam shadowing false
+skinparam usecase {
+  BackgroundColor #F8FBFF
+  BorderColor #1D7BE0
+  ArrowColor #1D7BE0
+}
+
+title UC05 - Đặt lịch khám bệnh viện
+
+actor "Bệnh nhân" as Patient
+actor "Nhân viên/Lễ tân" as Staff
+actor "Admin" as Admin
+
+rectangle "UC05 - Đặt lịch khám bệnh viện" {
+  usecase "Xem danh sách bệnh viện" as UC_List
+  usecase "Xem chi tiết bệnh viện" as UC_Detail
+  usecase "Xem ảnh bệnh viện" as UC_Images
+  usecase "Xem giới thiệu" as UC_Intro
+  usecase "Xem giờ làm việc" as UC_Hours
+  usecase "Xem chuyên khoa" as UC_Specialties
+  usecase "Đọc lưu ý đặt khám" as UC_Notice
+  usecase "Chọn dịch vụ khám" as UC_Service
+  usecase "Chọn chuyên khoa" as UC_Specialty
+  usecase "Chọn ngày khám" as UC_Date
+  usecase "Chọn giờ khám" as UC_Time
+  usecase "Chọn hồ sơ bệnh nhân" as UC_Profile
+  usecase "Xem chi tiết hồ sơ" as UC_ProfileDetail
+  usecase "Bổ sung hồ sơ còn thiếu" as UC_ProfileEdit
+  usecase "Upload tập tin đính kèm" as UC_Upload
+  usecase "Xác nhận đặt khám" as UC_Confirm
+  usecase "Tạo phiếu khám bệnh viện" as UC_Ticket
+  usecase "Cập nhật quy định bệnh viện" as UC_Rules
+}
+
+Patient --> UC_List
+Patient --> UC_Detail
+Patient --> UC_Images
+Patient --> UC_Intro
+Patient --> UC_Hours
+Patient --> UC_Specialties
+Patient --> UC_Notice
+Patient --> UC_Service
+Patient --> UC_Specialty
+Patient --> UC_Date
+Patient --> UC_Time
+Patient --> UC_Profile
+Patient --> UC_Upload
+Patient --> UC_Confirm
+Staff --> UC_Ticket
+Admin --> UC_Rules
+
+UC_Detail .> UC_Images : <<include>>
+UC_Detail .> UC_Intro : <<include>>
+UC_Detail .> UC_Hours : <<include>>
+UC_Detail .> UC_Specialties : <<include>>
+UC_Profile .> UC_ProfileDetail : <<extend>>
+UC_Profile .> UC_ProfileEdit : <<extend>>
+UC_Confirm .> UC_Ticket : <<include>>
+@enduml
