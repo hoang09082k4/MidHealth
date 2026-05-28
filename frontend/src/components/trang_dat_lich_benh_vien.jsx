@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import TrangPhieuKham from './trang_phieu_kham';
+import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './trang_phieu_kham';
 import {
   DAN_TOC_VIET_NAM,
   DIA_CHI_FALLBACK,
@@ -45,6 +45,113 @@ function lay_ten_tat(fullName) {
 
 function dia_chi_day_du(profile) {
   return [profile.address, profile.ward, profile.district, profile.province].filter(Boolean).join(', ') || 'Chưa cập nhật';
+}
+
+function tai_anh_phieu(appointment) {
+  const { bookingRows, patientRows } = tao_dong_phieu_kham(appointment);
+  const visibleBookingRows = bookingRows.filter((row) => co_gia_tri(row.value));
+  const visiblePatientRows = patientRows.filter((row) => co_gia_tri(row.value));
+  const canvas = document.createElement('canvas');
+  canvas.width = 960;
+  canvas.height = Math.max(760, 400 + (visibleBookingRows.length + visiblePatientRows.length) * 42);
+  const context = canvas.getContext('2d');
+
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = '#86efac';
+  context.beginPath();
+  context.arc(canvas.width / 2, 46, 30, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = '#ffffff';
+  context.font = 'bold 34px Arial';
+  context.textAlign = 'center';
+  context.fillText('✓', canvas.width / 2, 58);
+
+  context.fillStyle = '#111827';
+  context.font = 'bold 24px Arial';
+  context.fillText('Đặt lịch thành công!', canvas.width / 2, 120);
+  context.font = '16px Arial';
+  context.fillText('STT', canvas.width / 2 - 80, 168);
+  context.fillStyle = '#16a34a';
+  context.font = 'bold 36px Arial';
+  context.fillText(String(appointment.number), canvas.width / 2 - 80, 208);
+
+  const drawSection = (title, rows, yStart) => {
+    let y = yStart;
+    context.textAlign = 'left';
+    context.fillStyle = '#111827';
+    context.font = 'bold 18px Arial';
+    context.fillText(title, 32, y);
+    y += 30;
+    rows.forEach((row) => {
+      context.strokeStyle = '#e5e7eb';
+      context.beginPath();
+      context.moveTo(32, y + 8);
+      context.lineTo(canvas.width - 32, y + 8);
+      context.stroke();
+      context.fillStyle = '#111827';
+      context.font = '16px Arial';
+      context.fillText(row.label, 32, y + 34);
+      context.fillStyle = row.highlight ? '#16a34a' : '#111827';
+      context.fillText(String(row.value), 330, y + 34);
+      y += 42;
+    });
+    return y + 24;
+  };
+
+  context.strokeStyle = '#e5e7eb';
+  context.beginPath();
+  context.moveTo(32, 230);
+  context.lineTo(canvas.width - 32, 230);
+  context.stroke();
+  context.fillStyle = '#111827';
+  context.textAlign = 'left';
+  context.font = 'bold 18px Arial';
+  context.fillText(appointment.doctorShortName, 90, 270);
+  context.fillStyle = '#4b5563';
+  context.font = '16px Arial';
+  context.fillText(appointment.address, 90, 296);
+
+  const nextY = drawSection('Thông tin đặt khám', visibleBookingRows, 350);
+  drawSection('Thông tin bệnh nhân', visiblePatientRows, nextY);
+
+  const link = document.createElement('a');
+  link.download = `${appointment.appointmentCode}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+function ManHinhDatLichThanhCong({ appointment, image, fallback, onViewTicket }) {
+  return (
+    <section className="booking-success-page">
+      <article className="booking-success-card">
+        <div className="success-check">✓</div>
+        <h1>Đặt lịch thành công!</h1>
+        <div className="success-ticket-head">
+          <div>
+            <span>STT</span>
+            <strong>{appointment.number}</strong>
+          </div>
+        </div>
+        <div className="success-doctor-row">
+          <div className="doctor-avatar booking-avatar">
+            {image ? <img src={image} alt={appointment.doctorShortName} /> : <span>{fallback}</span>}
+          </div>
+          <div>
+            <h3>{appointment.doctorShortName}</h3>
+            <p>{appointment.address}</p>
+          </div>
+        </div>
+
+        <PhieuKhamChiTiet appointment={appointment} />
+
+        <div className="success-actions">
+          <button type="button" onClick={onViewTicket}>Xem phiếu khám</button>
+          <button type="button" onClick={() => tai_anh_phieu(appointment)}>Lưu lại phiếu</button>
+        </div>
+      </article>
+    </section>
+  );
 }
 
 function lay_dich_vu_benh_vien(hospital) {
@@ -387,7 +494,7 @@ function ModalHoSo({ mode, profile, errors = {}, onClose, onEdit, onChange, onSa
           <form className="hospital-profile-form" onSubmit={onSave}>
             <div className="hospital-profile-camera">
               <div>{lay_ten_tat(profile.name)}</div>
-              <span>📷</span>
+              <span>ðŸ“·</span>
             </div>
             <Field label="Họ và tên" name="name" value={profile.name} required placeholder="Nhập họ và tên" onChange={onChange} error={errors.name} />
             <Field label="Số điện thoại" name="phone" value={profile.phone} required placeholder="Nhập số điện thoại" onChange={onChange} error={errors.phone} />
@@ -775,10 +882,11 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
       gender: selectedPatient.gender,
       phone: selectedPatient.phone,
       patientAddress: dia_chi_day_du(selectedPatient),
+      patientProfile: selectedPatient,
       note,
       attachments: attachedFiles.map((file) => file.name),
     });
-    setScreen('ticket');
+    setScreen('success');
   };
 
   const handleFiles = (fileList) => {
@@ -790,6 +898,17 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
 
   if (screen === 'ticket' && appointment) {
     return <TrangPhieuKham appointment={appointment} user={user} onLogout={onBackHome} />;
+  }
+
+  if (screen === 'success' && appointment) {
+    return (
+      <ManHinhDatLichThanhCong
+        appointment={appointment}
+        image={appointment.doctorImage}
+        fallback={lay_ten_tat(appointment.doctorShortName)}
+        onViewTicket={() => setScreen('ticket')}
+      />
+    );
   }
 
   if (screen === 'booking') {
@@ -966,7 +1085,7 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
           <img src={hospitalImages[1].src} alt={hospitalImages[1].alt} />
         </button>
         <button className="gallery-placeholder" type="button" onClick={() => setGalleryIndex(0)}>Y</button>
-        <button className="gallery-count" type="button" onClick={() => setGalleryIndex(0)}>📷 {hospitalImages.length}</button>
+        <button className="gallery-count" type="button" onClick={() => setGalleryIndex(0)}>ðŸ“· {hospitalImages.length}</button>
       </div>
       <button className="hospital-detail-book" type="button" onClick={() => setScreen('booking')}>Đặt khám ngay</button>
       <section className="hospital-info-grid" id="hospital-info">

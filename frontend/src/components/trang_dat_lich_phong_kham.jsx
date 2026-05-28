@@ -1,5 +1,5 @@
 ﻿import { useMemo, useRef, useState } from 'react';
-import TrangPhieuKham from './trang_phieu_kham';
+import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './trang_phieu_kham';
 
 function anh_phong_kham(path) {
   return `/image_phong_kham/${path}`;
@@ -18,6 +18,83 @@ function lay_ten_tat(name) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return 'BN';
   return parts.slice(-2).map((part) => part[0]).join('').toUpperCase();
+}
+
+function tai_anh_phieu(appointment) {
+  const { bookingRows, patientRows } = tao_dong_phieu_kham(appointment);
+  const rows = [...bookingRows, ...patientRows].filter((row) => co_gia_tri(row.value));
+  const canvas = document.createElement('canvas');
+  canvas.width = 920;
+  canvas.height = Math.max(760, 390 + rows.length * 36);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#16c784';
+  ctx.beginPath();
+  ctx.arc(460, 70, 30, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '700 34px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('✓', 460, 82);
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '700 26px Arial';
+  ctx.fillText('Đặt lịch thành công!', 460, 135);
+  ctx.font = '700 42px Arial';
+  ctx.fillStyle = '#16c784';
+  ctx.fillText(String(appointment.number), 460, 210);
+  ctx.font = '700 20px Arial';
+  ctx.fillStyle = '#0f172a';
+  ctx.fillText('STT', 460, 172);
+  ctx.textAlign = 'left';
+  ctx.font = '700 22px Arial';
+  ctx.fillStyle = '#0f172a';
+  ctx.fillText(appointment.doctorName, 80, 280);
+  ctx.font = '18px Arial';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(appointment.address || '', 80, 310);
+  rows.forEach((row, index) => {
+    const y = 370 + index * 34;
+    ctx.fillStyle = '#64748b';
+    ctx.font = '18px Arial';
+    ctx.fillText(row.label, 80, y);
+    ctx.fillStyle = row.highlight ? '#16a34a' : '#0f172a';
+    ctx.font = '700 18px Arial';
+    ctx.fillText(String(row.value), 360, y);
+  });
+  const link = document.createElement('a');
+  link.download = `${appointment.appointmentCode}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+function ManHinhDatLichThanhCong({ appointment, image, fallback, onViewTicket }) {
+  return (
+    <section className="booking-success-page">
+      <article className="booking-success-card">
+        <div className="success-check">✓</div>
+        <h1>Đặt lịch thành công!</h1>
+        <div className="success-ticket-head">
+          <div>
+            <span>STT</span>
+            <strong>{appointment.number}</strong>
+          </div>
+        </div>
+        <div className="success-doctor-row">
+          {image ? <img src={image} alt={appointment.doctorName} /> : <div className="profile-avatar small">{fallback}</div>}
+          <div>
+            <h2>{appointment.doctorName}</h2>
+            <p>{appointment.address}</p>
+          </div>
+        </div>
+        <PhieuKhamChiTiet appointment={appointment} />
+        <div className="success-actions">
+          <button type="button" onClick={onViewTicket}>Xem phiếu khám</button>
+          <button type="button" onClick={() => tai_anh_phieu(appointment)}>Lưu lại phiếu</button>
+        </div>
+      </article>
+    </section>
+  );
 }
 
 const NGAY_KHAM = [
@@ -225,12 +302,27 @@ function TrangDatLichPhongKham({ clinic, user, onBackHome }) {
       gender: selectedPatient.gender,
       phone: selectedPatient.phone,
       patientAddress: selectedPatient.address,
+      patientProfile: selectedPatient,
       note,
       attachments: attachedFiles.map((file) => file.name),
     });
+    setScreen('success');
   };
 
-  if (appointment) return <TrangPhieuKham appointment={appointment} user={user} onLogout={onBackHome} />;
+  if (screen === 'ticket' && appointment) {
+    return <TrangPhieuKham appointment={appointment} user={user} onLogout={onBackHome} />;
+  }
+
+  if (screen === 'success' && appointment) {
+    return (
+      <ManHinhDatLichThanhCong
+        appointment={appointment}
+        image={appointment.doctorImage}
+        fallback={lay_ten_tat(appointment.doctorShortName)}
+        onViewTicket={() => setScreen('ticket')}
+      />
+    );
+  }
 
   if (screen === 'booking') {
     return (

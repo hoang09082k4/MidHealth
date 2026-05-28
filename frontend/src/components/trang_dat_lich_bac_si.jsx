@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import TrangPhieuKham, { PhieuKhamChiTiet, QRGiaLap } from './trang_phieu_kham';
+import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './trang_phieu_kham';
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
@@ -65,12 +65,15 @@ function luu_lich_kham(appointment) {
 }
 
 function tai_anh_phieu(appointment) {
+  const { bookingRows, patientRows } = tao_dong_phieu_kham(appointment);
+  const visibleBookingRows = bookingRows.filter((row) => co_gia_tri(row.value));
+  const visiblePatientRows = patientRows.filter((row) => co_gia_tri(row.value));
   const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d');
   const width = 960;
-  const height = 760;
+  const height = Math.max(760, 390 + (visibleBookingRows.length + visiblePatientRows.length) * 42);
   canvas.width = width;
   canvas.height = height;
+  const context = canvas.getContext('2d');
 
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, width, height);
@@ -112,7 +115,7 @@ function tai_anh_phieu(appointment) {
     context.font = 'bold 17px Arial';
     context.fillText(title, 30, y);
     y += 28;
-    rows.forEach(([label, value, green]) => {
+    rows.forEach((row) => {
       context.strokeStyle = '#eeeeee';
       context.beginPath();
       context.moveTo(30, y + 10);
@@ -120,28 +123,16 @@ function tai_anh_phieu(appointment) {
       context.stroke();
       context.fillStyle = '#333333';
       context.font = '16px Arial';
-      context.fillText(label, 30, y + 34);
-      context.fillStyle = green ? '#00a651' : '#333333';
-      context.fillText(value || '--', 330, y + 34);
+      context.fillText(row.label, 30, y + 34);
+      context.fillStyle = row.highlight ? '#00a651' : '#333333';
+      context.fillText(String(row.value), 330, y + 34);
       y += 42;
     });
     return y + 24;
   };
 
-  const nextY = drawSection('Thông tin đặt lịch', [
-    ['Mã phiếu khám', appointment.appointmentCode],
-    ['STT', String(appointment.number)],
-    ['Ngày', appointment.dateDisplay],
-    ['Giờ khám', `${appointment.time} (Buổi chiều)`, true],
-    ['Chuyên khoa', appointment.department],
-  ], 340);
-
-  drawSection('Thông tin bệnh nhân', [
-    ['Bệnh nhân', appointment.patientName],
-    ['Ngày sinh', appointment.birthDate],
-    ['Giới tính', appointment.gender],
-    ['Địa chỉ', appointment.patientAddress],
-  ], nextY);
+  const nextY = drawSection('Thông tin đặt khám', visibleBookingRows, 340);
+  drawSection('Thông tin bệnh nhân', visiblePatientRows, nextY);
 
   const link = document.createElement('a');
   link.download = `${appointment.appointmentCode}.png`;
@@ -214,6 +205,15 @@ function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
         gender: 'Nam',
         phone: '0343413231',
         patientAddress: 'Chưa cập nhật',
+        patientProfile: {
+          name: patientName,
+          birthDate: '09/08/2004',
+          gender: 'Nam',
+          phone: '0343413231',
+          address: 'Chưa cập nhật',
+          email: user?.email || '',
+          relationship: 'Tôi',
+        },
         note,
       };
       setAppointment(nextAppointment);
@@ -269,12 +269,11 @@ function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
           <div className="success-check">✓</div>
           <h1>Đặt lịch thành công!</h1>
           <div className="success-ticket-head">
-            <div>
-              <span>STT</span>
-              <strong>{appointment.number}</strong>
-            </div>
-            <QRGiaLap />
+          <div>
+            <span>STT</span>
+            <strong>{appointment.number}</strong>
           </div>
+        </div>
           <div className="success-doctor-row">
             <div className="doctor-avatar booking-avatar">
               {doctor.image ? <img src={anh_bac_si(doctor)} alt={doctor.name} /> : <span>{doctor.initials}</span>}

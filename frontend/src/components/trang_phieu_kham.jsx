@@ -68,14 +68,6 @@ function lay_ten_tat(fullName) {
   return parts.slice(-2).map((part) => part[0]).join('').toUpperCase();
 }
 
-function QRGiaLap() {
-  return (
-    <div className="ticket-qr" aria-label="Mã QR phiếu khám">
-      {Array.from({ length: 25 }).map((_, index) => <i key={index} />)}
-    </div>
-  );
-}
-
 function HangThongTin({ label, value, highlight }) {
   return (
     <div className="ticket-info-row">
@@ -83,6 +75,109 @@ function HangThongTin({ label, value, highlight }) {
       <strong className={highlight ? 'green-text' : ''}>{value || '--'}</strong>
     </div>
   );
+}
+
+function co_gia_tri(value) {
+  return value !== undefined
+    && value !== null
+    && String(value).trim() !== ''
+    && !['--', '---', 'Chưa cập nhật'].includes(String(value).trim());
+}
+
+function lay_gia_tri_ho_so(profile, appointment, keys) {
+  for (const key of keys) {
+    if (co_gia_tri(profile?.[key])) return profile[key];
+    if (co_gia_tri(appointment?.[key])) return appointment[key];
+  }
+  return '';
+}
+
+function lay_dia_chi_ho_so(profile, appointment) {
+  const addressParts = [
+    profile?.address,
+    profile?.ward,
+    profile?.district,
+    profile?.province,
+  ].filter(co_gia_tri);
+
+  if (addressParts.length) return addressParts.join(', ');
+  return appointment?.patientAddress || appointment?.address || '';
+}
+
+function lay_nguoi_giam_ho_ho_so(profile) {
+  if (Array.isArray(profile?.guardians) && profile.guardians.length) {
+    return profile.guardians
+      .map((guardian) => [
+        guardian.name,
+        guardian.phone,
+        guardian.relationship,
+        guardian.citizenId ? `CCCD: ${guardian.citizenId}` : '',
+        guardian.email,
+      ].filter(co_gia_tri).join(' - '))
+      .filter(co_gia_tri);
+  }
+
+  const guardian = [
+    profile?.guardianName,
+    profile?.guardianPhone,
+    profile?.relationship,
+    profile?.guardianCitizenId ? `CCCD: ${profile.guardianCitizenId}` : '',
+    profile?.guardianEmail,
+  ].filter(co_gia_tri).join(' - ');
+
+  return co_gia_tri(guardian) ? [guardian] : [];
+}
+
+function HienThiDongPhieu({ rows }) {
+  return rows
+    .filter((row) => co_gia_tri(row.value))
+    .map((row) => (
+      <HangThongTin
+        key={row.label}
+        label={row.label}
+        value={row.value}
+        highlight={row.highlight}
+      />
+    ));
+}
+
+function tao_dong_phieu_kham(appointment) {
+  const patientProfile = appointment.patientProfile || {};
+  const guardians = lay_nguoi_giam_ho_ho_so(patientProfile);
+
+  return {
+    bookingRows: [
+      { label: 'Mã phiếu khám', value: appointment.appointmentCode },
+      { label: 'STT', value: appointment.number },
+      { label: 'Dịch vụ', value: appointment.serviceName },
+      { label: 'Cơ sở khám', value: appointment.hospitalName },
+      { label: 'Ngày khám', value: appointment.dateDisplay },
+      { label: 'Giờ khám', value: appointment.time ? `${appointment.time} (Buổi chiều)` : '', highlight: true },
+      { label: 'Chuyên khoa', value: appointment.department },
+    ],
+    patientRows: [
+      { label: 'Mã bệnh nhân', value: appointment.patientCode, highlight: true },
+      { label: 'Họ và tên', value: lay_gia_tri_ho_so(patientProfile, appointment, ['fullName', 'name', 'patientName']) },
+      { label: 'Ngày sinh', value: lay_gia_tri_ho_so(patientProfile, appointment, ['birthDate']) },
+      { label: 'Số điện thoại', value: lay_gia_tri_ho_so(patientProfile, appointment, ['phone']) },
+      { label: 'Giới tính', value: lay_gia_tri_ho_so(patientProfile, appointment, ['gender']) },
+      { label: 'Số CMND/CCCD', value: lay_gia_tri_ho_so(patientProfile, appointment, ['citizenId']) },
+      { label: 'Email', value: lay_gia_tri_ho_so(patientProfile, appointment, ['email']) },
+      { label: 'Địa chỉ', value: lay_dia_chi_ho_so(patientProfile, appointment) },
+      { label: 'Dân tộc', value: lay_gia_tri_ho_so(patientProfile, appointment, ['ethnicity']) },
+      { label: 'Nghề nghiệp', value: lay_gia_tri_ho_so(patientProfile, appointment, ['job']) },
+      { label: 'Mã BHYT', value: lay_gia_tri_ho_so(patientProfile, appointment, ['insuranceCode']) },
+      ...guardians.map((guardian, index) => ({
+        label: `Người giám hộ ${index + 1}`,
+        value: guardian,
+      })),
+      { label: 'Ghi chú', value: appointment.note },
+      {
+        label: 'Tệp đính kèm',
+        value: Array.isArray(appointment.attachments) ? appointment.attachments.join(', ') : '',
+      },
+    ],
+  };
 }
 
 function ONhapHoSo({ label, name, value, required, type = 'text', placeholder, onChange, error }) {
@@ -109,6 +204,7 @@ function OChonHoSo({ label, name, value, placeholder, children, onChange }) {
 
 function PhieuKhamChiTiet({ appointment, compact = false }) {
   const doctorName = appointment.doctorShortName || appointment.doctorName;
+  const { bookingRows, patientRows } = tao_dong_phieu_kham(appointment);
 
   return (
     <article className={compact ? 'ticket-detail-card compact' : 'ticket-detail-card'}>
@@ -120,25 +216,16 @@ function PhieuKhamChiTiet({ appointment, compact = false }) {
           <h3>{doctorName}</h3>
           <span>{appointment.address}</span>
         </div>
-        <QRGiaLap />
       </div>
 
       <section>
         <h4>Thông tin đặt khám</h4>
-        <HangThongTin label="Mã phiếu khám" value={appointment.appointmentCode} />
-        <HangThongTin label="Ngày khám" value={appointment.dateDisplay} />
-        <HangThongTin label="Giờ khám" value={`${appointment.time} (Buổi chiều)`} highlight />
-        <HangThongTin label="Chuyên khoa" value={appointment.department} />
+        <HienThiDongPhieu rows={bookingRows} />
       </section>
 
       <section>
         <h4>Thông tin bệnh nhân</h4>
-        <HangThongTin label="Mã bệnh nhân" value={appointment.patientCode} highlight />
-        <HangThongTin label="Họ và tên" value={appointment.patientName} />
-        <HangThongTin label="Năm sinh" value={appointment.birthDate} />
-        <HangThongTin label="Số điện thoại" value={appointment.phone} />
-        <HangThongTin label="Giới tính" value={appointment.gender} />
-        <HangThongTin label="Địa chỉ" value={appointment.patientAddress} />
+        <HienThiDongPhieu rows={patientRows} />
       </section>
 
       <section>
@@ -486,5 +573,5 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
   );
 }
 
-export { PhieuKhamChiTiet, QRGiaLap };
+export { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham };
 export default TrangPhieuKham;

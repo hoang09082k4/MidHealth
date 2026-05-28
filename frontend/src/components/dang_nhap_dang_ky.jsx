@@ -408,14 +408,6 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
               trên website <b>MidHealth</b> với <strong>600+</strong> bác sĩ,<br />
               <strong>100</strong> phòng khám, <strong>25</strong> bệnh viện
             </div>
-            <div className="qr-card">
-              <div className="qr-grid">
-                {Array.from({ length: 81 }).map((_, index) => (
-                  <i key={index} className={(index * 7 + index) % 3 === 0 ? 'active' : ''} />
-                ))}
-              </div>
-              <p><strong>MidHealth</strong> đặt khám trực tuyến</p>
-            </div>
           </div>
         </div>
 
@@ -474,14 +466,6 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
             Đặt khám <strong>DỄ DÀNG HƠN</strong><br />
             trên website <b>MidHealth</b> với <strong>600+</strong> bác sĩ,<br />
             <strong>100</strong> phòng khám, <strong>25</strong> bệnh viện
-          </div>
-          <div className="qr-card">
-            <div className="qr-grid">
-              {Array.from({ length: 81 }).map((_, index) => (
-                <i key={index} className={(index * 7 + index) % 3 === 0 ? 'active' : ''} />
-              ))}
-            </div>
-            <p><strong>MidHealth</strong> đặt khám trực tuyến</p>
           </div>
         </div>
       </div>
@@ -546,3 +530,4 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
 }
 
 export default DangNhapDangKy;
+

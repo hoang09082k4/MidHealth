@@ -208,71 +208,6 @@ a {
   color: var(--green);
 }
 
-.qr-card {
-  position: relative;
-  z-index: 2;
-  display: grid;
-  justify-items: center;
-  gap: 10px;
-  width: 198px;
-  padding: 22px 18px 14px;
-  border-radius: 18px;
-  background: #ffffff;
-  box-shadow: 0 18px 50px rgba(15, 42, 77, 0.13);
-}
-
-.qr-grid {
-  display: grid;
-  grid-template-columns: repeat(9, 1fr);
-  gap: 4px;
-  width: 148px;
-  height: 148px;
-  padding: 8px;
-  background: #ffffff;
-}
-
-.qr-grid i {
-  background: #ffffff;
-}
-
-.qr-grid i.active,
-.qr-grid i:nth-child(1),
-.qr-grid i:nth-child(2),
-.qr-grid i:nth-child(3),
-.qr-grid i:nth-child(10),
-.qr-grid i:nth-child(12),
-.qr-grid i:nth-child(19),
-.qr-grid i:nth-child(20),
-.qr-grid i:nth-child(21),
-.qr-grid i:nth-child(7),
-.qr-grid i:nth-child(8),
-.qr-grid i:nth-child(9),
-.qr-grid i:nth-child(16),
-.qr-grid i:nth-child(18),
-.qr-grid i:nth-child(25),
-.qr-grid i:nth-child(26),
-.qr-grid i:nth-child(27),
-.qr-grid i:nth-child(55),
-.qr-grid i:nth-child(56),
-.qr-grid i:nth-child(57),
-.qr-grid i:nth-child(64),
-.qr-grid i:nth-child(66),
-.qr-grid i:nth-child(73),
-.qr-grid i:nth-child(74),
-.qr-grid i:nth-child(75) {
-  background: #020617;
-}
-
-.qr-card p {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 700;
-}
-
-.qr-card strong {
-  color: var(--blue);
-}
-
 .auth-bubble {
   position: absolute;
   display: grid;
@@ -3202,29 +3137,6 @@ a {
   font-size: 2rem;
 }
 
-.ticket-qr {
-  display: grid;
-  grid-template-columns: repeat(5, 9px);
-  gap: 3px;
-  width: max-content;
-  padding: 5px;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-}
-
-.ticket-qr i {
-  width: 9px;
-  height: 9px;
-  background: #111827;
-}
-
-.ticket-qr i:nth-child(2n),
-.ticket-qr i:nth-child(7),
-.ticket-qr i:nth-child(13),
-.ticket-qr i:nth-child(19) {
-  background: #ffffff;
-}
-
 .success-doctor-row {
   display: flex;
   gap: 16px;
@@ -3232,6 +3144,25 @@ a {
   padding: 16px 22px;
   border-top: 1px dashed #e5e7eb;
   text-align: left;
+}
+
+.success-doctor-row img,
+.success-doctor-row .profile-avatar.small {
+  flex: 0 0 64px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.success-doctor-row div:last-child {
+  min-width: 0;
+}
+
+.success-doctor-row h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.35;
 }
 
 .success-doctor-row h3,
