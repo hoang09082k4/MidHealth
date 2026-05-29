@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react';
-import { clinics, doctors, hospitals, specialties } from '../data';
+import { useEffect, useMemo, useState } from 'react';
+import { fallbackCatalog } from '../lib/catalog';
 
 const placeTypes = ['Tất cả', 'Bác sĩ', 'Bệnh viện', 'Phòng khám'];
 const cities = ['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ', 'Hải Phòng', 'An Giang'];
 const districts = {
-  'Hồ Chí Minh': ['Quận 1', 'Quận 3', 'Quận 5', 'Bình Thạnh', 'Bình Tân', 'Thủ Đức'],
+  'Hồ Chí Minh': ['Huyện Bình Chánh', 'Huyện Cần Giờ', 'Huyện Củ Chi', 'Huyện Hóc Môn', 'Huyện Nhà Bè', 'Quận 1', 'Quận 3', 'Quận 5', 'Bình Thạnh', 'Bình Tân', 'Thủ Đức'],
   'Hà Nội': ['Ba Đình', 'Hoàn Kiếm', 'Đống Đa', 'Cầu Giấy', 'Hai Bà Trưng'],
   'Đà Nẵng': ['Hải Châu', 'Thanh Khê', 'Sơn Trà', 'Ngũ Hành Sơn'],
   'Cần Thơ': ['Ninh Kiều', 'Bình Thủy', 'Cái Răng'],
@@ -17,11 +17,24 @@ function bo_dau(value = '') {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd');
+    .replace(/đ/g, 'd')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
 }
 
 function khop_tu_khoa(text, keyword) {
-  return bo_dau(text).includes(bo_dau(keyword));
+  const normalizedText = bo_dau(text);
+  const normalizedKeyword = bo_dau(keyword);
+  if (!normalizedKeyword) return true;
+  return normalizedText.includes(normalizedKeyword)
+    || normalizedKeyword.split(' ').every((word) => normalizedText.includes(word));
+}
+
+function lay_ten_chuyen_khoa(specialty) {
+  if (!specialty) return '';
+  if (typeof specialty === 'string') return specialty;
+  return specialty.name || '';
 }
 
 function lay_chu_cai_dau(name = '') {
@@ -34,7 +47,20 @@ function lay_chu_cai_dau(name = '') {
     .toUpperCase();
 }
 
-function tao_ket_qua() {
+function tim_dia_chi_noi_lam_viec(workplace = '', knownPlaces = []) {
+  const normalizedWorkplace = bo_dau(workplace);
+  const place = knownPlaces.find((item) => {
+    const normalizedName = bo_dau(item.name);
+    return normalizedName === normalizedWorkplace
+      || normalizedName.includes(normalizedWorkplace)
+      || normalizedWorkplace.includes(normalizedName);
+  });
+  return place?.address || '';
+}
+
+function tao_ket_qua({ hospitals = [], doctors = [], clinics = [] }) {
+  const knownPlaces = [...hospitals, ...clinics];
+
   return [
     ...hospitals.map((item) => ({
       ...item,
@@ -46,7 +72,8 @@ function tao_ket_qua() {
       ...item,
       type: 'Bác sĩ',
       tags: [item.specialty],
-      address: item.workplace,
+      address: tim_dia_chi_noi_lam_viec(item.workplace, knownPlaces),
+      workplace: item.workplace,
       image: item.image ? `/image_doctor/${item.image}` : '',
     })),
     ...clinics.map((item) => ({
@@ -59,24 +86,36 @@ function tao_ket_qua() {
 }
 
 function TrangDatLichChuyenKhoa({
+  catalog = fallbackCatalog,
   initialSpecialty,
   onBookDoctor,
   onBookHospital,
   onBookClinic,
 }) {
+  const { clinics, doctors, hospitals, specialties } = catalog;
   const [keyword, setKeyword] = useState('');
   const [placeType, setPlaceType] = useState('Tất cả');
-  const [selectedSpecialty, setSelectedSpecialty] = useState(initialSpecialty?.name || initialSpecialty || '');
+  const [selectedSpecialty, setSelectedSpecialty] = useState(lay_ten_chuyen_khoa(initialSpecialty));
   const [selectedCity, setSelectedCity] = useState('');
   const [selectedDistrict, setSelectedDistrict] = useState('');
+  const [nearestActive, setNearestActive] = useState(false);
+
+  useEffect(() => {
+    setSelectedSpecialty(lay_ten_chuyen_khoa(initialSpecialty));
+    setKeyword('');
+    setSelectedCity('');
+    setSelectedDistrict('');
+    setNearestActive(false);
+  }, [initialSpecialty]);
   const [activeModal, setActiveModal] = useState('');
   const [specialtySearch, setSpecialtySearch] = useState('');
 
   const results = useMemo(() => {
-    return tao_ket_qua().filter((item) => {
+    const filteredResults = tao_ket_qua({ hospitals, doctors, clinics }).filter((item) => {
+      const addressText = item.address || item.workplace || '';
       const content = [
         item.name,
-        item.address,
+        addressText,
         item.workplace,
         item.subtitle,
         item.type,
@@ -85,11 +124,25 @@ function TrangDatLichChuyenKhoa({
       const matchKeyword = !keyword || khop_tu_khoa(content, keyword);
       const matchType = placeType === 'Tất cả' || item.type === placeType;
       const matchSpecialty = !selectedSpecialty || (item.tags || []).some((tag) => khop_tu_khoa(tag, selectedSpecialty));
-      const matchCity = !selectedCity || khop_tu_khoa(item.address || '', selectedCity);
-      const matchDistrict = !selectedDistrict || khop_tu_khoa(item.address || '', selectedDistrict);
+      const matchCity = !selectedCity || khop_tu_khoa(addressText, selectedCity);
+      const matchDistrict = !selectedDistrict || khop_tu_khoa(addressText, selectedDistrict);
       return matchKeyword && matchType && matchSpecialty && matchCity && matchDistrict;
     });
-  }, [keyword, placeType, selectedSpecialty, selectedCity, selectedDistrict]);
+
+    if (!nearestActive || (!selectedCity && !selectedDistrict)) {
+      return filteredResults;
+    }
+
+    return [...filteredResults].sort((first, second) => {
+      const firstAddress = first.address || first.workplace || '';
+      const secondAddress = second.address || second.workplace || '';
+      const firstScore = Number(selectedDistrict && khop_tu_khoa(firstAddress, selectedDistrict))
+        + Number(selectedCity && khop_tu_khoa(firstAddress, selectedCity));
+      const secondScore = Number(selectedDistrict && khop_tu_khoa(secondAddress, selectedDistrict))
+        + Number(selectedCity && khop_tu_khoa(secondAddress, selectedCity));
+      return secondScore - firstScore;
+    });
+  }, [clinics, doctors, hospitals, keyword, nearestActive, placeType, selectedSpecialty, selectedCity, selectedDistrict]);
 
   const filteredSpecialties = specialties.filter((specialty) => khop_tu_khoa(specialty.name, specialtySearch));
 
@@ -110,6 +163,15 @@ function TrangDatLichChuyenKhoa({
     setSelectedSpecialty('');
     setSelectedCity('');
     setSelectedDistrict('');
+    setNearestActive(false);
+    setSpecialtySearch('');
+  };
+
+  const handleNearest = () => {
+    setNearestActive((current) => !current);
+    if (!selectedCity) {
+      setActiveModal('region');
+    }
   };
 
   return (
@@ -128,13 +190,13 @@ function TrangDatLichChuyenKhoa({
           <button type="button" className="filter-chip" onClick={() => setActiveModal('place')}>
             Nơi khám: {placeType} <span aria-hidden="true">⌄</span>
           </button>
-          <button type="button" className="filter-chip active" onClick={() => setActiveModal('specialty')}>
+          <button type="button" className={selectedSpecialty ? 'filter-chip active' : 'filter-chip'} onClick={() => setActiveModal('specialty')}>
             ✚ {selectedSpecialty || 'Chọn chuyên khoa'}
           </button>
           <button type="button" className={selectedDistrict ? 'filter-chip active' : 'filter-chip'} onClick={() => setActiveModal('region')}>
             ● {selectedDistrict ? `${selectedDistrict}, ${selectedCity}` : 'Khu vực'}
           </button>
-          <button type="button" className="filter-chip nearest">
+          <button type="button" className={nearestActive ? 'filter-chip nearest active' : 'filter-chip nearest'} onClick={handleNearest}>
             ◎ Gần nhất
           </button>
         </div>
@@ -160,7 +222,7 @@ function TrangDatLichChuyenKhoa({
                   <p>{item.address || item.workplace || 'Đang cập nhật địa chỉ'}</p>
                 </div>
                 <div className="result-actions">
-                  {item.type === 'Bác sĩ' && <button type="button" className="consult-button">Đặt lịch tư vấn</button>}
+                  {item.type === 'Bác sĩ' && <button type="button" className="consult-button" onClick={() => handleBook(item)}>Đặt lịch tư vấn</button>}
                   <button type="button" className="book-result-button" onClick={() => handleBook(item)}>Đặt khám</button>
                 </div>
               </article>
@@ -225,7 +287,7 @@ function TrangDatLichChuyenKhoa({
               ))}
             </div>
             <div className="modal-actions">
-              <button type="button" className="secondary-button" onClick={() => setSelectedSpecialty('')}>Xóa bộ lọc</button>
+              <button type="button" className="secondary-button" onClick={() => { setSelectedSpecialty(''); setSpecialtySearch(''); }}>Xóa bộ lọc</button>
               <button type="button" className="primary-button" onClick={() => setActiveModal('')}>Áp dụng</button>
             </div>
           </div>
@@ -237,7 +299,7 @@ function TrangDatLichChuyenKhoa({
           <div className="filter-modal region-modal" onClick={(event) => event.stopPropagation()}>
             <div className="region-modal-head">
               <h3>Chọn khu vực</h3>
-              <button type="button" onClick={() => { setSelectedCity(''); setSelectedDistrict(''); }}>XÓA BỘ LỌC</button>
+              <button type="button" onClick={clearFilters}>XÓA BỘ LỌC</button>
               <button className="modal-close" type="button" onClick={() => setActiveModal('')}>×</button>
             </div>
             <div className="region-columns">

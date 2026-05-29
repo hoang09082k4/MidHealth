@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './trang_phieu_kham';
+import { createAppointment } from '../lib/appointments';
 import {
   DAN_TOC_VIET_NAM,
   DIA_CHI_FALLBACK,
@@ -41,6 +42,11 @@ function lay_ten_tat(fullName) {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return 'BN';
   return parts.slice(-2).map((part) => part[0]).join('').toUpperCase();
+}
+
+function luu_lich_kham(appointment) {
+  const current = JSON.parse(localStorage.getItem('midhealth_appointments') || '[]');
+  localStorage.setItem('midhealth_appointments', JSON.stringify([appointment, ...current.filter((item) => (item.id || item.ticket) !== (appointment.id || appointment.ticket))]));
 }
 
 function dia_chi_day_du(profile) {
@@ -600,7 +606,10 @@ function ThongTinDatKham({ service, specialty, date, time, patient }) {
 }
 
 function LichThang({ selectedDate, onSelectDate }) {
-  const availableDays = new Set(NGAY_KHAM.map((item) => item.day));
+  const today = new Date();
+  const todayValue = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const availableDates = NGAY_KHAM.filter((item) => item.value >= todayValue);
+  const availableDays = new Set(availableDates.map((item) => item.day));
   return (
     <div className="hospital-calendar">
       <div className="hospital-calendar-head">
@@ -614,7 +623,7 @@ function LichThang({ selectedDate, onSelectDate }) {
       <div className="hospital-calendar-grid">
         {Array.from({ length: 31 }).map((_, index) => {
           const day = index + 1;
-          const dateOption = NGAY_KHAM.find((item) => item.day === day);
+          const dateOption = availableDates.find((item) => item.day === day);
           const available = availableDays.has(day);
           const className = [
             'calendar-day',
@@ -662,6 +671,7 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
   const [note, setNote] = useState('');
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [appointment, setAppointment] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef(null);
   const hospitalImages = useMemo(() => [
     { src: anh_benh_vien(hospital.background), alt: hospital.name },
@@ -845,7 +855,7 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
     setStep((current) => current - 1);
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (!canContinue) return;
     if (step < 5) {
       unlockNextStep(step);
@@ -858,35 +868,40 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
       return;
     }
 
-    const ticketNumber = Math.floor(10 + Math.random() * 60);
-    setAppointment({
-      id: `hospital_${Date.now()}`,
-      type: 'hospital',
-      status: 'Đã đặt lịch',
-      ticket: `BV-${Date.now()}`,
-      appointmentCode: tao_ma_phieu(),
-      patientCode: tao_ma_benh_nhan(),
-      number: ticketNumber,
-      doctorName: hospital.name,
-      doctorShortName: hospital.name,
-      doctorImage: anh_benh_vien(hospital.avatar),
-      department: selectedSpecialty.name,
-      serviceName: selectedService.name,
-      hospitalName: hospital.name,
-      address: hospital.address,
-      dateDisplay: selectedDate.display,
-      dateValue: selectedDate.value,
-      time: selectedTime,
-      patientName: selectedPatient.name,
-      birthDate: selectedPatient.birthDate,
-      gender: selectedPatient.gender,
-      phone: selectedPatient.phone,
-      patientAddress: dia_chi_day_du(selectedPatient),
-      patientProfile: selectedPatient,
-      note,
-      attachments: attachedFiles.map((file) => file.name),
-    });
-    setScreen('success');
+    setIsSubmitting(true);
+    setWarning('');
+    try {
+      const nextAppointment = await createAppointment(user, {
+        type: 'hospital',
+        facilityName: hospital.name,
+        hospitalName: hospital.name,
+        doctorName: hospital.name,
+        doctorShortName: hospital.name,
+        doctorImage: anh_benh_vien(hospital.avatar),
+        department: selectedSpecialty.name,
+        specialtyName: selectedSpecialty.name,
+        serviceName: selectedService.name,
+        address: hospital.address,
+        dateDisplay: selectedDate.display,
+        dateValue: selectedDate.value,
+        time: selectedTime,
+        patientName: selectedPatient.name,
+        birthDate: selectedPatient.birthDate,
+        gender: selectedPatient.gender,
+        phone: selectedPatient.phone,
+        patientAddress: dia_chi_day_du(selectedPatient),
+        patientProfile: selectedPatient,
+        note,
+        attachments: attachedFiles.map((file) => file.name),
+      });
+      setAppointment(nextAppointment);
+      luu_lich_kham(nextAppointment);
+      setScreen('success');
+    } catch (error) {
+      setWarning(error.message || 'Không thể xác nhận đặt khám. Vui lòng thử lại.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleFiles = (fileList) => {
@@ -1028,7 +1043,7 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
             </div>
             <footer>
               <button type="button" onClick={handleBack}>Quay lại</button>
-              <button type="button" disabled={!canContinue} onClick={handleNext}>{step === 5 ? 'Xác nhận đặt khám' : 'Tiếp tục'}</button>
+              <button type="button" disabled={!canContinue || isSubmitting} onClick={handleNext}>{step === 5 ? (isSubmitting ? 'Đang đặt khám...' : 'Xác nhận đặt khám') : 'Tiếp tục'}</button>
             </footer>
           </article>
 

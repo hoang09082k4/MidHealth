@@ -4,16 +4,20 @@ import BieuTuongLogo from './components/bieu_tuong_logo';
 import DangNhapDangKy from './components/dang_nhap_dang_ky';
 import TrangDatLichBacSi from './components/trang_dat_lich_bac_si';
 import TrangDatLichBenhVien from './components/trang_dat_lich_benh_vien';
+import TrangDatLichChuyenKhoa from './components/trang_dat_lich_chuyen_khoa';
 import TrangDatLichPhongKham from './components/trang_dat_lich_phong_kham';
 import TrangChu from './components/trang_chu';
 import { firebaseAuth } from './lib/firebase';
+import { fallbackCatalog, fetchCatalog } from './lib/catalog';
 
 function App() {
   const [isAuthPage, setIsAuthPage] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState(null);
   const [selectedHospital, setSelectedHospital] = useState(null);
   const [selectedClinic, setSelectedClinic] = useState(null);
+  const [selectedSpecialty, setSelectedSpecialty] = useState(null);
   const [user, setUser] = useState(null);
+  const [catalog, setCatalog] = useState(fallbackCatalog);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(firebaseAuth, (currentUser) => {
@@ -21,6 +25,22 @@ function App() {
     });
 
     return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    fetchCatalog()
+      .then((data) => {
+        if (isMounted) setCatalog(data);
+      })
+      .catch(() => {
+        if (isMounted) setCatalog(fallbackCatalog);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleSignOut = async () => {
@@ -33,6 +53,7 @@ function App() {
     setSelectedDoctor(null);
     setSelectedHospital(null);
     setSelectedClinic(null);
+    setSelectedSpecialty(null);
   };
 
   const showDoctorBooking = (doctor) => {
@@ -40,6 +61,7 @@ function App() {
     setSelectedDoctor(doctor);
     setSelectedHospital(null);
     setSelectedClinic(null);
+    setSelectedSpecialty(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -48,6 +70,7 @@ function App() {
     setSelectedDoctor(null);
     setSelectedHospital(hospital);
     setSelectedClinic(null);
+    setSelectedSpecialty(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -56,6 +79,16 @@ function App() {
     setSelectedDoctor(null);
     setSelectedHospital(null);
     setSelectedClinic(clinic);
+    setSelectedSpecialty(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const showSpecialtyBooking = (specialty) => {
+    setIsAuthPage(false);
+    setSelectedDoctor(null);
+    setSelectedHospital(null);
+    setSelectedClinic(null);
+    setSelectedSpecialty(specialty);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -89,8 +122,22 @@ function App() {
           <TrangDatLichBenhVien hospital={selectedHospital} user={user} onBackHome={showHome} />
         ) : selectedClinic ? (
           <TrangDatLichPhongKham clinic={selectedClinic} user={user} onBackHome={showHome} />
+        ) : selectedSpecialty ? (
+          <TrangDatLichChuyenKhoa
+            catalog={catalog}
+            initialSpecialty={selectedSpecialty}
+            onBookDoctor={showDoctorBooking}
+            onBookHospital={showHospitalBooking}
+            onBookClinic={showClinicBooking}
+          />
         ) : (
-          <TrangChu onBookDoctor={showDoctorBooking} onBookHospital={showHospitalBooking} onBookClinic={showClinicBooking} />
+          <TrangChu
+            catalog={catalog}
+            onBookDoctor={showDoctorBooking}
+            onBookHospital={showHospitalBooking}
+            onBookClinic={showClinicBooking}
+            onSelectSpecialty={showSpecialtyBooking}
+          />
         )}
       </main>
     </div>

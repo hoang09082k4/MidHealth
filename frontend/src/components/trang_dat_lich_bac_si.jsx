@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './trang_phieu_kham';
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+import { createAppointment } from '../lib/appointments';
 
 function tao_ngay_kham() {
   const labels = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
@@ -165,37 +164,14 @@ function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
     setMessage('');
 
     try {
-      const idToken = user ? await user.getIdToken() : '';
-      const response = await fetch(`${apiBaseUrl}/api/queue`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
-        },
-        body: JSON.stringify({
-          patient: patientName,
-          department: doctor.specialty,
-          doctor: doctor.name,
-          room: 'Phòng khám Nhi khoa',
-          appointmentDate: selectedDate.value,
-          appointmentTime: selectedTime,
-          note,
-        }),
-      });
-      const result = await response.json();
-
-      if (!response.ok) throw new Error(result.message || 'Không thể đặt lịch.');
-
-      const nextAppointment = {
-        ticket: result.data.ticket,
-        appointmentCode: tao_ma_phieu(result.data.number),
-        patientCode: `YMP${String(2628000000 + result.data.number)}`,
-        number: result.data.number,
-        status: 'Đã đặt lịch',
+      const nextAppointment = await createAppointment(user, {
+        type: 'doctor',
         doctorName: doctor.name,
         doctorShortName: doctor.name.replace(/^BS\. CK2\s|^PGS\. TS\. BS\s/, ''),
         doctorImage: doctor.image,
         department: doctor.specialty,
+        facilityName: doctor.workplace,
+        hospitalName: doctor.workplace,
         address: '250 Đ. Nguyễn Xí, Bình Lợi Trung, Hồ Chí Minh',
         dateDisplay: selectedDate.display,
         dateValue: selectedDate.value,
@@ -215,7 +191,9 @@ function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
           relationship: 'Tôi',
         },
         note,
-      };
+        room: 'Phòng khám Nhi khoa',
+        attachments: attachedFiles.map((file) => file.name),
+      });
       setAppointment(nextAppointment);
       luu_lich_kham(nextAppointment);
       setScreen('success');

@@ -9,27 +9,30 @@ import {
   kiem_tra_bhyt,
   kiem_tra_ngay_sinh,
 } from '../data/du_lieu_ho_so';
+import { cancelAppointment, listAppointments, savePatientProfile } from '../lib/appointments';
 
 function tao_ten_benh_nhan(user) {
   return user?.displayName || user?.email?.split('@')[0] || 'Bệnh nhân';
 }
 
 function tao_ho_so_mac_dinh(appointment, user) {
+  const patientProfile = appointment?.patientProfile || {};
   return {
-    fullName: appointment?.patientName || tao_ten_benh_nhan(user),
-    phone: appointment?.phone || '',
-    birthDate: appointment?.birthDate || '',
-    gender: appointment?.gender || 'Nam',
-    province: '',
-    district: '',
-    ward: '',
-    address: appointment?.patientAddress === 'Chưa cập nhật' ? '' : appointment?.patientAddress || '',
-    citizenId: '',
-    ethnicity: 'Kinh',
-    job: '',
-    insuranceCode: '',
-    email: user?.email || '',
-    relationship: 'Tôi',
+    fullName: patientProfile.fullName || patientProfile.name || appointment?.patientName || tao_ten_benh_nhan(user),
+    phone: patientProfile.phone || appointment?.phone || '',
+    birthDate: patientProfile.birthDate || appointment?.birthDate || '',
+    gender: patientProfile.gender || appointment?.gender || 'Nam',
+    province: patientProfile.province || '',
+    district: patientProfile.district || '',
+    ward: patientProfile.ward || '',
+    address: patientProfile.address || (appointment?.patientAddress === 'Chưa cập nhật' ? '' : appointment?.patientAddress || ''),
+    citizenId: patientProfile.citizenId || '',
+    ethnicity: patientProfile.ethnicity || 'Kinh',
+    nationality: patientProfile.nationality || 'Việt Nam',
+    job: patientProfile.job || patientProfile.occupation || '',
+    insuranceCode: patientProfile.insuranceCode || patientProfile.healthInsuranceNumber || '',
+    email: patientProfile.email || user?.email || '',
+    relationship: patientProfile.relationship || 'Tôi',
   };
 }
 
@@ -45,6 +48,7 @@ function tao_ho_so_moi() {
     address: '',
     citizenId: '',
     ethnicity: 'Kinh',
+    nationality: 'Việt Nam',
     job: '',
     insuranceCode: '',
     email: '',
@@ -76,6 +80,58 @@ function HangThongTin({ label, value, highlight }) {
     </div>
   );
 }
+
+function doc_lich_kham_luu_cuc_bo() {
+  try {
+    const data = JSON.parse(localStorage.getItem('midhealth_appointments') || '[]');
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+function luu_lich_kham_cuc_bo(appointments) {
+  localStorage.setItem('midhealth_appointments', JSON.stringify(appointments));
+}
+
+function gop_lich_kham(appointments) {
+  const seen = new Set();
+  return appointments.filter((item) => {
+    const key = item.id || item.appointmentCode || item.ticket;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function chuyen_ngay_loc(dateValue) {
+  if (!dateValue) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) return dateValue;
+  const match = String(dateValue).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : '';
+}
+
+function loai_noi_kham(appointment) {
+  if (appointment.type === 'doctor') return 'doctor';
+  if (appointment.type === 'clinic') return 'clinic';
+  if (appointment.type === 'hospital') return 'hospital';
+  return 'all';
+}
+
+function loai_dich_vu(appointment) {
+  const content = [appointment.serviceName, appointment.department, appointment.doctorName, appointment.hospitalName].join(' ').toLowerCase();
+  if (content.includes('tư vấn') || content.includes('tu van')) return 'consult';
+  if (content.includes('tại nhà') || content.includes('tai nha')) return 'home';
+  return 'exam';
+}
+
+const FILTER_DEFAULT = {
+  fromDate: '',
+  toDate: '',
+  status: 'all',
+  serviceType: 'all',
+  placeType: 'all',
+};
 
 function co_gia_tri(value) {
   return value !== undefined
@@ -165,6 +221,7 @@ function tao_dong_phieu_kham(appointment) {
       { label: 'Email', value: lay_gia_tri_ho_so(patientProfile, appointment, ['email']) },
       { label: 'Địa chỉ', value: lay_dia_chi_ho_so(patientProfile, appointment) },
       { label: 'Dân tộc', value: lay_gia_tri_ho_so(patientProfile, appointment, ['ethnicity']) },
+      { label: 'Quốc tịch', value: lay_gia_tri_ho_so(patientProfile, appointment, ['nationality']) || 'Việt Nam' },
       { label: 'Nghề nghiệp', value: lay_gia_tri_ho_so(patientProfile, appointment, ['job']) },
       { label: 'Mã BHYT', value: lay_gia_tri_ho_so(patientProfile, appointment, ['insuranceCode']) },
       ...guardians.map((guardian, index) => ({
@@ -242,6 +299,12 @@ function PhieuKhamChiTiet({ appointment, compact = false }) {
 function TrangPhieuKham({ appointment, user, onLogout }) {
   const [activeTab, setActiveTab] = useState('lich_kham');
   const [selectedAppointment, setSelectedAppointment] = useState(appointment);
+  const [appointments, setAppointments] = useState(() => gop_lich_kham([appointment, ...doc_lich_kham_luu_cuc_bo()].filter(Boolean)));
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [filterDraft, setFilterDraft] = useState(FILTER_DEFAULT);
+  const [filters, setFilters] = useState(FILTER_DEFAULT);
+  const [appointmentError, setAppointmentError] = useState('');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isAddingProfile, setIsAddingProfile] = useState(false);
   const [profiles, setProfiles] = useState(() => [{ id: 'me', ...tao_ho_so_mac_dinh(appointment, user) }]);
@@ -262,6 +325,29 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
   );
 
   const patientName = profile.fullName || tao_ten_benh_nhan(user);
+  const visibleAppointments = useMemo(() => appointments.filter((item) => {
+    const appointmentDate = chuyen_ngay_loc(item.dateValue || item.dateDisplay);
+    const searchable = [
+      item.appointmentCode,
+      item.ticket,
+      item.serviceName,
+      item.patientName,
+      item.doctorName,
+      item.doctorShortName,
+      item.hospitalName,
+      item.department,
+    ].join(' ').toLowerCase();
+    const keyword = searchTerm.trim().toLowerCase();
+
+    if (keyword && !searchable.includes(keyword)) return false;
+    if (filters.fromDate && appointmentDate && appointmentDate < filters.fromDate) return false;
+    if (filters.toDate && appointmentDate && appointmentDate > filters.toDate) return false;
+    if (filters.status !== 'all' && item.status !== filters.status) return false;
+    if (filters.serviceType !== 'all' && loai_dich_vu(item) !== filters.serviceType) return false;
+    if (filters.placeType !== 'all' && loai_noi_kham(item) !== filters.placeType) return false;
+    return true;
+  }), [appointments, filters, searchTerm]);
+  const activeAppointment = selectedAppointment || visibleAppointments[0] || appointments[0] || appointment;
   const canSubmitProfile = profileDraft.fullName.trim()
     && profileDraft.phone.length === 10
     && kiem_tra_ngay_sinh(profileDraft.birthDate)
@@ -296,8 +382,62 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
     };
   }, []);
 
-  const handleCancel = () => {
-    setSelectedAppointment((current) => ({ ...current, status: 'Đã hủy' }));
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!user) return () => {
+      isMounted = false;
+    };
+
+    listAppointments(user)
+      .then((items) => {
+        if (!isMounted) return;
+        setAppointments((current) => {
+          const nextAppointments = gop_lich_kham([appointment, ...items, ...current].filter(Boolean));
+          luu_lich_kham_cuc_bo(nextAppointments);
+          return nextAppointments;
+        });
+      })
+      .catch((error) => {
+        if (isMounted) setAppointmentError(error.message || 'Không thể tải danh sách lịch hẹn.');
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [appointment, user]);
+
+  useEffect(() => {
+    if (!selectedAppointment && visibleAppointments.length > 0) {
+      setSelectedAppointment(visibleAppointments[0]);
+      return;
+    }
+    if (selectedAppointment && visibleAppointments.length > 0 && !visibleAppointments.some((item) => (item.id || item.appointmentCode) === (selectedAppointment.id || selectedAppointment.appointmentCode))) {
+      setSelectedAppointment(visibleAppointments[0]);
+    }
+  }, [selectedAppointment, visibleAppointments]);
+
+  const handleCancel = async () => {
+    const targetAppointment = selectedAppointment || activeAppointment;
+    if (!targetAppointment) return;
+
+    try {
+      if (targetAppointment.id && user) {
+        await cancelAppointment(user, targetAppointment.id);
+      }
+      setSelectedAppointment((current) => ({ ...current, status: 'Đã hủy' }));
+      setAppointments((current) => {
+        const nextAppointments = current.map((item) => (
+          (item.id || item.appointmentCode) === (targetAppointment.id || targetAppointment.appointmentCode)
+            ? { ...item, status: 'Đã hủy' }
+            : item
+        ));
+        luu_lich_kham_cuc_bo(nextAppointments);
+        return nextAppointments;
+      });
+    } catch (error) {
+      setProfileError(error.message || 'Không thể hủy lịch khám. Vui lòng thử lại.');
+    }
   };
 
   const openEditProfile = () => {
@@ -341,7 +481,7 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
     }));
   };
 
-  const submitProfile = (event) => {
+  const submitProfile = async (event) => {
     event.preventDefault();
     const errors = validateProfileDraft();
     setProfileFieldErrors(errors);
@@ -350,8 +490,18 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
       return;
     }
 
+    let savedProfile = null;
+    try {
+      if (user) {
+        savedProfile = await savePatientProfile(user, profileDraft);
+      }
+    } catch (error) {
+      setProfileError(error.message || 'Không thể lưu hồ sơ bệnh nhân.');
+      return;
+    }
+
     if (isAddingProfile) {
-      const newProfile = { ...profileDraft, id: `profile_${Date.now()}` };
+      const newProfile = { ...profileDraft, id: savedProfile?.id || `profile_${Date.now()}` };
       setProfiles((current) => [...current, newProfile]);
       setSelectedProfileId(newProfile.id);
       setIsAddingProfile(false);
@@ -359,17 +509,52 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
     }
 
     setProfiles((current) => current.map((item) => (
-      item.id === selectedProfileId ? { ...item, ...profileDraft } : item
+      item.id === selectedProfileId ? { ...item, ...profileDraft, id: savedProfile?.id || item.id } : item
     )));
     setSelectedAppointment((current) => ({
-      ...current,
+      ...(current || activeAppointment || {}),
       patientName: profileDraft.fullName,
       phone: profileDraft.phone,
       birthDate: profileDraft.birthDate,
       gender: profileDraft.gender,
-      patientAddress: profileDraft.address || 'Chưa cập nhật',
+      patientAddress: [profileDraft.address, profileDraft.ward, profileDraft.district, profileDraft.province].filter(Boolean).join(', ') || 'Chưa cập nhật',
+      patientProfile: { ...(current.patientProfile || {}), ...profileDraft },
     }));
+    setAppointments((current) => {
+      const nextAppointments = current.map((item) => (
+        (item.id || item.appointmentCode) === (activeAppointment.id || activeAppointment.appointmentCode)
+          ? {
+            ...item,
+            patientName: profileDraft.fullName,
+            phone: profileDraft.phone,
+            birthDate: profileDraft.birthDate,
+            gender: profileDraft.gender,
+            patientAddress: [profileDraft.address, profileDraft.ward, profileDraft.district, profileDraft.province].filter(Boolean).join(', ') || 'Chưa cập nhật',
+            patientProfile: { ...(item.patientProfile || {}), ...profileDraft },
+          }
+          : item
+      ));
+      luu_lich_kham_cuc_bo(nextAppointments);
+      return nextAppointments;
+    });
     setIsEditingProfile(false);
+  };
+
+  const updateFilterDraft = (event) => {
+    const { name, value } = event.target;
+    setFilterDraft((current) => ({ ...current, [name]: value }));
+  };
+
+  const applyFilters = () => {
+    setFilters(filterDraft);
+    setIsFilterOpen(false);
+  };
+
+  const clearFilters = () => {
+    setFilterDraft(FILTER_DEFAULT);
+    setFilters(FILTER_DEFAULT);
+    setSearchTerm('');
+    setIsFilterOpen(false);
   };
 
   const menu = [
@@ -395,24 +580,76 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
           <>
             <div className="account-title-row">
               <h2>Lịch khám</h2>
-              <button type="button">⚱ Lọc</button>
+              <button type="button" onClick={() => { setFilterDraft(filters); setIsFilterOpen((current) => !current); }}>⚱ Lọc</button>
             </div>
+            {isFilterOpen && (
+              <div className="appointment-filter-panel">
+                <label>
+                  Ngày bắt đầu
+                  <input name="fromDate" type="date" value={filterDraft.fromDate} onChange={updateFilterDraft} />
+                </label>
+                <label>
+                  Ngày kết thúc
+                  <input name="toDate" type="date" value={filterDraft.toDate} onChange={updateFilterDraft} />
+                </label>
+                <label>
+                  Trạng thái
+                  <select name="status" value={filterDraft.status} onChange={updateFilterDraft}>
+                    <option value="all">Tất cả</option>
+                    <option value="Đã đặt lịch">Đã đặt lịch</option>
+                    <option value="Đã hủy">Đã hủy</option>
+                    <option value="Đã khám">Đã khám</option>
+                  </select>
+                </label>
+                <label>
+                  Dịch vụ
+                  <select name="serviceType" value={filterDraft.serviceType} onChange={updateFilterDraft}>
+                    <option value="all">Tất cả</option>
+                    <option value="exam">Lịch khám</option>
+                    <option value="consult">Lịch tư vấn</option>
+                    <option value="home">Tại nhà</option>
+                  </select>
+                </label>
+                <label>
+                  Nơi khám
+                  <select name="placeType" value={filterDraft.placeType} onChange={updateFilterDraft}>
+                    <option value="all">Tất cả</option>
+                    <option value="doctor">Bác sĩ</option>
+                    <option value="clinic">Phòng khám</option>
+                    <option value="hospital">Bệnh viện</option>
+                  </select>
+                </label>
+                <div className="appointment-filter-actions">
+                  <button type="button" onClick={clearFilters}>Bỏ lọc</button>
+                  <button type="button" onClick={applyFilters}>Áp dụng</button>
+                </div>
+              </div>
+            )}
             <div className="schedule-layout">
               <div>
-                <input className="account-search" placeholder="Mã giao dịch, tên dịch vụ, tên bệnh nhân,..." />
-                <button className="appointment-list-item" type="button" onClick={() => setSelectedAppointment(appointment)}>
-                  <span>
-                    <strong>{appointment.doctorShortName}</strong>
-                    <small>{appointment.time} - {appointment.dateDisplay}</small>
-                    <small>{patientName}</small>
-                    <em className={selectedAppointment.status === 'Đã hủy' ? 'danger-badge' : ''}>{selectedAppointment.status}</em>
-                  </span>
-                  <b>STT<br />{appointment.number}</b>
-                </button>
+                <input className="account-search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Mã giao dịch, tên dịch vụ, tên bệnh nhân,..." />
+                {appointmentError && <p className="appointment-load-error">{appointmentError}</p>}
+                {visibleAppointments.length > 0 ? visibleAppointments.map((item) => {
+                  const itemKey = item.id || item.appointmentCode || item.ticket;
+                  const selectedKey = activeAppointment?.id || activeAppointment?.appointmentCode || activeAppointment?.ticket;
+                  return (
+                    <button className={itemKey === selectedKey ? 'appointment-list-item active' : 'appointment-list-item'} key={itemKey} type="button" onClick={() => setSelectedAppointment(item)}>
+                      <span>
+                        <strong>{item.doctorShortName || item.doctorName || item.hospitalName}</strong>
+                        <small>{item.time} - {item.dateDisplay}</small>
+                        <small>{item.patientName || patientName}</small>
+                        <em className={item.status === 'Đã hủy' ? 'danger-badge' : item.status === 'Đã khám' ? 'done-badge' : ''}>{item.status}</em>
+                      </span>
+                      <b>STT<br />{item.number || '--'}</b>
+                    </button>
+                  );
+                }) : (
+                  <div className="empty-payment"><span>▤</span><p>Không có lịch khám phù hợp</p></div>
+                )}
               </div>
               <div>
-                <PhieuKhamChiTiet appointment={selectedAppointment} compact />
-                {selectedAppointment.status !== 'Đã hủy' && (
+                {activeAppointment && <PhieuKhamChiTiet appointment={activeAppointment} compact />}
+                {activeAppointment?.status !== 'Đã hủy' && activeAppointment?.status !== 'Đã khám' && (
                   <button className="cancel-appointment" type="button" onClick={handleCancel}>Hủy lịch</button>
                 )}
               </div>
@@ -493,6 +730,7 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
                       {DAN_TOC_VIET_NAM.map((ethnicity) => <option key={ethnicity}>{ethnicity}</option>)}
                     </OChonHoSo>
                   </div>
+                  <ONhapHoSo label="Quốc tịch" name="nationality" value={profileDraft.nationality || ''} placeholder="Quốc tịch" onChange={updateProfileDraft} />
                   <OChonHoSo label="Nghề nghiệp" name="job" value={profileDraft.job} placeholder="Chọn nghề nghiệp" onChange={updateProfileDraft}>
                     {NGHE_NGHIEP.map((job) => <option key={job}>{job}</option>)}
                   </OChonHoSo>
@@ -525,19 +763,23 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
                 <div className="profile-detail-card">
                   <div className="profile-detail-head">
                     <div className="patient-avatar">{lay_ten_tat(patientName)}</div>
-                    <span><strong>{patientName.toUpperCase()}</strong><small>Mã BN: {appointment.patientCode}</small></span>
+                    <span><strong>{patientName.toUpperCase()}</strong><small>Mã BN: {activeAppointment?.patientCode || appointment.patientCode}</small></span>
                   </div>
                   <p className="profile-warning">Hoàn thiện thông tin để đặt khám và quản lý hồ sơ y tế được tốt hơn.</p>
                   <HangThongTin label="Họ và tên" value={patientName} />
                   <HangThongTin label="Điện thoại" value={profile.phone} />
                   <HangThongTin label="Ngày sinh" value={profile.birthDate} />
                   <HangThongTin label="Giới tính" value={profile.gender} />
-                  <HangThongTin label="Địa chỉ" value={profile.address || '--'} />
+                  <HangThongTin label="Email" value={profile.email || '--'} />
+                  <HangThongTin label="Địa chỉ" value={[profile.address, profile.ward, profile.district, profile.province].filter(Boolean).join(', ') || '--'} />
+                  <HangThongTin label="Tỉnh / Thành phố" value={profile.province || '--'} />
+                  <HangThongTin label="Quận / Huyện" value={profile.district || '--'} />
+                  <HangThongTin label="Phường / Xã" value={profile.ward || '--'} />
                   <HangThongTin label="Mã BHYT" value={profile.insuranceCode || '--'} />
                   <HangThongTin label="Số CMND/CCCD" value={profile.citizenId || '--'} />
                   <HangThongTin label="Dân tộc" value={profile.ethnicity} />
+                  <HangThongTin label="Quốc tịch" value={profile.nationality || 'Việt Nam'} />
                   <HangThongTin label="Nghề nghiệp" value={profile.job || '--'} />
-                  <HangThongTin label="Email" value={profile.email || '--'} />
                   <button type="button" onClick={openEditProfile}>Thay đổi thông tin</button>
                 </div>
               )}
@@ -557,6 +799,7 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
                 <HangThongTin label="Địa chỉ" value={profile.address || '---'} />
                 <HangThongTin label="CMND/CCCD" value={profile.citizenId || '---'} />
                 <HangThongTin label="Mã BHYT" value={profile.insuranceCode || '---'} />
+                <HangThongTin label="Quốc tịch" value={profile.nationality || 'Việt Nam'} />
                 <button type="button" onClick={() => { setActiveTab('ho_so'); openEditProfile(); }}>Thay đổi thông tin</button>
               </div>
               <div className="profile-detail-card">

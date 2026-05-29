@@ -1,26 +1,25 @@
-import {
+﻿import {
   articles,
-  doctors,
   editorialPolicies,
   experts,
-  hospitals,
-  clinics,
   medicines,
   securityItems,
-  specialties,
   trustItems,
 } from '../data';
+import { fallbackCatalog } from '../lib/catalog';
 import MucBaoMatFooter from './muc_bao_mat_footer';
 import MucChuyenGia from './muc_chuyen_gia';
-import MucChuyenKhoa from './muc_chuyen_khoa';
 import MucTinTuong from './muc_tin_tuong';
 import MucTinYTe from './muc_tin_y_te';
 import TheBacSi from './the_bac_si';
 import TheBenhVien from './the_benh_vien';
+import TheChuyenKhoa from './the_chuyen_khoa';
 import ThePhongKham from './the_phong_kham';
 import TieuDeMuc from './tieu_de_muc';
 
-function TrangChu({ onBookDoctor, onBookHospital, onBookClinic }) {
+function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onBookClinic, onSelectSpecialty }) {
+  const { doctors, hospitals, clinics, specialties } = catalog;
+
   return (
     <>
       <section className="hero">
@@ -66,7 +65,7 @@ function TrangChu({ onBookDoctor, onBookHospital, onBookClinic }) {
         </div>
       </section>
 
-      <MucChuyenKhoa specialties={specialties} />
+      <TheChuyenKhoa specialties={specialties} onSelectSpecialty={onSelectSpecialty} />
       <MucTinYTe medicines={medicines} />
       <MucChuyenGia experts={experts} editorialPolicies={editorialPolicies} />
       <MucTinTuong trustItems={trustItems} />

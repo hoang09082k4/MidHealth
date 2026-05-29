@@ -1,6 +1,8 @@
 ﻿import { useMemo, useRef, useState } from 'react';
 import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './trang_phieu_kham';
 
+import { createAppointment } from '../lib/appointments';
+
 function anh_phong_kham(path) {
   return `/image_phong_kham/${path}`;
 }
@@ -18,6 +20,11 @@ function lay_ten_tat(name) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return 'BN';
   return parts.slice(-2).map((part) => part[0]).join('').toUpperCase();
+}
+
+function luu_lich_kham(appointment) {
+  const current = JSON.parse(localStorage.getItem('midhealth_appointments') || '[]');
+  localStorage.setItem('midhealth_appointments', JSON.stringify([appointment, ...current.filter((item) => (item.id || item.ticket) !== (appointment.id || appointment.ticket))]));
 }
 
 function tai_anh_phieu(appointment) {
@@ -149,6 +156,8 @@ function BuocPhongKham({ step, unlockedStep, onStepClick }) {
 }
 
 function LichPhongKham({ selectedDate, onSelectDate }) {
+  const today = new Date();
+  const todayValue = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   return (
     <div className="hospital-calendar clinic-calendar">
       <div className="hospital-calendar-head">
@@ -161,17 +170,20 @@ function LichPhongKham({ selectedDate, onSelectDate }) {
       </div>
       <div className="hospital-calendar-grid">
         {Array.from({ length: 24 }).map((_, index) => <button className="disabled" disabled key={`blank_${index}`} type="button">{index + 1}</button>)}
-        {NGAY_KHAM.map((date) => (
-          <button
-            className={`${date.today ? 'today' : ''} ${selectedDate?.value === date.value ? 'selected' : ''}`}
-            disabled={date.disabled}
-            key={date.value}
-            type="button"
-            onClick={() => onSelectDate(date)}
-          >
-            {date.day}
-          </button>
-        ))}
+        {NGAY_KHAM.map((date) => {
+          const isPast = date.value < todayValue;
+          return (
+            <button
+              className={`${date.today ? 'today' : ''} ${selectedDate?.value === date.value ? 'selected' : ''}`}
+              disabled={date.disabled || isPast}
+              key={date.value}
+              type="button"
+              onClick={() => onSelectDate(date)}
+            >
+              {date.day}
+            </button>
+          );
+        })}
       </div>
       <div className="hospital-calendar-legend"><span /> Hôm nay <span /> Có thể chọn <span /> Đã đầy lịch</div>
     </div>
@@ -205,6 +217,8 @@ function TrangDatLichPhongKham({ clinic, user, onBackHome }) {
   const [galleryIndex, setGalleryIndex] = useState(null);
   const [isIntroExpanded, setIsIntroExpanded] = useState(false);
   const [appointment, setAppointment] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [warning, setWarning] = useState('');
   const fileInputRef = useRef(null);
 
   const patientProfile = useMemo(() => ({
@@ -271,7 +285,7 @@ function TrangDatLichPhongKham({ clinic, user, onBackHome }) {
     setStep((current) => Math.max(1, current - 1));
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (!canContinue) return;
     if (step < 5) {
       setStep((current) => current + 1);
@@ -279,34 +293,41 @@ function TrangDatLichPhongKham({ clinic, user, onBackHome }) {
       return;
     }
 
-    setAppointment({
-      id: `clinic_${Date.now()}`,
-      type: 'clinic',
-      status: 'Đã đặt lịch',
-      ticket: `PK-${Date.now()}`,
-      appointmentCode: tao_ma_phieu(),
-      patientCode: tao_ma_benh_nhan(),
-      number: Math.floor(10 + Math.random() * 60),
-      doctorName: selectedDoctor,
-      doctorShortName: selectedDoctor,
-      doctorImage: anh_phong_kham(clinic.avatar),
-      department: selectedSpecialty,
-      serviceName: selectedSpecialty,
-      hospitalName: clinic.name,
-      address: clinic.address,
-      dateDisplay: selectedDate.display,
-      dateValue: selectedDate.value,
-      time: selectedTime,
-      patientName: selectedPatient.name,
-      birthDate: selectedPatient.birthDate,
-      gender: selectedPatient.gender,
-      phone: selectedPatient.phone,
-      patientAddress: selectedPatient.address,
-      patientProfile: selectedPatient,
-      note,
-      attachments: attachedFiles.map((file) => file.name),
-    });
-    setScreen('success');
+    setIsSubmitting(true);
+    setWarning('');
+    try {
+      const nextAppointment = await createAppointment(user, {
+        type: 'clinic',
+        clinicName: clinic.name,
+        facilityName: clinic.name,
+        hospitalName: clinic.name,
+        doctorName: selectedDoctor,
+        doctorShortName: selectedDoctor,
+        doctorImage: anh_phong_kham(clinic.avatar),
+        department: selectedSpecialty,
+        specialtyName: selectedSpecialty,
+        serviceName: selectedSpecialty,
+        address: clinic.address,
+        dateDisplay: selectedDate.display,
+        dateValue: selectedDate.value,
+        time: selectedTime,
+        patientName: selectedPatient.name,
+        birthDate: selectedPatient.birthDate,
+        gender: selectedPatient.gender,
+        phone: selectedPatient.phone,
+        patientAddress: selectedPatient.address,
+        patientProfile: selectedPatient,
+        note,
+        attachments: attachedFiles.map((file) => file.name),
+      });
+      setAppointment(nextAppointment);
+      luu_lich_kham(nextAppointment);
+      setScreen('success');
+    } catch (error) {
+      setWarning(error.message || 'Không thể xác nhận đặt khám. Vui lòng thử lại.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (screen === 'ticket' && appointment) {
@@ -407,9 +428,10 @@ function TrangDatLichPhongKham({ clinic, user, onBackHome }) {
                 </>
               )}
             </div>
+            {warning && <p className="booking-error">{warning}</p>}
             <footer>
               <button type="button" onClick={handleBack}>Quay lại</button>
-              <button type="button" disabled={!canContinue} onClick={handleNext}>{step === 5 ? 'Xác nhận đặt khám' : 'Tiếp tục'}</button>
+              <button type="button" disabled={!canContinue || isSubmitting} onClick={handleNext}>{step === 5 ? (isSubmitting ? 'Đang đặt khám...' : 'Xác nhận đặt khám') : 'Tiếp tục'}</button>
             </footer>
           </article>
 

@@ -5,7 +5,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { firebaseAuth, signInWithGoogle } from '../lib/firebase';
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
 const initialProfile = {
   fullName: '',
   phone: '',

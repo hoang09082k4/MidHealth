@@ -2,6 +2,14 @@ import http from 'node:http';
 import { URL } from 'node:url';
 import { config } from './config.js';
 import {
+  cancelAppointment,
+  createAppointment,
+  listAppointments,
+  listPatientProfiles,
+  saveMedicalProfile,
+} from './appointment_service.js';
+import { getCatalog } from './catalog_service.js';
+import {
   hasFirebaseConfig,
   loginWithEmail,
   lookupAccount,
@@ -212,6 +220,102 @@ const server = http.createServer(async (request, response) => {
 
     const result = await lookupAccount(idToken);
     sendJson(response, result.ok ? 200 : result.status, result.ok ? { data: result.data.users?.[0] } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/catalog') {
+    const result = await getCatalog();
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/patient/profiles') {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Ban can dang nhap de xem ho so benh nhan.' });
+      return;
+    }
+
+    const result = await listPatientProfiles(user);
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/patient/profiles') {
+    try {
+      const user = await getUserFromRequest(request);
+      if (!user) {
+        sendJson(response, 401, { message: 'Ban can dang nhap de luu ho so benh nhan.' });
+        return;
+      }
+
+      const payload = await readBody(request);
+      const result = await saveMedicalProfile(user, payload);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Du lieu ho so benh nhan khong hop le.' });
+    }
+    return;
+  }
+
+  if (request.method === 'PATCH' && url.pathname.startsWith('/api/patient/profiles/')) {
+    try {
+      const user = await getUserFromRequest(request);
+      if (!user) {
+        sendJson(response, 401, { message: 'Ban can dang nhap de cap nhat ho so benh nhan.' });
+        return;
+      }
+
+      const profileId = decodeURIComponent(url.pathname.replace('/api/patient/profiles/', '')).trim();
+      const payload = await readBody(request);
+      const result = await saveMedicalProfile(user, {
+        ...payload,
+        profile: {
+          ...(payload.profile || payload),
+          id: profileId,
+        },
+      });
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Du lieu ho so benh nhan khong hop le.' });
+    }
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/appointments') {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Ban can dang nhap de xem lich kham.' });
+      return;
+    }
+
+    const result = await listAppointments(user);
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/appointments') {
+    try {
+      const payload = await readBody(request);
+      const user = await getUserFromRequest(request);
+      const result = await createAppointment(user, payload);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Du lieu dat lich khong hop le.' });
+    }
+    return;
+  }
+
+  if (request.method === 'PATCH' && url.pathname.endsWith('/cancel') && url.pathname.startsWith('/api/appointments/')) {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Ban can dang nhap de huy lich kham.' });
+      return;
+    }
+
+    const appointmentId = decodeURIComponent(url.pathname.replace('/api/appointments/', '').replace('/cancel', '')).trim();
+    const result = await cancelAppointment(user, appointmentId);
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     return;
   }
 
