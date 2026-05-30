@@ -633,6 +633,11 @@ function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
     </div>
   );
 
+  const openDoctorMap = () => {
+    const address = doctorAddress(doctor).replace(/^Phòng mạch:\s*/i, '');
+    window.open(`https://www.google.com/maps/search/${encodeURIComponent(address)}`, '_blank', 'noopener,noreferrer');
+  };
+
   const renderDatePicker = () => (
     <section className="quick-booking-block compact">
       <div className="booking-date-row compact">
@@ -849,6 +854,12 @@ function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
           <li>Tư vấn sức khỏe, dinh dưỡng, chích ngừa và theo dõi phát triển.</li>
           <li>Xông khí dung và chăm sóc hô hấp.</li>
         </ul>
+        <h2>Chuyên khám</h2>
+        <div className="map-card">
+          <h3>Địa chỉ</h3>
+          <p>{doctorAddress(doctor)}</p>
+          <button type="button" onClick={openDoctorMap}>🗺 Mở bản đồ</button>
+        </div>
       </article>
     </section>
   );

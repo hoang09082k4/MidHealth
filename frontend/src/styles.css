@@ -3287,8 +3287,18 @@ a {
   color: #ffffff;
 }
 
+.map-card h3 {
+  margin: 0 0 18px;
+}
+
+.map-card p {
+  margin: 0 0 26px;
+  font-weight: 600;
+}
+
 .map-card button {
   height: 38px;
+  padding: 0 14px;
   border: 0;
   border-radius: 999px;
   background: #ffffff;
