@@ -23,6 +23,10 @@ function toTime(value) {
   return match ? `${match[1]}:00` : null;
 }
 
+function formatTime(value) {
+  return String(value || '').slice(0, 5);
+}
+
 function toDisplayDate(value) {
   const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
@@ -34,6 +38,18 @@ function todayDateValue() {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function currentTimeValue() {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
+function isFutureSlotTime(dateValue, timeValue) {
+  const today = todayDateValue();
+  if (String(dateValue) < today) return false;
+  if (String(dateValue) > today) return true;
+  return formatTime(timeValue) > currentTimeValue();
 }
 
 function stripAssetPrefix(value = '') {
@@ -179,6 +195,234 @@ async function lookupByName(table, nameColumn, name) {
   return data || null;
 }
 
+async function lookupDoctor(payload = {}) {
+  if (isUuid(payload.doctorId)) {
+    const { data, error } = await supabase
+      .from('doctors')
+      .select('*')
+      .eq('id', payload.doctorId)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  }
+
+  return payload.doctorName ? lookupByName('doctors', 'full_name', payload.doctorName) : null;
+}
+
+function addMinutes(time, minutes) {
+  const [hour, minute] = String(time).split(':').map(Number);
+  const date = new Date(2000, 0, 1, hour, minute + minutes, 0);
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:00`;
+}
+
+function futureDateValue(offsetDays) {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function isDoctorWorkingTime(time) {
+  const value = formatTime(time);
+  return (value >= '07:30' && value < '11:30') || (value >= '13:30' && value < '17:00') || (value >= '17:30' && value < '19:00');
+}
+
+function doctorScheduleSeed(doctorId = '') {
+  return String(doctorId).split('').reduce((total, char) => total + char.charCodeAt(0), 0);
+}
+
+function buildNaturalSlotTimes(doctorId, dateValueText) {
+  const seed = doctorScheduleSeed(`${doctorId}-${dateValueText}`);
+  const date = new Date(`${dateValueText}T00:00:00`);
+  const day = date.getDay();
+  if ((seed + day) % 9 === 0) return [];
+
+  const morningPool = ['07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00'];
+  const afternoonPool = ['13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30'];
+  const eveningPool = ['17:30', '18:00', '18:30'];
+  const useMorning = day !== 0 && seed % 3 !== 0;
+  const useAfternoon = day !== 6 || seed % 2 === 0;
+  const useEvening = seed % 5 === 0;
+  const slots = [];
+
+  const takeSlots = (pool, count, offset) => pool.filter((_, index) => (index + offset) % 2 === 0).slice(0, count);
+  if (useMorning) slots.push(...takeSlots(morningPool, 4 + (seed % 2), seed));
+  if (useAfternoon) slots.push(...takeSlots(afternoonPool, 4 + (seed % 3), seed + 1));
+  if (useEvening) slots.push(...eveningPool.slice(0, 2));
+
+  return slots.slice(0, 12).map((start) => ({
+    start_time: `${start}:00`,
+    end_time: addMinutes(`${start}:00`, 15),
+  }));
+}
+
+async function ensureFutureDoctorSlots(doctorId, fromDate, days) {
+  const { data: doctor, error: doctorError } = await supabase
+    .from('doctors')
+    .select('id, facility_id, specialty_id, is_active')
+    .eq('id', doctorId)
+    .eq('is_active', true)
+    .maybeSingle();
+  if (doctorError) throw doctorError;
+  if (!doctor) return;
+
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(String(fromDate)) && String(fromDate) >= todayDateValue()
+    ? String(fromDate)
+    : todayDateValue();
+  const base = new Date(`${from}T00:00:00`);
+  const dates = Array.from({ length: Math.min(Math.max(Number(days) || 7, 1), 14) }, (_, index) => {
+    const date = new Date(base);
+    date.setDate(base.getDate() + index);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  });
+  const rows = [];
+
+  await cleanupDuplicateDoctorSlots(doctor.id, dates[0], dates[dates.length - 1]);
+  const existing = await fetchDoctorSlotRows(doctor.id, dates[0], dates[dates.length - 1], 'slot_date, start_time');
+  const existingKeys = new Set((existing || []).map((slot) => `${slot.slot_date}|${formatTime(slot.start_time)}`));
+  dates.forEach((slot_date) => {
+    buildNaturalSlotTimes(doctor.id, slot_date).forEach(({ start_time, end_time }) => {
+      const key = `${slot_date}|${formatTime(start_time)}`;
+      if (existingKeys.has(key)) return;
+      rows.push({
+        facility_id: doctor.facility_id,
+        doctor_id: doctor.id,
+        specialty_id: doctor.specialty_id,
+        slot_date,
+        start_time,
+        end_time,
+        capacity: 1,
+        booked_count: 0,
+        is_active: true,
+      });
+    });
+  });
+
+  if (!rows.length) return;
+  const { error } = await supabase.from('appointment_slots').insert(rows);
+  if (error) throw error;
+}
+
+async function fetchDoctorSlotRows(doctorId, fromDate, toDate, columns) {
+  const pageSize = 1000;
+  const rows = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('appointment_slots')
+      .select(columns)
+      .eq('doctor_id', doctorId)
+      .gte('slot_date', fromDate)
+      .lte('slot_date', toDate)
+      .order('slot_date', { ascending: true })
+      .order('start_time', { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return rows;
+}
+
+async function cleanupDuplicateDoctorSlots(doctorId, fromDate, toDate) {
+  const slots = await fetchDoctorSlotRows(doctorId, fromDate, toDate, 'id, slot_date, start_time, booked_count, created_at');
+  const byTime = new Map();
+
+  slots.forEach((slot) => {
+    const key = `${slot.slot_date}|${formatTime(slot.start_time)}`;
+    const current = byTime.get(key) || [];
+    current.push(slot);
+    byTime.set(key, current);
+  });
+
+  const duplicateIds = [];
+  byTime.forEach((items) => {
+    if (items.length < 2) return;
+    const sorted = [...items].sort((a, b) => {
+      if ((b.booked_count || 0) !== (a.booked_count || 0)) return (b.booked_count || 0) - (a.booked_count || 0);
+      return String(a.created_at || '').localeCompare(String(b.created_at || ''));
+    });
+    sorted.slice(1).forEach((slot) => {
+      if ((slot.booked_count || 0) === 0) duplicateIds.push(slot.id);
+    });
+  });
+
+  for (let index = 0; index < duplicateIds.length; index += 200) {
+    const chunk = duplicateIds.slice(index, index + 200);
+    const { error } = await supabase.from('appointment_slots').delete().in('id', chunk);
+    if (error) throw error;
+  }
+}
+
+export async function listDoctorSlots(doctorId, options = {}) {
+  const ready = await requireSupabase();
+  if (!ready.ok) return ready;
+
+  try {
+    if (!isUuid(doctorId)) {
+      return { ok: false, status: 400, data: { message: 'Bac si khong hop le.' } };
+    }
+
+    const fromDate = /^\d{4}-\d{2}-\d{2}$/.test(String(options.fromDate || '')) ? options.fromDate : todayDateValue();
+    const days = Math.min(Math.max(Number(options.days) || 7, 1), 14);
+    const endDate = (() => {
+      const date = new Date(`${fromDate}T00:00:00`);
+      date.setDate(date.getDate() + days - 1);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    })();
+
+    await ensureFutureDoctorSlots(doctorId, fromDate, days);
+
+    const data = (await fetchDoctorSlotRows(
+      doctorId,
+      fromDate,
+      endDate,
+      'id, doctor_id, slot_date, start_time, end_time, capacity, booked_count, is_active',
+    )).filter((slot) => slot.is_active);
+
+    const uniqueSlots = new Map();
+    (data || [])
+      .filter((slot) => (slot.booked_count || 0) < (slot.capacity || 1))
+      .filter((slot) => isDoctorWorkingTime(slot.start_time))
+      .filter((slot) => isFutureSlotTime(slot.slot_date, slot.start_time))
+      .forEach((slot) => {
+        const key = `${slot.slot_date}|${formatTime(slot.start_time)}`;
+        if (!uniqueSlots.has(key)) uniqueSlots.set(key, slot);
+      });
+
+    const compactByDate = new Map();
+    Array.from(uniqueSlots.values()).forEach((slot) => {
+      const current = compactByDate.get(slot.slot_date) || [];
+      if (current.length < 12) current.push(slot);
+      compactByDate.set(slot.slot_date, current);
+    });
+
+    return {
+      ok: true,
+      status: 200,
+      data: Array.from(compactByDate.values()).flat()
+        .map((slot) => ({
+          id: slot.id,
+          doctorId: slot.doctor_id,
+          date: slot.slot_date,
+          startTime: formatTime(slot.start_time),
+          endTime: formatTime(slot.end_time),
+          label: `${formatTime(slot.start_time)}-${formatTime(slot.end_time)}`,
+          session: formatTime(slot.start_time) < '12:00' ? 'morning' : 'afternoon',
+          capacity: slot.capacity,
+          bookedCount: slot.booked_count,
+        })),
+    };
+  } catch (error) {
+    return { ok: false, status: 500, data: { message: error.message } };
+  }
+}
+
 async function nextQueueNumber() {
   const { data, error } = await supabase
     .from('queue_tickets')
@@ -258,7 +502,7 @@ export async function createAppointment(firebaseUser, payload = {}) {
   try {
     const owner = await findOwnerProfile(firebaseUser);
     const patient = payload.patientProfile || payload.patient || {};
-    const doctor = payload.doctorName ? await lookupByName('doctors', 'full_name', payload.doctorName) : null;
+    const doctor = await lookupDoctor(payload);
     const facilityName = payload.facilityName || payload.hospitalName || payload.clinicName;
     const facility = facilityName ? await lookupByName('medical_facilities', 'name', facilityName) : null;
     const specialty = payload.department || payload.specialtyName
@@ -275,10 +519,35 @@ export async function createAppointment(firebaseUser, payload = {}) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(appointmentDate)) || String(appointmentDate) < todayDateValue()) {
       return { ok: false, status: 400, data: { message: 'Ngày khám không hợp lệ hoặc đã qua.' } };
     }
+    if (!isFutureSlotTime(appointmentDate, parsedAppointmentTime)) {
+      return { ok: false, status: 400, data: { message: 'Khung giờ này đã qua. Vui lòng chọn khung giờ khác.' } };
+    }
+
+    let appointmentSlot = null;
+    if (doctor?.id) {
+      const slotQuery = supabase
+        .from('appointment_slots')
+        .select('*')
+        .eq('doctor_id', doctor.id)
+        .eq('slot_date', appointmentDate)
+        .eq('start_time', parsedAppointmentTime)
+        .eq('is_active', true)
+        .limit(1);
+      const { data: slots, error: slotError } = payload.appointmentSlotId && isUuid(payload.appointmentSlotId)
+        ? await slotQuery.eq('id', payload.appointmentSlotId)
+        : await slotQuery;
+      if (slotError) throw slotError;
+      appointmentSlot = slots?.[0] || null;
+
+      if (appointmentSlot && (appointmentSlot.booked_count || 0) >= (appointmentSlot.capacity || 1)) {
+        return { ok: false, status: 409, data: { message: 'Khung gio nay da het cho. Vui long chon khung gio khac.' } };
+      }
+    }
 
     const appointmentRow = {
       owner_profile_id: owner?.id || null,
       patient_medical_profile_id: isUuid(patient.id) ? patient.id : null,
+      appointment_slot_id: appointmentSlot?.id || null,
       appointment_type: payload.type || (doctor ? 'doctor' : facility?.type === 'clinic' ? 'clinic' : 'hospital'),
       facility_id: facility?.id || doctor?.facility_id || null,
       doctor_id: doctor?.id || null,
@@ -299,6 +568,14 @@ export async function createAppointment(firebaseUser, payload = {}) {
       .select()
       .single();
     if (appointmentError) throw appointmentError;
+
+    if (appointmentSlot?.id) {
+      const { error: updateSlotError } = await supabase
+        .from('appointment_slots')
+        .update({ booked_count: (appointmentSlot.booked_count || 0) + 1 })
+        .eq('id', appointmentSlot.id);
+      if (updateSlotError) throw updateSlotError;
+    }
 
     const attachments = Array.isArray(payload.attachments) ? payload.attachments : [];
     if (attachments.length) {

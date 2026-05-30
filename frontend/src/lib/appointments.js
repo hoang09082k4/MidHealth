@@ -25,6 +25,22 @@ export async function createAppointment(user, payload) {
   return parseResponse(response, 'Khong the dat lich kham.');
 }
 
+export async function listDoctorSlots(doctorId, options = {}) {
+  const params = new URLSearchParams();
+  if (options.fromDate) params.set('from', options.fromDate);
+  if (options.days) params.set('days', String(options.days));
+  const query = params.toString() ? `?${params.toString()}` : '';
+  const response = await fetch(`${apiBaseUrl}/api/doctors/${encodeURIComponent(doctorId)}/slots${query}`);
+  return parseResponse(response, 'Khong the tai khung gio kham.');
+}
+
+export async function listPatientProfiles(user) {
+  const response = await fetch(`${apiBaseUrl}/api/patient/profiles`, {
+    headers: await getAuthHeaders(user),
+  });
+  return parseResponse(response, 'Khong the tai ho so benh nhan.');
+}
+
 export async function listAppointments(user) {
   const response = await fetch(`${apiBaseUrl}/api/appointments`, {
     headers: await getAuthHeaders(user),

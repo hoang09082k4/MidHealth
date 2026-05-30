@@ -202,6 +202,10 @@ set full_name = excluded.full_name,
     avatar_url = excluded.avatar_url,
     is_active = true;
 
+update public.doctors
+set unavailable_note = 'Bác sĩ Lâm Việt Trung nghỉ ngày 20/10 đến 26/10, 27/10 làm lại bình thường. Nếu bệnh nhân bận việc không đến khám được vui lòng hủy lịch khám đã đặt và đặt lại ngày khác.'
+where slug = 'pgs-ts-bs-lam-viet-trung';
+
 insert into public.doctor_specialties (doctor_id, specialty_id)
 select d.id, d.specialty_id
 from public.doctors d
@@ -216,11 +220,17 @@ select
   null,
   slot_day::date,
   slot_time::time,
-  (slot_time::time + interval '30 minutes')::time,
-  4
+  (slot_time::time + interval '15 minutes')::time,
+  1
 from public.doctors d
 cross join lateral generate_series(current_date, current_date + interval '14 days', interval '1 day') as slot_day
-cross join (values ('17:00'), ('17:30'), ('18:00'), ('18:30'), ('19:00')) as t(slot_time)
+cross join (
+  select to_char(time_value, 'HH24:MI') as slot_time
+  from generate_series(timestamp '2000-01-01 07:30', timestamp '2000-01-01 11:15', interval '15 minutes') as time_value
+  union all
+  select to_char(time_value, 'HH24:MI') as slot_time
+  from generate_series(timestamp '2000-01-01 13:30', timestamp '2000-01-01 16:45', interval '15 minutes') as time_value
+) as t(slot_time)
 left join public.medical_facilities f on f.slug = 'benh-vien-nhi-dong-2'
 where d.is_active = true
   and not exists (

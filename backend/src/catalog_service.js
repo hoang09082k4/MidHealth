@@ -20,10 +20,33 @@ function specialtyImage(value = '') {
   return stripPrefix(value, '/images_chuyen_khoa/');
 }
 
+function inferDoctorSpecialty(name = '') {
+  const knownSpecialties = {
+    'PGS. TS. BS Lâm Việt Trung': 'Tiêu hóa - Ngoại tiết niệu',
+  };
+  return knownSpecialties[name] || '';
+}
+
+function inferDoctorNotice(name = '') {
+  if (name.includes('Lâm Việt Trung') || name.includes('LÃ¢m Viá»‡t Trung')) {
+    return 'Bác sĩ Lâm Việt Trung nghỉ ngày 20/10 đến 26/10, 27/10 làm lại bình thường. Nếu bệnh nhân bận việc không đến khám được vui lòng hủy lịch khám đã đặt và đặt lại ngày khác.';
+  }
+  return '';
+}
+
 async function selectTable(table, query = '*') {
   const { data, error } = await supabase.from(table).select(query);
   if (error) throw error;
   return data || [];
+}
+
+async function selectDoctors() {
+  try {
+    return await selectTable('doctors', 'id, initials, full_name, specialty_id, facility_id, workplace_text, avatar_url, unavailable_note, notice, is_active');
+  } catch (error) {
+    if (!String(error.message || '').includes('unavailable_note') && !String(error.message || '').includes('notice')) throw error;
+    return selectTable('doctors', 'id, initials, full_name, specialty_id, facility_id, workplace_text, avatar_url, is_active');
+  }
 }
 
 export async function getCatalog() {
@@ -53,7 +76,7 @@ export async function getCatalog() {
       selectTable('facility_specialties', 'facility_id, specialty_id, sort_order'),
       selectTable('facility_services', 'facility_id, name, sort_order, is_active'),
       selectTable('facility_images', 'facility_id, image_url, sort_order'),
-      selectTable('doctors', 'id, initials, full_name, specialty_id, facility_id, workplace_text, avatar_url, is_active'),
+      selectDoctors(),
     ]);
 
     const specialtyNameById = new Map(specialties.map((item) => [item.id, item.name]));
@@ -129,8 +152,9 @@ export async function getCatalog() {
         initials: doctor.initials,
         image: doctorImage(doctor.avatar_url || ''),
         name: doctor.full_name,
-        specialty: specialtyNameById.get(doctor.specialty_id) || '',
+        specialty: specialtyNameById.get(doctor.specialty_id) || inferDoctorSpecialty(doctor.full_name),
         workplace: facilityNameById.get(doctor.facility_id) || doctor.workplace_text || '',
+        notice: doctor.unavailable_note || doctor.notice || inferDoctorNotice(doctor.full_name),
       }));
 
     const mappedHospitals = facilities

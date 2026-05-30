@@ -911,7 +911,7 @@ a {
 
 .content-section,
 .article-section {
-  width: min(1560px, calc(100% - 56px));
+  width: min(1404px, calc(100% - 56px));
   margin: 0 auto;
   padding: 28px 0 52px;
 }
@@ -987,9 +987,10 @@ a {
 .doctor-card {
   display: flex;
   flex-direction: column;
-  min-height: 360px;
+  height: 292px;
+  min-height: 292px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 8px;
   background: #ffffff;
   text-align: center;
   overflow: hidden;
@@ -998,11 +999,20 @@ a {
 .doctor-avatar {
   display: grid;
   place-items: center;
-  width: 118px;
-  height: 118px;
-  margin: 22px auto 18px;
+  width: 106px;
+  height: 106px;
+  margin: 18px auto 14px;
   border-radius: 50%;
   background: linear-gradient(140deg, #dff5ff, #eef7f2);
+}
+
+.doctor-card-body {
+  display: grid;
+  grid-template-rows: 34px 24px 32px;
+  gap: 4px;
+  align-content: start;
+  padding: 0 18px 12px;
+  flex: 1 1 auto;
 }
 
 .doctor-avatar span {
@@ -1035,22 +1045,34 @@ a {
 }
 
 .doctor-card h3 {
-  min-height: 64px;
-  padding: 0 16px;
+  display: grid;
+  place-items: center;
+  min-height: 34px;
+  padding: 0;
+  font-size: 1.08rem;
+  line-height: 1.25;
+  overflow: hidden;
 }
 
 .doctor-card p {
-  margin: 10px 14px 4px;
-  min-height: 48px;
-  font-size: 1rem;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  min-height: 24px;
+  font-size: 0.98rem;
+  line-height: 1.25;
+  overflow: hidden;
 }
 
 .doctor-card small {
-  display: block;
-  min-height: 42px;
-  margin: 0 14px 18px;
+  display: grid;
+  place-items: center;
+  min-height: 32px;
+  margin: 0;
   color: var(--muted);
-  font-size: 0.98rem;
+  font-size: 0.96rem;
+  line-height: 1.25;
+  overflow: hidden;
 }
 
 .card-action {
@@ -1058,9 +1080,9 @@ a {
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  height: 48px;
+  height: 42px;
   margin-top: auto;
-  flex: 0 0 48px;
+  flex: 0 0 42px;
   border: 0;
   border-top: 1px solid var(--line);
   background: #ffffff;
@@ -1068,6 +1090,11 @@ a {
   padding: 0 18px;
   font-weight: 700;
   text-align: left;
+}
+
+.doctor-list {
+  grid-auto-columns: 315px;
+  gap: 18px;
 }
 
 .hospital-list {
@@ -3131,7 +3158,7 @@ a {
 
 .booking-date-row {
   display: grid;
-  grid-template-columns: 44px repeat(6, 1fr) 44px;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   align-items: stretch;
   gap: 8px;
 }
@@ -3183,7 +3210,7 @@ a {
 
 .time-slot-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(138px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
   gap: 10px;
   max-height: 190px;
   overflow-y: auto;
@@ -3317,10 +3344,18 @@ a {
   display: flex;
   align-items: center;
   gap: 12px;
+  width: 100%;
   min-height: 60px;
   margin-bottom: 10px;
+  border: 0;
+  background: transparent;
   color: var(--blue);
   font-weight: 700;
+  text-align: left;
+}
+
+.booking-collapse-title.clickable {
+  cursor: pointer;
 }
 
 .booking-collapse-title span {
@@ -3427,6 +3462,27 @@ a {
   font-weight: 700;
 }
 
+.patient-avatar-wrap {
+  position: relative;
+  width: 64px;
+  height: 64px;
+}
+
+.patient-avatar-wrap em {
+  position: absolute;
+  top: -9px;
+  right: -8px;
+  min-width: 28px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #9ca3af;
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-style: normal;
+  font-weight: 700;
+  text-align: center;
+}
+
 .optional-title {
   margin: 24px 0;
 }
@@ -3510,6 +3566,461 @@ a {
   background: #ecfdf5;
   color: #047857;
   font-weight: 700;
+}
+
+.doctor-detail-page.compact,
+.booking-flow-page.compact {
+  background: #f3f4f6;
+}
+
+.doctor-detail-page.compact .breadcrumb,
+.doctor-detail-page.compact .doctor-profile-card,
+.doctor-detail-page.compact .doctor-info-content {
+  width: min(1008px, calc(100% - 36px));
+}
+
+.booking-flow-page.compact .booking-stepper,
+.booking-flow-page.compact .booking-flow-grid,
+.booking-flow-page.compact .doctor-unavailable-note {
+  width: min(1420px, calc(100% - 80px));
+}
+
+.booking-flow-page.compact .booking-flow-grid {
+  grid-template-columns: minmax(0, 1fr) 462px;
+}
+
+.doctor-profile-card.compact {
+  gap: 26px;
+  grid-template-columns: 200px 1fr;
+  padding: 28px 18px 0;
+  padding-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  overflow: hidden;
+}
+
+.doctor-profile-card.compact .profile-avatar {
+  width: 200px;
+  height: 200px;
+}
+
+.doctor-profile-card.compact .doctor-unavailable-note {
+  margin-inline: -18px;
+}
+
+.doctor-profile-card.compact .quick-booking-area {
+  margin-top: 0;
+  padding-top: 18px;
+}
+
+.doctor-profile-card.compact .sticky-booking-bar {
+  margin: 16px -18px 0;
+  padding-inline: 26px;
+}
+
+.doctor-info-content.compact {
+  padding-top: 26px;
+}
+
+.doctor-unavailable-note {
+  grid-column: 1 / -1;
+  padding: 16px 18px;
+  background: #fff2e8;
+  color: #111827;
+  line-height: 1.45;
+}
+
+.booking-flow-page .doctor-unavailable-note {
+  width: min(1580px, calc(100% - 80px));
+  margin: 0 auto 20px;
+  border-radius: 8px;
+}
+
+.doctor-unavailable-note strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #ea580c;
+}
+
+.doctor-unavailable-note p {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.quick-booking-block.compact {
+  min-height: 218px;
+}
+
+.booking-date-row.compact {
+  grid-template-columns: 46px repeat(6, minmax(112px, 1fr)) 46px;
+  gap: 0;
+}
+
+.booking-date-row.compact > button:not(.round-arrow) {
+  min-height: 72px;
+  padding: 0 10px;
+}
+
+.booking-date-row.compact .round-arrow:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.time-slot-grid.compact {
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  max-height: 132px;
+  overflow-y: auto;
+}
+
+.time-slot-grid.compact button {
+  height: 56px;
+}
+
+.empty-slot-note {
+  margin: 18px 0 0;
+  padding: 14px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.booking-left-panel.compact {
+  padding: 18px 18px 30px;
+  border-radius: 8px;
+}
+
+.booking-flow-page.compact .booking-side-card {
+  border-radius: 8px;
+}
+
+.doctor-patient-list {
+  display: grid;
+  gap: 12px;
+  margin: 10px 0 16px;
+  max-height: 430px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.doctor-patient-card {
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.doctor-patient-card.selected {
+  border: 2px solid var(--blue);
+}
+
+.doctor-patient-card > button {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  gap: 16px;
+  align-items: center;
+  width: 100%;
+  min-height: 94px;
+  padding: 16px 20px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.doctor-patient-card > button > span {
+  font-size: 1.2rem;
+  color: #111827;
+}
+
+.doctor-patient-card p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.doctor-patient-detail {
+  display: grid;
+  gap: 0;
+  max-height: 330px;
+  overflow-y: auto;
+  padding: 0 20px 18px;
+}
+
+.doctor-patient-detail div {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  padding: 10px 0;
+  border-top: 1px solid #eef2f7;
+}
+
+.doctor-patient-detail b {
+  justify-self: end;
+  text-align: right;
+}
+
+.doctor-patient-detail button,
+.doctor-add-profile {
+  width: fit-content;
+  height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 6px;
+  background: #eaf2ff;
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.doctor-add-profile {
+  margin-bottom: 8px;
+}
+
+.doctor-add-profile-wrap {
+  position: relative;
+  width: fit-content;
+  margin-bottom: 8px;
+}
+
+.doctor-add-profile-popover {
+  position: absolute;
+  bottom: 0;
+  left: calc(100% + 18px);
+  z-index: 12;
+  width: 345px;
+  padding: 16px 22px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+}
+
+.doctor-add-profile-popover::before {
+  position: absolute;
+  left: -10px;
+  bottom: 22px;
+  width: 20px;
+  height: 20px;
+  background: #ffffff;
+  content: "";
+  transform: rotate(45deg);
+}
+
+.doctor-add-profile-popover button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #111827;
+  font-weight: 700;
+  text-align: left;
+}
+
+.doctor-add-profile-popover b {
+  color: #111827;
+  font-size: 1.35rem;
+}
+
+.attachment-title {
+  display: block;
+  margin: 18px 0 8px;
+}
+
+.doctor-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.doctor-profile-modal {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  width: min(900px, calc(100vw - 40px));
+  max-height: 86vh;
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.25);
+  overflow: hidden;
+}
+
+.doctor-profile-modal header,
+.doctor-profile-modal footer {
+  display: flex;
+  align-items: center;
+  padding: 18px 28px;
+  background: #ffffff;
+}
+
+.doctor-profile-modal header {
+  justify-content: space-between;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.doctor-profile-modal h2 {
+  margin: 0;
+  font-size: 1.18rem;
+  font-weight: 600;
+}
+
+.doctor-profile-modal header button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 1.6rem;
+}
+
+.doctor-profile-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px 18px;
+  overflow-y: auto;
+  padding: 28px;
+}
+
+.doctor-profile-field {
+  display: grid;
+  gap: 8px;
+  color: #374151;
+  font-weight: 600;
+  min-width: 0;
+}
+
+.doctor-profile-field b,
+.doctor-profile-radio b {
+  color: #ef4444;
+}
+
+.doctor-profile-field input,
+.doctor-profile-field select {
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #111827;
+  font: inherit;
+  font-weight: 400;
+  outline: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.doctor-profile-field select.has-value {
+  font-weight: 600;
+}
+
+.doctor-profile-field input::placeholder {
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.doctor-profile-field.has-error input,
+.doctor-profile-field.has-error select {
+  border-color: #ef4444;
+}
+
+.doctor-profile-field small,
+.doctor-profile-radio small {
+  color: #ef4444;
+  font-size: 0.84rem;
+}
+
+.doctor-profile-radio {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-content: start;
+  color: #374151;
+  font-weight: 600;
+  min-width: 0;
+}
+
+.doctor-profile-radio > span,
+.doctor-profile-radio small {
+  grid-column: 1 / -1;
+}
+
+.doctor-profile-radio label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  height: 46px;
+  color: #111827;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.doctor-profile-radio.relation {
+  grid-column: 1 / 3;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.doctor-profile-radio.relation label {
+  padding: 0 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.doctor-profile-form-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.doctor-profile-modal footer {
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid #eef2f7;
+}
+
+.doctor-profile-modal footer button {
+  min-width: 130px;
+  height: 46px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #475569;
+  font-weight: 700;
+}
+
+.doctor-profile-modal footer button:last-child {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #ffffff;
+}
+
+.doctor-profile-modal footer button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.doctor-profile-modal footer button:last-child:disabled {
+  border-color: #cfcfcf;
+  background: #cfcfcf;
+}
+
+.slot-load-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.selected-schedule-summary {
+  display: block;
+  margin: 10px 0 22px;
+  padding: 18px 20px;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.selected-schedule-summary p {
+  margin: 6px 0 0;
+  color: var(--muted);
 }
 
 .booking-success-page,
@@ -4846,7 +5357,7 @@ a {
   }
 
   .booking-date-row {
-    grid-template-columns: 44px repeat(3, minmax(150px, 1fr)) 44px;
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
     overflow-x: auto;
   }
 
@@ -5233,7 +5744,7 @@ a {
   }
 
   .booking-date-row {
-    grid-template-columns: repeat(6, minmax(150px, 1fr));
+    grid-template-columns: repeat(2, minmax(142px, 1fr));
   }
 
   .round-arrow {
@@ -5431,4 +5942,63 @@ a {
   color: #dc2626;
   font-weight: 700;
   margin: 12px 0 0;
+}
+
+@media (max-width: 1100px) {
+  .booking-date-row.compact {
+    grid-template-columns: 44px repeat(3, minmax(132px, 1fr)) 44px;
+    overflow-x: auto;
+  }
+
+  .time-slot-grid.compact {
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+  }
+
+  .doctor-profile-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .booking-flow-page .doctor-unavailable-note {
+    width: min(100% - 28px, 100%);
+  }
+
+  .booking-date-row.compact {
+    grid-template-columns: 40px repeat(2, minmax(136px, 1fr)) 40px;
+  }
+
+  .time-slot-grid.compact {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+    max-height: 190px;
+  }
+
+  .doctor-profile-form {
+    grid-template-columns: 1fr;
+    padding: 18px;
+  }
+
+  .doctor-patient-card > button {
+    grid-template-columns: 56px 1fr auto;
+    padding: 14px;
+  }
+
+  .doctor-patient-detail div {
+    grid-template-columns: 1fr;
+  }
+
+  .doctor-patient-detail b {
+    justify-self: start;
+    text-align: left;
+  }
+
+  .doctor-add-profile-popover {
+    position: static;
+    width: min(345px, calc(100vw - 56px));
+    margin-top: 10px;
+  }
+
+  .doctor-add-profile-popover::before {
+    display: none;
+  }
 }

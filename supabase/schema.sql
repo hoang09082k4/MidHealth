@@ -264,6 +264,8 @@ alter table public.doctors add column if not exists facility_id uuid references 
 alter table public.doctors add column if not exists workplace_text text;
 alter table public.doctors add column if not exists years_experience integer;
 alter table public.doctors add column if not exists intro text;
+alter table public.doctors add column if not exists notice text;
+alter table public.doctors add column if not exists unavailable_note text;
 alter table public.doctors add column if not exists updated_at timestamptz not null default now();
 alter table public.appointments add column if not exists owner_profile_id uuid references public.patient_profiles(id) on delete cascade;
 alter table public.appointments add column if not exists patient_medical_profile_id uuid references public.patient_medical_profiles(id) on delete set null;
@@ -271,7 +273,12 @@ alter table public.appointments add column if not exists appointment_slot_id uui
 alter table public.appointments add column if not exists appointment_type text not null default 'doctor';
 alter table public.appointments add column if not exists facility_id uuid references public.medical_facilities(id) on delete set null;
 alter table public.appointments add column if not exists service_id uuid references public.facility_services(id) on delete set null;
+alter table public.appointments add column if not exists appointment_start_time time;
+alter table public.appointments add column if not exists appointment_end_time time;
 alter table public.appointments add column if not exists appointment_time_text text;
+alter table public.appointments add column if not exists doctor_name_text text;
+alter table public.appointments add column if not exists specialty_text text;
+alter table public.appointments add column if not exists workplace_text text;
 alter table public.appointments add column if not exists patient_name text;
 alter table public.appointments add column if not exists patient_phone text;
 alter table public.appointments add column if not exists note text;
@@ -507,6 +514,25 @@ create index if not exists facility_services_facility_idx on public.facility_ser
 create index if not exists doctors_specialty_idx on public.doctors(specialty_id);
 create index if not exists doctors_facility_idx on public.doctors(facility_id);
 create index if not exists appointment_slots_lookup_idx on public.appointment_slots(slot_date, facility_id, doctor_id, specialty_id);
+with duplicate_slots as (
+  select
+    id,
+    row_number() over (
+      partition by doctor_id, slot_date, start_time
+      order by booked_count desc, created_at asc
+    ) as row_number
+  from public.appointment_slots
+  where doctor_id is not null
+    and booked_count = 0
+)
+delete from public.appointment_slots s
+using duplicate_slots d
+where s.id = d.id
+  and d.row_number > 1;
+
+create unique index if not exists appointment_slots_doctor_date_time_unique_idx
+on public.appointment_slots(doctor_id, slot_date, start_time)
+where doctor_id is not null;
 create index if not exists appointments_owner_profile_id_idx on public.appointments(owner_profile_id);
 create index if not exists appointments_patient_medical_profile_id_idx on public.appointments(patient_medical_profile_id);
 create index if not exists appointments_date_status_idx on public.appointments(appointment_date, status);

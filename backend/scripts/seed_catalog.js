@@ -47,6 +47,33 @@ function normalizeImage(path, prefix) {
   return path.startsWith('/') ? path : `${prefix}/${path}`;
 }
 
+function addMinutes(time, minutes) {
+  const [hour, minute] = time.split(':').map(Number);
+  const date = new Date(2000, 0, 1, hour, minute + minutes);
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:00`;
+}
+
+function buildDoctorSlotTimes() {
+  const ranges = [['07:30', '11:30'], ['13:30', '17:00']];
+  const slots = [];
+
+  ranges.forEach(([start, end]) => {
+    let current = start;
+    while (current < end) {
+      slots.push({ start_time: `${current}:00`, end_time: addMinutes(current, 15) });
+      current = addMinutes(current, 15).slice(0, 5);
+    }
+  });
+
+  return slots;
+}
+
+function buildDateValue(offsetDays) {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 function mapGender(value) {
   if (value === 'Nam' || value === 'male') return 'male';
   if (value === 'Nữ' || value === 'female') return 'female';
@@ -202,7 +229,7 @@ async function main() {
   await upsert('facility_services', facilityServices, 'facility_id,name');
 
   const doctorRows = doctors.map((doctor) => {
-    const specialty = specialtyByName.get(doctor.specialty);
+    const specialty = specialtyByName.get(doctor.specialty) || specialtyByName.get(String(doctor.specialty || '').split(' - ')[0]);
     const facility = facilityByName.get(doctor.workplace);
     return {
       slug: doctorSlug(doctor.name),
@@ -236,6 +263,12 @@ async function main() {
   });
 
   const upsertedDoctors = await upsert('doctors', doctorRows, 'slug');
+  await supabase
+    .from('doctors')
+    .update({
+      unavailable_note: 'Bác sĩ Lâm Việt Trung nghỉ ngày 20/10 đến 26/10, 27/10 làm lại bình thường. Nếu bệnh nhân bận việc không đến khám được vui lòng hủy lịch khám đã đặt và đặt lại ngày khác.',
+    })
+    .eq('slug', 'pgs-ts-bs-lam-viet-trung');
   const doctorSpecialties = upsertedDoctors
     .filter((doctor) => doctor.specialty_id)
     .map((doctor) => ({
@@ -244,10 +277,41 @@ async function main() {
     }));
   await upsert('doctor_specialties', doctorSpecialties, 'doctor_id,specialty_id');
 
+  const defaultFacility = upsertedFacilities.find((facility) => facility.slug === 'benh-vien-nhi-dong-2') || null;
+  const doctorSlotTimes = buildDoctorSlotTimes();
+  const doctorSlots = [];
+  upsertedDoctors
+    .filter((doctor) => doctor.is_active)
+    .forEach((doctor) => {
+      Array.from({ length: 14 }).forEach((_, dayIndex) => {
+        const slotDate = buildDateValue(dayIndex);
+        doctorSlotTimes.forEach((slot) => {
+          doctorSlots.push({
+            facility_id: doctor.facility_id || defaultFacility?.id || null,
+            doctor_id: doctor.id,
+            specialty_id: doctor.specialty_id,
+            service_id: null,
+            slot_date: slotDate,
+            start_time: slot.start_time,
+            end_time: slot.end_time,
+            capacity: 1,
+            booked_count: 0,
+            is_active: true,
+          });
+        });
+      });
+    });
+  await insertMissing('appointment_slots', doctorSlots, (item, row) => (
+    item.doctor_id === row.doctor_id
+    && item.slot_date === row.slot_date
+    && String(item.start_time).slice(0, 5) === String(row.start_time).slice(0, 5)
+  ));
+
   console.log(JSON.stringify({
     specialties: upsertedSpecialties.length,
     facilities: upsertedFacilities.length,
     doctors: upsertedDoctors.length,
+    doctorSlots: doctorSlots.length,
   }, null, 2));
 }
 
