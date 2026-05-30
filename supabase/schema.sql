@@ -419,6 +419,31 @@ create trigger set_payments_updated_at
 before update on public.payments
 for each row execute function public.set_updated_at();
 
+create or replace function public.claim_appointment_slot(slot_id uuid)
+returns setof public.appointment_slots
+language sql
+security definer
+set search_path = public
+as $$
+  update public.appointment_slots
+  set booked_count = booked_count + 1
+  where id = slot_id
+    and is_active = true
+    and booked_count < capacity
+  returning *;
+$$;
+
+create or replace function public.release_appointment_slot(slot_id uuid)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.appointment_slots
+  set booked_count = greatest(booked_count - 1, 0)
+  where id = slot_id;
+$$;
+
 alter table public.patient_profiles enable row level security;
 alter table public.patient_medical_profiles enable row level security;
 alter table public.patient_guardians enable row level security;
@@ -503,6 +528,9 @@ grant select on
   public.v_facility_cards,
   public.v_specialty_search_results
 to anon, authenticated;
+
+grant execute on function public.claim_appointment_slot(uuid) to anon, authenticated;
+grant execute on function public.release_appointment_slot(uuid) to anon, authenticated;
 
 create index if not exists patient_profiles_firebase_uid_idx on public.patient_profiles(firebase_uid);
 create index if not exists patient_profiles_email_idx on public.patient_profiles(email);

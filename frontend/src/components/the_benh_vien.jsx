@@ -1,4 +1,6 @@
 function duong_dan_anh(path) {
+  if (!path) return '';
+  if (/^(https?:)?\/\//.test(path) || path.startsWith('/')) return path;
   return `/image_benh_vien/${path}`;
 }
 

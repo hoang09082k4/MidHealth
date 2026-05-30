@@ -6,6 +6,7 @@ import {
   createAppointment,
   listAppointments,
   listDoctorSlots,
+  listHospitalSlots,
   listPatientProfiles,
   saveMedicalProfile,
 } from './appointment_service.js';
@@ -235,6 +236,18 @@ const server = http.createServer(async (request, response) => {
     const result = await listDoctorSlots(doctorId, {
       fromDate: url.searchParams.get('from'),
       days: url.searchParams.get('days'),
+    });
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname.startsWith('/api/hospitals/') && url.pathname.endsWith('/slots')) {
+    const hospitalId = decodeURIComponent(url.pathname.replace('/api/hospitals/', '').replace('/slots', '')).trim();
+    const result = await listHospitalSlots(hospitalId, {
+      fromDate: url.searchParams.get('from'),
+      days: url.searchParams.get('days'),
+      serviceName: url.searchParams.get('serviceName'),
+      specialtyName: url.searchParams.get('specialtyName'),
     });
     sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     return;

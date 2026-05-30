@@ -70,11 +70,11 @@ export async function getCatalog() {
       doctors,
     ] = await Promise.all([
       selectTable('clinic_specialties', 'id, name, image_url, is_active'),
-      selectTable('medical_facilities', 'id, type, name, subtitle, intro, address, avatar_url, background_url, is_active'),
+      selectTable('medical_facilities', 'id, type, name, subtitle, intro, address, latitude, longitude, avatar_url, background_url, is_active'),
       selectTable('facility_hours', 'facility_id, label, time_text, sort_order'),
       selectTable('facility_notes', 'facility_id, title, lines, sort_order'),
       selectTable('facility_specialties', 'facility_id, specialty_id, sort_order'),
-      selectTable('facility_services', 'facility_id, name, sort_order, is_active'),
+      selectTable('facility_services', 'id, facility_id, specialty_id, name, description, fee_text, sort_order, is_active'),
       selectTable('facility_images', 'facility_id, image_url, sort_order'),
       selectDoctors(),
     ]);
@@ -124,7 +124,15 @@ export async function getCatalog() {
       .sort((a, b) => a.sort_order - b.sort_order)
       .forEach((item) => {
         const current = servicesByFacility.get(item.facility_id) || [];
-        if (!current.includes(item.name)) current.push(item.name);
+        if (!current.some((service) => service.name === item.name)) {
+          current.push({
+            id: item.id,
+            specialtyId: item.specialty_id,
+            name: item.name,
+            description: item.description || '',
+            fee: item.fee_text || '',
+          });
+        }
         servicesByFacility.set(item.facility_id, current);
       });
 
@@ -163,10 +171,14 @@ export async function getCatalog() {
         id: facility.id,
         avatar: hospitalImage(facility.avatar_url || ''),
         background: hospitalImage(facility.background_url || ''),
+        gallery: (imagesByFacility.get(facility.id) || []).map(hospitalImage),
         name: facility.name,
         subtitle: facility.subtitle || '',
         address: facility.address,
+        latitude: facility.latitude,
+        longitude: facility.longitude,
         intro: facility.intro || '',
+        services: servicesByFacility.get(facility.id) || [],
         specialties: specialtiesByFacility.get(facility.id) || [],
         notes: notesByFacility.get(facility.id) || [],
         hours: hoursByFacility.get(facility.id) || [],

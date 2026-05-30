@@ -100,6 +100,42 @@ export async function findOwnerProfile(firebaseUser) {
   return data || null;
 }
 
+async function ensureOwnerProfile(firebaseUser, profile = {}) {
+  const existing = await findOwnerProfile(firebaseUser);
+  if (existing) return existing;
+  if (!firebaseUser?.localId) return null;
+
+  const email = clean(profile.email) || clean(firebaseUser.email) || `${firebaseUser.localId}@midhealth.local`;
+  const fullName = clean(profile.fullName || profile.name) || clean(firebaseUser.displayName) || 'MidHealth User';
+  const phone = clean(profile.phone) || '0000000000';
+  const dateOfBirth = toDate(profile.dateOfBirth || profile.birthDate) || '1900-01-01';
+
+  const { data, error } = await supabase
+    .from('patient_profiles')
+    .upsert({
+      firebase_uid: firebaseUser.localId,
+      email,
+      full_name: fullName,
+      phone,
+      date_of_birth: dateOfBirth,
+      gender: mapGender(profile.gender),
+      citizen_id: clean(profile.citizenId) || null,
+      health_insurance_number: clean(profile.healthInsuranceNumber || profile.insuranceCode) || null,
+      province: clean(profile.province) || null,
+      district: clean(profile.district) || null,
+      ward: clean(profile.ward) || null,
+      address: clean(profile.address) || null,
+      ethnicity: clean(profile.ethnicity) || 'Kinh',
+      occupation: clean(profile.occupation || profile.job) || null,
+      email_verified: Boolean(firebaseUser.email || profile.email),
+    }, { onConflict: 'firebase_uid' })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data || null;
+}
+
 export async function listPatientProfiles(firebaseUser) {
   const ready = await requireSupabase();
   if (!ready.ok) return ready;
@@ -127,12 +163,12 @@ export async function saveMedicalProfile(firebaseUser, payload = {}) {
   if (!ready.ok) return ready;
 
   try {
-    const owner = await findOwnerProfile(firebaseUser);
+    const profile = payload.profile || payload;
+    const owner = await ensureOwnerProfile(firebaseUser, profile);
     if (!owner) {
       return { ok: false, status: 401, data: { message: 'Chưa có hồ sơ tài khoản để lưu hồ sơ bệnh nhân.' } };
     }
 
-    const profile = payload.profile || payload;
     const row = {
       owner_profile_id: owner.id,
       relationship: clean(profile.relationship) || 'Tôi',
@@ -193,6 +229,35 @@ async function lookupByName(table, nameColumn, name) {
     .maybeSingle();
   if (error) throw error;
   return data || null;
+}
+
+async function lookupFacilityService(facilityId, name) {
+  if (!facilityId || !name) return null;
+  const { data, error } = await supabase
+    .from('facility_services')
+    .select('*')
+    .eq('facility_id', facilityId)
+    .eq('name', name)
+    .eq('is_active', true)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+async function lookupFacility(payload = {}) {
+  const facilityId = payload.facilityId || payload.hospitalId || payload.clinicId;
+  if (isUuid(facilityId)) {
+    const { data, error } = await supabase
+      .from('medical_facilities')
+      .select('*')
+      .eq('id', facilityId)
+      .maybeSingle();
+    if (error) throw error;
+    if (data) return data;
+  }
+
+  const facilityName = payload.facilityName || payload.hospitalName || payload.clinicName;
+  return facilityName ? lookupByName('medical_facilities', 'name', facilityName) : null;
 }
 
 async function lookupDoctor(payload = {}) {
@@ -303,6 +368,150 @@ async function ensureFutureDoctorSlots(doctorId, fromDate, days) {
   if (!rows.length) return;
   const { error } = await supabase.from('appointment_slots').insert(rows);
   if (error) throw error;
+}
+
+async function ensureFutureHospitalSlots(facilityId, options = {}) {
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(String(options.fromDate || '')) && String(options.fromDate) >= todayDateValue()
+    ? String(options.fromDate)
+    : todayDateValue();
+  const days = Math.min(Math.max(Number(options.days) || 31, 1), 62);
+  const base = new Date(`${from}T00:00:00`);
+  const dates = Array.from({ length: days }, (_, index) => {
+    const date = new Date(base);
+    date.setDate(base.getDate() + index);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  });
+
+  const times = ['07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '13:00', '13:30', '14:00', '14:30', '15:00'];
+  const rows = [];
+  const existing = await fetchHospitalSlotRows(facilityId, dates[0], dates[dates.length - 1], 'slot_date, start_time, specialty_id, service_id');
+  const existingKeys = new Set((existing || []).map((slot) => [
+    slot.slot_date,
+    formatTime(slot.start_time),
+    slot.specialty_id || '',
+    slot.service_id || '',
+  ].join('|')));
+
+  dates.forEach((slotDate) => {
+    const day = new Date(`${slotDate}T00:00:00`).getDay();
+    if (day === 0) return;
+    times.forEach((start) => {
+      const key = [slotDate, start, options.specialtyId || '', options.serviceId || ''].join('|');
+      if (existingKeys.has(key)) return;
+      rows.push({
+        facility_id: facilityId,
+        specialty_id: options.specialtyId || null,
+        service_id: options.serviceId || null,
+        slot_date: slotDate,
+        start_time: `${start}:00`,
+        end_time: addMinutes(`${start}:00`, 30),
+        capacity: 8,
+        booked_count: 0,
+        is_active: true,
+      });
+    });
+  });
+
+  if (!rows.length) return;
+  const { error } = await supabase.from('appointment_slots').insert(rows);
+  if (error) throw error;
+}
+
+async function fetchHospitalSlotRows(facilityId, fromDate, toDate, columns) {
+  const pageSize = 1000;
+  const rows = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('appointment_slots')
+      .select(columns)
+      .eq('facility_id', facilityId)
+      .is('doctor_id', null)
+      .gte('slot_date', fromDate)
+      .lte('slot_date', toDate)
+      .order('slot_date', { ascending: true })
+      .order('start_time', { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return rows;
+}
+
+export async function listHospitalSlots(hospitalId, options = {}) {
+  const ready = await requireSupabase();
+  if (!ready.ok) return ready;
+
+  try {
+    if (!isUuid(hospitalId)) {
+      return { ok: false, status: 400, data: { message: 'Benh vien khong hop le.' } };
+    }
+
+    const fromDate = /^\d{4}-\d{2}-\d{2}$/.test(String(options.fromDate || '')) ? options.fromDate : todayDateValue();
+    const days = Math.min(Math.max(Number(options.days) || 31, 1), 62);
+    const endDate = (() => {
+      const date = new Date(`${fromDate}T00:00:00`);
+      date.setDate(date.getDate() + days - 1);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    })();
+
+    const { data: facility, error: facilityError } = await supabase
+      .from('medical_facilities')
+      .select('id, type, is_active')
+      .eq('id', hospitalId)
+      .eq('type', 'hospital')
+      .eq('is_active', true)
+      .maybeSingle();
+    if (facilityError) throw facilityError;
+    if (!facility) return { ok: false, status: 404, data: { message: 'Khong tim thay benh vien.' } };
+
+    const specialty = options.specialtyName ? await lookupByName('clinic_specialties', 'name', options.specialtyName) : null;
+    const service = options.serviceName ? await lookupFacilityService(hospitalId, options.serviceName) : null;
+    await ensureFutureHospitalSlots(hospitalId, {
+      fromDate,
+      days,
+      specialtyId: specialty?.id || null,
+      serviceId: service?.id || null,
+    });
+
+    const rows = await fetchHospitalSlotRows(
+      hospitalId,
+      fromDate,
+      endDate,
+      'id, facility_id, specialty_id, service_id, slot_date, start_time, end_time, capacity, booked_count, is_active',
+    );
+
+    const slots = (rows || [])
+      .filter((slot) => slot.is_active)
+      .filter((slot) => !specialty?.id || !slot.specialty_id || slot.specialty_id === specialty.id)
+      .filter((slot) => !service?.id || !slot.service_id || slot.service_id === service.id)
+      .filter((slot) => isFutureSlotTime(slot.slot_date, slot.start_time));
+
+    return {
+      ok: true,
+      status: 200,
+      data: slots.map((slot) => ({
+        id: slot.id,
+        hospitalId: slot.facility_id,
+        serviceId: slot.service_id,
+        specialtyId: slot.specialty_id,
+        date: slot.slot_date,
+        startTime: formatTime(slot.start_time),
+        endTime: formatTime(slot.end_time),
+        label: `${formatTime(slot.start_time)} - ${formatTime(slot.end_time)}`,
+        session: formatTime(slot.start_time) < '12:00' ? 'morning' : 'afternoon',
+        capacity: slot.capacity,
+        bookedCount: slot.booked_count,
+        status: (slot.booked_count || 0) >= (slot.capacity || 1) ? 'full' : 'available',
+      })),
+    };
+  } catch (error) {
+    return { ok: false, status: 500, data: { message: error.message } };
+  }
 }
 
 async function fetchDoctorSlotRows(doctorId, fromDate, toDate, columns) {
@@ -433,6 +642,20 @@ async function nextQueueNumber() {
   return (data?.[0]?.queue_number || 0) + 1;
 }
 
+async function claimAppointmentSlot(slotId) {
+  if (!slotId) return null;
+
+  const { data, error } = await supabase.rpc('claim_appointment_slot', { slot_id: slotId });
+  if (error) throw error;
+  return Array.isArray(data) ? data[0] || null : data;
+}
+
+async function releaseAppointmentSlot(slotId) {
+  if (!slotId) return;
+  const { error } = await supabase.rpc('release_appointment_slot', { slot_id: slotId });
+  if (error) throw error;
+}
+
 function mapAppointmentResponse(appointment, ticket, input = {}) {
   const doctorName = input.doctorName || appointment.doctors?.full_name || input.facilityName || input.hospitalName || appointment.medical_facilities?.name || 'Đang cập nhật';
   const facilityName = input.hospitalName || input.facilityName || appointment.medical_facilities?.name || '';
@@ -499,14 +722,18 @@ export async function createAppointment(firebaseUser, payload = {}) {
   const ready = await requireSupabase();
   if (!ready.ok) return ready;
 
+  let claimedSlotId = null;
+  let insertedAppointmentId = null;
+
   try {
-    const owner = await findOwnerProfile(firebaseUser);
     const patient = payload.patientProfile || payload.patient || {};
     const doctor = await lookupDoctor(payload);
-    const facilityName = payload.facilityName || payload.hospitalName || payload.clinicName;
-    const facility = facilityName ? await lookupByName('medical_facilities', 'name', facilityName) : null;
+    const facility = await lookupFacility(payload);
     const specialty = payload.department || payload.specialtyName
       ? await lookupByName('clinic_specialties', 'name', payload.department || payload.specialtyName)
+      : null;
+    const service = facility?.id && payload.serviceName
+      ? await lookupFacilityService(facility.id, payload.serviceName)
       : null;
 
     const appointmentDate = payload.dateValue || payload.appointmentDate || payload.date;
@@ -522,26 +749,72 @@ export async function createAppointment(firebaseUser, payload = {}) {
     if (!isFutureSlotTime(appointmentDate, parsedAppointmentTime)) {
       return { ok: false, status: 400, data: { message: 'Khung giờ này đã qua. Vui lòng chọn khung giờ khác.' } };
     }
+    const owner = await ensureOwnerProfile(firebaseUser, {
+      ...patient,
+      name: patientName,
+      phone: clean(payload.phone || patient.phone),
+      birthDate: patient.birthDate || payload.birthDate,
+      gender: patient.gender || payload.gender,
+    });
 
     let appointmentSlot = null;
-    if (doctor?.id) {
-      const slotQuery = supabase
-        .from('appointment_slots')
-        .select('*')
-        .eq('doctor_id', doctor.id)
-        .eq('slot_date', appointmentDate)
-        .eq('start_time', parsedAppointmentTime)
-        .eq('is_active', true)
-        .limit(1);
-      const { data: slots, error: slotError } = payload.appointmentSlotId && isUuid(payload.appointmentSlotId)
-        ? await slotQuery.eq('id', payload.appointmentSlotId)
-        : await slotQuery;
+    if (doctor?.id || facility?.id) {
+      let slots = [];
+      let slotError = null;
+
+      if (payload.appointmentSlotId && isUuid(payload.appointmentSlotId)) {
+        const result = await supabase
+          .from('appointment_slots')
+          .select('*')
+          .eq('id', payload.appointmentSlotId)
+          .eq('slot_date', appointmentDate)
+          .eq('start_time', parsedAppointmentTime)
+          .eq('is_active', true)
+          .limit(1);
+        slots = result.data || [];
+        slotError = result.error;
+      } else {
+        let slotQuery = supabase
+          .from('appointment_slots')
+          .select('*')
+          .eq('slot_date', appointmentDate)
+          .eq('start_time', parsedAppointmentTime)
+          .eq('is_active', true)
+          .limit(1);
+
+        if (doctor?.id) {
+          slotQuery = slotQuery.eq('doctor_id', doctor.id);
+        } else {
+          slotQuery = slotQuery.eq('facility_id', facility.id).is('doctor_id', null);
+        }
+
+        const result = await slotQuery;
+        slots = result.data || [];
+        slotError = result.error;
+      }
+
       if (slotError) throw slotError;
-      appointmentSlot = slots?.[0] || null;
+      appointmentSlot = (slots || [])
+        .filter((slot) => !doctor?.id || slot.doctor_id === doctor.id)
+        .filter((slot) => doctor?.id || slot.facility_id === facility.id)
+        .filter((slot) => !specialty?.id || !slot.specialty_id || slot.specialty_id === specialty.id)
+        .filter((slot) => !service?.id || !slot.service_id || slot.service_id === service.id)[0] || null;
 
       if (appointmentSlot && (appointmentSlot.booked_count || 0) >= (appointmentSlot.capacity || 1)) {
         return { ok: false, status: 409, data: { message: 'Khung gio nay da het cho. Vui long chon khung gio khac.' } };
       }
+      if (!appointmentSlot && facility?.type === 'hospital') {
+        return { ok: false, status: 409, data: { message: 'Khung gio nay khong con kha dung. Vui long chon khung gio khac.' } };
+      }
+    }
+
+    if (appointmentSlot?.id) {
+      const claimedSlot = await claimAppointmentSlot(appointmentSlot.id);
+      if (!claimedSlot) {
+        return { ok: false, status: 409, data: { message: 'Khung gio nay da het cho. Vui long chon khung gio khac.' } };
+      }
+      claimedSlotId = appointmentSlot.id;
+      appointmentSlot = { ...appointmentSlot, ...claimedSlot };
     }
 
     const appointmentRow = {
@@ -552,8 +825,11 @@ export async function createAppointment(firebaseUser, payload = {}) {
       facility_id: facility?.id || doctor?.facility_id || null,
       doctor_id: doctor?.id || null,
       specialty_id: specialty?.id || doctor?.specialty_id || null,
+      service_id: service?.id || null,
       appointment_date: appointmentDate,
       appointment_time: parsedAppointmentTime,
+      appointment_start_time: parsedAppointmentTime,
+      appointment_end_time: toTime(payload.endTime) || appointmentSlot?.end_time || null,
       appointment_time_text: appointmentTime,
       patient_name: patientName,
       patient_phone: clean(payload.phone || patient.phone) || null,
@@ -568,14 +844,7 @@ export async function createAppointment(firebaseUser, payload = {}) {
       .select()
       .single();
     if (appointmentError) throw appointmentError;
-
-    if (appointmentSlot?.id) {
-      const { error: updateSlotError } = await supabase
-        .from('appointment_slots')
-        .update({ booked_count: (appointmentSlot.booked_count || 0) + 1 })
-        .eq('id', appointmentSlot.id);
-      if (updateSlotError) throw updateSlotError;
-    }
+    insertedAppointmentId = appointment.id;
 
     const attachments = Array.isArray(payload.attachments) ? payload.attachments : [];
     if (attachments.length) {
@@ -613,6 +882,16 @@ export async function createAppointment(firebaseUser, payload = {}) {
       data: mapAppointmentResponse(appointment, ticket, payload),
     };
   } catch (error) {
+    try {
+      if (insertedAppointmentId) {
+        await supabase.from('appointments').delete().eq('id', insertedAppointmentId);
+      }
+      if (claimedSlotId) {
+        await releaseAppointmentSlot(claimedSlotId);
+      }
+    } catch {
+      // Keep the original booking error visible to the caller.
+    }
     return { ok: false, status: 500, data: { message: error.message } };
   }
 }
