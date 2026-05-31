@@ -1,24 +1,54 @@
 # MidHealth Supabase
 
-Chạy theo thứ tự trong Supabase SQL Editor:
+Thu muc nay dung de thiet lap va dong bo database Supabase cho do an.
 
-1. `schema.sql`
-2. `seed.sql`
+## Cac file chinh
 
-`schema.sql` giữ nguyên bảng `patient_profiles` để backend đăng ký/đăng nhập hiện tại vẫn upsert hồ sơ bằng `firebase_uid`. Các bảng mới phục vụ luồng đặt lịch:
+- `schema.sql`: dinh nghia cau truc database hien tai, gom bang, view, function, trigger, index va RLS policy.
+- `seed.sql`: du lieu khoi tao/mau cho chuyen khoa, benh vien, phong kham, bac si, dich vu va slot kham.
+- `migrations/`: lich su thay doi schema khi dung Supabase CLI.
+- `config.toml`: cau hinh Supabase CLI cho project local/remote.
 
-- `clinic_specialties`: chuyên khoa cho `the_chuyen_khoa` và lọc chuyên khoa.
-- `medical_facilities`: bệnh viện/phòng khám cho `the_benh_vien`, `the_phong_kham`.
-- `facility_services`, `facility_specialties`, `facility_hours`, `facility_notes`, `facility_images`: dữ liệu chi tiết cơ sở y tế.
-- `doctors`, `doctor_specialties`: bác sĩ và chuyên khoa.
-- `appointment_slots`: ngày giờ còn lịch.
-- `patient_medical_profiles`, `patient_guardians`: hồ sơ bệnh nhân và người giám hộ.
-- `appointments`, `appointment_attachments`, `queue_tickets`, `payments`: đặt lịch, file đính kèm, phiếu/số khám và thanh toán.
+## Migration hien tai
 
-Các view dùng cho frontend khi chuyển khỏi dữ liệu hard-code:
+- `migrations/20260601023000_create_shared_reference_data_table.sql`
 
-- `v_doctor_cards`
-- `v_facility_cards`
-- `v_specialty_search_results`
+File nay tao bang `public.reference_data`.
 
-Vì project đang dùng Firebase Auth, các thao tác ghi dữ liệu cá nhân nên đi qua backend Node.js bằng `SUPABASE_SERVICE_ROLE_KEY`. Frontend chỉ nên dùng quyền đọc public cho danh mục, bác sĩ, cơ sở y tế và slot trống.
+Bang `reference_data` dung de luu du lieu tham chieu dung chung cho frontend/backend, vi du:
+
+- danh sach khu vuc/tinh thanh,
+- danh sach dan toc,
+- danh sach nghe nghiep,
+- du lieu dia chi can cho form ho so va dat lich.
+
+Ten file migration co dang:
+
+`YYYYMMDDHHMMSS_mo_ta_thay_doi.sql`
+
+Phan so dau la timestamp de Supabase CLI biet thu tu chay migration. Phan sau la mo ta noi dung thay doi.
+
+## Cach dung
+
+Neu chay bang Supabase SQL Editor:
+
+1. Chay `schema.sql`
+2. Chay `seed.sql`
+
+Neu chay bang Supabase CLI:
+
+```bash
+supabase db push
+```
+
+Sau do seed du lieu tham chieu qua backend:
+
+```bash
+npm run seed:reference
+```
+
+## Ghi chu
+
+`schema.sql` da co bang `reference_data` de nhin duoc schema tong the.
+
+Migration van nen giu rieng vi Supabase CLI can no de dong bo thay doi database theo tung moc thoi gian. Khong nen xoa folder `migrations` neu project can nguoi khac cai dat lai database dung cach.
