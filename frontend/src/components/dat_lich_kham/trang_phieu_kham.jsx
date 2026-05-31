@@ -5,9 +5,9 @@ import {
   chuan_hoa_so_dien_thoai,
   kiem_tra_bhyt,
   kiem_tra_ngay_sinh,
-} from '../data/du_lieu_ho_so';
-import { cancelAppointment, listAppointments, savePatientProfile } from '../lib/appointments';
-import { useReferenceData } from '../lib/reference_data';
+} from '../../data/du_lieu_ho_so';
+import { cancelAppointment, listAppointments, savePatientProfile } from '../../lib/appointments';
+import { useReferenceData } from '../../lib/reference_data';
 
 function tao_ten_benh_nhan(user) {
   return user?.displayName || user?.email?.split('@')[0] || 'Bệnh nhân';

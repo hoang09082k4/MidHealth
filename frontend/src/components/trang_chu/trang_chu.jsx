@@ -5,16 +5,16 @@
   medicines,
   securityItems,
   trustItems,
-} from '../data';
-import { fallbackCatalog } from '../lib/catalog';
+} from '../../data';
+import { fallbackCatalog } from '../../lib/catalog';
 import MucBaoMatFooter from './muc_bao_mat_footer';
 import MucChuyenGia from './muc_chuyen_gia';
 import MucTinTuong from './muc_tin_tuong';
-import MucTinYTe from './muc_tin_y_te';
-import TheBacSi from './the_bac_si';
-import TheBenhVien from './the_benh_vien';
-import TheChuyenKhoa from './the_chuyen_khoa';
-import ThePhongKham from './the_phong_kham';
+import MucTinYTe from '../tin_y_te/muc_tin_y_te';
+import TheBacSi from '../the_hien_thi/the_bac_si';
+import TheBenhVien from '../the_hien_thi/the_benh_vien';
+import TheChuyenKhoa from '../the_hien_thi/the_chuyen_khoa';
+import ThePhongKham from '../the_hien_thi/the_phong_kham';
 import TieuDeMuc from './tieu_de_muc';
 
 function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onBookClinic, onSelectSpecialty }) {

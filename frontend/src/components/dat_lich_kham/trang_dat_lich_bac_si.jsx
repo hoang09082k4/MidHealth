@@ -5,10 +5,10 @@ import {
   chuan_hoa_so_dien_thoai,
   kiem_tra_bhyt,
   kiem_tra_ngay_sinh,
-} from '../data/du_lieu_ho_so';
-import { createAppointment, listDoctorSlots, listPatientProfiles, savePatientProfile } from '../lib/appointments';
-import { doctorImageName, doctorImagePath } from '../lib/doctor_images';
-import { useReferenceData } from '../lib/reference_data';
+} from '../../data/du_lieu_ho_so';
+import { createAppointment, listDoctorSlots, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
+import { doctorImageName, doctorImagePath } from '../../lib/doctor_images';
+import { useReferenceData } from '../../lib/reference_data';
 import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './trang_phieu_kham';
 
 const DAY_LABELS = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];

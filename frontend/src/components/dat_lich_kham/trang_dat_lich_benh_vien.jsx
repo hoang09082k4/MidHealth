@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './trang_phieu_kham';
-import { createAppointment, listAppointments, listHospitalSlots, listPatientProfiles, savePatientProfile } from '../lib/appointments';
-import { useReferenceData } from '../lib/reference_data';
+import { createAppointment, listAppointments, listHospitalSlots, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
+import { useReferenceData } from '../../lib/reference_data';
 import {
   chuan_hoa_bhyt,
   chuan_hoa_cmnd_cccd,
   chuan_hoa_so_dien_thoai,
   kiem_tra_bhyt,
   kiem_tra_ngay_sinh,
-} from '../data/du_lieu_ho_so';
+} from '../../data/du_lieu_ho_so';
 
 function anh_benh_vien(path) {
   if (!path) return '';

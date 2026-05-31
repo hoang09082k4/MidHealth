@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { doctorImagePath } from '../lib/doctor_images';
-import { fallbackCatalog } from '../lib/catalog';
-import { useReferenceData } from '../lib/reference_data';
+import { doctorImagePath } from '../../lib/doctor_images';
+import { fallbackCatalog } from '../../lib/catalog';
+import { useReferenceData } from '../../lib/reference_data';
 
 const TAT_CA_KHU_VUC = 'Tất cả khu vực';
 

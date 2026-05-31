@@ -1,4 +1,4 @@
-import { doctorImagePath } from '../lib/doctor_images';
+import { doctorImagePath } from '../../lib/doctor_images';
 
 function TheBacSi({ doctor, onBook }) {
   return (
