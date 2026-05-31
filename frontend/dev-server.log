@@ -2,8 +2,20 @@
 > midhealth-frontend@1.0.0 dev
 > vite --host 127.0.0.1
 
-Port 5173 is in use, trying another one...
 
-  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m271[22m[2m[0m ms[22m
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m327[22m[2m[0m ms[22m
 
-  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5174[22m/[39m
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5173[22m/[39m
+[2m2:16:44 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/trang_dat_lich_chuyen_khoa.jsx[22m
+[2m2:17:15 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[2m2:23:07 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/trang_dat_lich_chuyen_khoa.jsx[22m
+[2m2:28:53 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m2:29:04 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/trang_dat_lich_chuyen_khoa.jsx[22m
+[2m2:29:14 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/trang_dat_lich_chuyen_khoa.jsx[22m
+[2m2:29:26 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/trang_dat_lich_bac_si.jsx[22m
+[2m2:29:35 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/trang_dat_lich_phong_kham.jsx[22m
+[2m2:29:45 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/trang_dat_lich_benh_vien.jsx[22m
+[2m2:30:04 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/trang_phieu_kham.jsx[22m
+[2m2:30:14 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/trang_phieu_kham.jsx[22m
+[2m2:30:20 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/trang_phieu_kham.jsx[22m
+[2m2:30:26 AM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/trang_phieu_kham.jsx[22m

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node src/server.js",
     "start": "node src/server.js",
-    "seed:catalog": "node scripts/seed_catalog.js"
+    "seed:catalog": "node scripts/seed_catalog.js",
+    "seed:reference": "node scripts/seed_reference_data.js"
   },
   "engines": {
     "node": ">=18"

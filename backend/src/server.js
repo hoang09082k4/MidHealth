@@ -12,6 +12,7 @@ import {
   saveMedicalProfile,
 } from './appointment_service.js';
 import { getCatalog } from './catalog_service.js';
+import { getReferenceData } from './reference_service.js';
 import {
   hasFirebaseConfig,
   loginWithEmail,
@@ -228,6 +229,12 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === 'GET' && url.pathname === '/api/catalog') {
     const result = await getCatalog();
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/reference-data') {
+    const result = await getReferenceData();
     sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     return;
   }

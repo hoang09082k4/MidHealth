@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './trang_phieu_kham';
 import { createAppointment, listAppointments, listHospitalSlots, listPatientProfiles, savePatientProfile } from '../lib/appointments';
+import { useReferenceData } from '../lib/reference_data';
 import {
-  DAN_TOC_VIET_NAM,
-  DIA_CHI_FALLBACK,
-  NGHE_NGHIEP,
   chuan_hoa_bhyt,
   chuan_hoa_cmnd_cccd,
   chuan_hoa_so_dien_thoai,
@@ -548,7 +546,8 @@ function SelectField({ label, name, value, children, placeholder, onChange, erro
 }
 
 function ModalHoSo({ mode, profile, errors = {}, canSave, onClose, onEdit, onChange, onSave, onAddGuardian, onGuardianChange, onRemoveGuardian }) {
-  const selectedProvince = DIA_CHI_FALLBACK.find((item) => item.name === profile.province);
+  const { addressData, ethnicGroups, occupations } = useReferenceData();
+  const selectedProvince = addressData.find((item) => item.name === profile.province);
   const selectedDistrict = selectedProvince?.districts.find((item) => item.name === profile.district);
   const isAdding = mode === 'add';
   const isEditing = mode === 'edit' || isAdding;
@@ -605,7 +604,7 @@ function ModalHoSo({ mode, profile, errors = {}, canSave, onClose, onEdit, onCha
               {errors.gender && <small>{errors.gender}</small>}
             </div>
             <SelectField label="Tỉnh / thành phố" name="province" value={profile.province} placeholder="Chọn tỉnh / thành phố" onChange={onChange}>
-              {DIA_CHI_FALLBACK.map((province) => <option key={province.name}>{province.name}</option>)}
+              {addressData.map((province) => <option key={province.name}>{province.name}</option>)}
             </SelectField>
             <SelectField label="Quận / huyện" name="district" value={profile.district} placeholder="Chọn quận / huyện" onChange={onChange}>
               {(selectedProvince?.districts || []).map((district) => <option key={district.name}>{district.name}</option>)}
@@ -616,10 +615,10 @@ function ModalHoSo({ mode, profile, errors = {}, canSave, onClose, onEdit, onCha
             <Field label="Địa chỉ cụ thể" name="address" value={profile.address} required placeholder="Số nhà, tên đường" onChange={onChange} error={errors.address} />
             <Field label="Số CMND/CCCD" name="citizenId" value={profile.citizenId} placeholder="Số CMND hoặc CCCD" onChange={onChange} error={errors.citizenId} />
             <SelectField label="Dân tộc" name="ethnicity" value={profile.ethnicity} placeholder="Chọn dân tộc" onChange={onChange}>
-              {DAN_TOC_VIET_NAM.map((item) => <option key={item}>{item}</option>)}
+              {ethnicGroups.map((item) => <option key={item}>{item}</option>)}
             </SelectField>
             <SelectField label="Nghề nghiệp" name="job" value={profile.job} placeholder="Chọn nghề nghiệp" onChange={onChange}>
-              {NGHE_NGHIEP.map((item) => <option key={item}>{item}</option>)}
+              {occupations.map((item) => <option key={item}>{item}</option>)}
             </SelectField>
             <Field label="Số bảo hiểm y tế" name="insuranceCode" value={profile.insuranceCode} placeholder="Số trên thẻ bảo hiểm y tế" onChange={onChange} error={errors.insuranceCode} />
             <Field label="Email" name="email" value={profile.email} placeholder="Địa chỉ email của bạn" onChange={onChange} error={errors.email} />

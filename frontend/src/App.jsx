@@ -9,6 +9,7 @@ import TrangDatLichPhongKham from './components/trang_dat_lich_phong_kham';
 import TrangChu from './components/trang_chu';
 import { firebaseAuth } from './lib/firebase';
 import { fallbackCatalog, fetchCatalog } from './lib/catalog';
+import { ReferenceDataProvider } from './lib/reference_data';
 
 function App() {
   const [isAuthPage, setIsAuthPage] = useState(false);
@@ -93,6 +94,7 @@ function App() {
   };
 
   return (
+    <ReferenceDataProvider>
     <div className="site-shell" id="home">
       <header className="site-header">
         <button className="logo-button" type="button" onClick={showHome} aria-label="Về trang chủ MidHealth">
@@ -141,6 +143,7 @@ function App() {
         )}
       </main>
     </div>
+    </ReferenceDataProvider>
   );
 }
 

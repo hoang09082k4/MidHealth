@@ -1,15 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
+import { doctorImagePath } from '../lib/doctor_images';
 import { fallbackCatalog } from '../lib/catalog';
+import { useReferenceData } from '../lib/reference_data';
 
-const placeTypes = ['Tất cả', 'Bác sĩ', 'Bệnh viện', 'Phòng khám'];
-const cities = ['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ', 'Hải Phòng', 'An Giang'];
-const districts = {
-  'Hồ Chí Minh': ['Huyện Bình Chánh', 'Huyện Cần Giờ', 'Huyện Củ Chi', 'Huyện Hóc Môn', 'Huyện Nhà Bè', 'Quận 1', 'Quận 3', 'Quận 5', 'Bình Thạnh', 'Bình Tân', 'Thủ Đức'],
-  'Hà Nội': ['Ba Đình', 'Hoàn Kiếm', 'Đống Đa', 'Cầu Giấy', 'Hai Bà Trưng'],
-  'Đà Nẵng': ['Hải Châu', 'Thanh Khê', 'Sơn Trà', 'Ngũ Hành Sơn'],
-  'Cần Thơ': ['Ninh Kiều', 'Bình Thủy', 'Cái Răng'],
-  'Hải Phòng': ['Hồng Bàng', 'Ngô Quyền', 'Lê Chân'],
-  'An Giang': ['Long Xuyên', 'Châu Đốc', 'Tân Châu'],
+const TAT_CA_KHU_VUC = 'Tất cả khu vực';
+
+const PLACE_TYPES = [
+  { value: 'all', label: 'Tất cả' },
+  { value: 'doctor', label: 'Bác sĩ' },
+  { value: 'hospital', label: 'Bệnh viện' },
+  { value: 'clinic', label: 'Phòng khám' },
+];
+
+const LOCATION_ERROR_MESSAGE = {
+  1: 'Trình duyệt chưa được cấp quyền vị trí. Vui lòng cho phép truy cập vị trí hoặc chọn khu vực thủ công.',
+  2: 'Không xác định được vị trí hiện tại. Vui lòng thử lại hoặc chọn khu vực thủ công.',
+  3: 'Quá thời gian xác định vị trí. Vui lòng thử lại.',
 };
 
 function bo_dau(value = '') {
@@ -47,15 +53,52 @@ function lay_chu_cai_dau(name = '') {
     .toUpperCase();
 }
 
-function tim_dia_chi_noi_lam_viec(workplace = '', knownPlaces = []) {
+function duong_dan_anh(prefix, path = '') {
+  if (!path) return '';
+  if (/^(https?:)?\/\//.test(path) || path.startsWith('/')) return path;
+  return `${prefix}/${path}`;
+}
+
+function to_number(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function co_toa_do(item) {
+  return to_number(item.latitude) !== null && to_number(item.longitude) !== null;
+}
+
+function khoang_cach_km(from, item) {
+  const lat1 = to_number(from?.latitude);
+  const lon1 = to_number(from?.longitude);
+  const lat2 = to_number(item.latitude);
+  const lon2 = to_number(item.longitude);
+  if ([lat1, lon1, lat2, lon2].some((value) => value === null)) return null;
+
+  const radius = 6371;
+  const toRad = (degree) => (degree * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function hien_thi_khoang_cach(distance) {
+  if (distance === null || distance === undefined) return '';
+  if (distance < 1) return `${Math.round(distance * 1000)} m`;
+  return `${distance.toFixed(distance < 10 ? 1 : 0)} km`;
+}
+
+function tim_noi_lam_viec(workplace = '', knownPlaces = []) {
   const normalizedWorkplace = bo_dau(workplace);
-  const place = knownPlaces.find((item) => {
+  if (!normalizedWorkplace) return null;
+  return knownPlaces.find((item) => {
     const normalizedName = bo_dau(item.name);
     return normalizedName === normalizedWorkplace
       || normalizedName.includes(normalizedWorkplace)
       || normalizedWorkplace.includes(normalizedName);
-  });
-  return place?.address || '';
+  }) || null;
 }
 
 function tao_ket_qua({ hospitals = [], doctors = [], clinics = [] }) {
@@ -64,25 +107,83 @@ function tao_ket_qua({ hospitals = [], doctors = [], clinics = [] }) {
   return [
     ...hospitals.map((item) => ({
       ...item,
-      type: 'Bệnh viện',
+      resultType: 'hospital',
+      typeLabel: 'Bệnh viện',
       tags: item.specialties || [],
-      image: item.avatar ? `/image_benh_vien/${item.avatar}` : '',
+      image: duong_dan_anh('/image_benh_vien', item.avatar),
     })),
-    ...doctors.map((item) => ({
-      ...item,
-      type: 'Bác sĩ',
-      tags: [item.specialty],
-      address: tim_dia_chi_noi_lam_viec(item.workplace, knownPlaces),
-      workplace: item.workplace,
-      image: item.image ? `/image_doctor/${item.image}` : '',
-    })),
+    ...doctors.map((item) => {
+      const workplace = tim_noi_lam_viec(item.workplace, knownPlaces);
+      return {
+        ...item,
+        resultType: 'doctor',
+        typeLabel: 'Bác sĩ',
+        tags: [item.specialty].filter(Boolean),
+        address: workplace?.address || item.address || item.workplace || '',
+        province: workplace?.province || item.province || '',
+        district: workplace?.district || item.district || '',
+        latitude: workplace?.latitude ?? item.latitude,
+        longitude: workplace?.longitude ?? item.longitude,
+        workplace: item.workplace,
+        image: doctorImagePath(item),
+      };
+    }),
     ...clinics.map((item) => ({
       ...item,
-      type: 'Phòng khám',
-      tags: item.specialties || item.services || [],
-      image: item.avatar ? `/image_phong_kham/${item.avatar}` : '',
+      resultType: 'clinic',
+      typeLabel: 'Phòng khám',
+      tags: item.specialties || item.services?.map((service) => service.name) || [],
+      image: duong_dan_anh('/image_phong_kham', item.avatar),
     })),
   ];
+}
+
+function lay_khu_vuc_tu_catalog(results, baseRegions = []) {
+  const regionMap = new Map(baseRegions.map((region) => [
+    region.name,
+    {
+      ...region,
+      districts: new Set(region.districts || [TAT_CA_KHU_VUC]),
+    },
+  ]));
+
+  results.forEach((item) => {
+    const addressText = item.address || item.workplace || '';
+    const province = item.province || tim_khu_vuc_theo_dia_chi(addressText, baseRegions)?.name || '';
+    const district = item.district || '';
+    if (!province && !district) return;
+
+    const provinceKey = province || 'Khu vực khác';
+    const current = regionMap.get(provinceKey) || { name: provinceKey, aliases: [], districts: new Set([TAT_CA_KHU_VUC]) };
+    if (district) current.districts.add(district);
+    regionMap.set(provinceKey, current);
+  });
+
+  return Array.from(regionMap.values())
+    .sort((a, b) => a.name.localeCompare(b.name, 'vi'))
+    .map((region) => ({
+      ...region,
+      districts: Array.from(region.districts).sort((a, b) => {
+        if (a === TAT_CA_KHU_VUC) return -1;
+        if (b === TAT_CA_KHU_VUC) return 1;
+        return a.localeCompare(b, 'vi');
+      }),
+    }));
+}
+
+function tim_khu_vuc_theo_dia_chi(address = '', regions = []) {
+  const normalizedAddress = bo_dau(address);
+  if (!normalizedAddress) return null;
+  return regions.find((region) => (
+    [region.name, ...(region.aliases || [])].some((name) => khop_tu_khoa(normalizedAddress, name))
+  )) || null;
+}
+
+function khop_khu_vuc(addressText, regionName, regions) {
+  if (!regionName) return true;
+  const region = regions.find((item) => item.name === regionName);
+  const names = region ? [region.name, ...(region.aliases || [])] : [regionName];
+  return names.some((name) => khop_tu_khoa(addressText, name));
 }
 
 function TrangDatLichChuyenKhoa({
@@ -92,86 +193,138 @@ function TrangDatLichChuyenKhoa({
   onBookHospital,
   onBookClinic,
 }) {
-  const { clinics, doctors, hospitals, specialties } = catalog;
+  const { clinics = [], doctors = [], hospitals = [], specialties = [] } = catalog;
   const [keyword, setKeyword] = useState('');
-  const [placeType, setPlaceType] = useState('Tất cả');
+  const [placeType, setPlaceType] = useState('all');
   const [selectedSpecialty, setSelectedSpecialty] = useState(lay_ten_chuyen_khoa(initialSpecialty));
-  const [selectedCity, setSelectedCity] = useState('');
+  const [selectedProvince, setSelectedProvince] = useState('');
   const [selectedDistrict, setSelectedDistrict] = useState('');
   const [nearestActive, setNearestActive] = useState(false);
+  const [userLocation, setUserLocation] = useState(null);
+  const [locationStatus, setLocationStatus] = useState('');
+  const [activeModal, setActiveModal] = useState('');
+  const [specialtySearch, setSpecialtySearch] = useState('');
+  const { regions: referenceRegions } = useReferenceData();
+
+  const allResults = useMemo(() => tao_ket_qua({ hospitals, doctors, clinics }), [clinics, doctors, hospitals]);
+  const regions = useMemo(() => lay_khu_vuc_tu_catalog(allResults, referenceRegions), [allResults, referenceRegions]);
+  const currentRegion = regions.find((region) => region.name === selectedProvince);
 
   useEffect(() => {
     setSelectedSpecialty(lay_ten_chuyen_khoa(initialSpecialty));
     setKeyword('');
-    setSelectedCity('');
+    setSelectedProvince('');
     setSelectedDistrict('');
     setNearestActive(false);
+    setLocationStatus('');
   }, [initialSpecialty]);
-  const [activeModal, setActiveModal] = useState('');
-  const [specialtySearch, setSpecialtySearch] = useState('');
 
   const results = useMemo(() => {
-    const filteredResults = tao_ket_qua({ hospitals, doctors, clinics }).filter((item) => {
-      const addressText = item.address || item.workplace || '';
+    const filteredResults = allResults.filter((item) => {
+      const addressText = [item.address, item.workplace, item.province, item.district].filter(Boolean).join(' ');
       const content = [
         item.name,
         addressText,
-        item.workplace,
         item.subtitle,
-        item.type,
+        item.typeLabel,
         ...(item.tags || []),
       ].join(' ');
       const matchKeyword = !keyword || khop_tu_khoa(content, keyword);
-      const matchType = placeType === 'Tất cả' || item.type === placeType;
+      const matchType = placeType === 'all' || item.resultType === placeType;
       const matchSpecialty = !selectedSpecialty || (item.tags || []).some((tag) => khop_tu_khoa(tag, selectedSpecialty));
-      const matchCity = !selectedCity || khop_tu_khoa(addressText, selectedCity);
-      const matchDistrict = !selectedDistrict || khop_tu_khoa(addressText, selectedDistrict);
-      return matchKeyword && matchType && matchSpecialty && matchCity && matchDistrict;
+      const matchProvince = khop_khu_vuc(addressText, selectedProvince, regions);
+      const matchDistrict = !selectedDistrict || selectedDistrict === TAT_CA_KHU_VUC || khop_tu_khoa(addressText, selectedDistrict);
+      return matchKeyword && matchType && matchSpecialty && matchProvince && matchDistrict;
     });
 
-    if (!nearestActive || (!selectedCity && !selectedDistrict)) {
-      return filteredResults;
-    }
+    if (!nearestActive) return filteredResults;
 
     return [...filteredResults].sort((first, second) => {
-      const firstAddress = first.address || first.workplace || '';
-      const secondAddress = second.address || second.workplace || '';
+      const firstDistance = khoang_cach_km(userLocation, first);
+      const secondDistance = khoang_cach_km(userLocation, second);
+      if (firstDistance !== null && secondDistance !== null) return firstDistance - secondDistance;
+      if (firstDistance !== null) return -1;
+      if (secondDistance !== null) return 1;
+
+      const firstAddress = [first.address, first.workplace, first.province, first.district].filter(Boolean).join(' ');
+      const secondAddress = [second.address, second.workplace, second.province, second.district].filter(Boolean).join(' ');
       const firstScore = Number(selectedDistrict && khop_tu_khoa(firstAddress, selectedDistrict))
-        + Number(selectedCity && khop_tu_khoa(firstAddress, selectedCity));
+        + Number(selectedProvince && khop_tu_khoa(firstAddress, selectedProvince));
       const secondScore = Number(selectedDistrict && khop_tu_khoa(secondAddress, selectedDistrict))
-        + Number(selectedCity && khop_tu_khoa(secondAddress, selectedCity));
+        + Number(selectedProvince && khop_tu_khoa(secondAddress, selectedProvince));
       return secondScore - firstScore;
     });
-  }, [clinics, doctors, hospitals, keyword, nearestActive, placeType, selectedSpecialty, selectedCity, selectedDistrict]);
+  }, [allResults, keyword, nearestActive, placeType, selectedSpecialty, selectedProvince, selectedDistrict, userLocation]);
 
   const filteredSpecialties = specialties.filter((specialty) => khop_tu_khoa(specialty.name, specialtySearch));
+  const hasGeoResults = allResults.some(co_toa_do);
 
   const handleBook = (item) => {
-    if (item.type === 'Bác sĩ') {
+    if (item.resultType === 'doctor') {
       onBookDoctor?.(item);
       return;
     }
-    if (item.type === 'Bệnh viện') {
+    if (item.resultType === 'hospital') {
       onBookHospital?.(item);
       return;
     }
     onBookClinic?.(item);
   };
 
-  const clearFilters = () => {
-    setPlaceType('Tất cả');
-    setSelectedSpecialty('');
-    setSelectedCity('');
+  const clearRegionFilters = () => {
+    setSelectedProvince('');
     setSelectedDistrict('');
     setNearestActive(false);
+    setLocationStatus('');
+  };
+
+  const clearAllFilters = () => {
+    setPlaceType('all');
+    setSelectedSpecialty('');
+    clearRegionFilters();
     setSpecialtySearch('');
   };
 
   const handleNearest = () => {
-    setNearestActive((current) => !current);
-    if (!selectedCity) {
-      setActiveModal('region');
+    if (nearestActive) {
+      setNearestActive(false);
+      setLocationStatus('');
+      return;
     }
+
+    if (!navigator.geolocation) {
+      setNearestActive(true);
+      setLocationStatus('Trình duyệt không hỗ trợ định vị. Bạn có thể chọn khu vực thủ công để ưu tiên kết quả gần hơn.');
+      setActiveModal('region');
+      return;
+    }
+
+    setLocationStatus('Đang xác định vị trí hiện tại...');
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        });
+        setNearestActive(true);
+        setLocationStatus(
+          hasGeoResults
+            ? `Đang ưu tiên cơ sở gần bạn nhất, sai số khoảng ${Math.round(position.coords.accuracy)} m.`
+            : 'Đã lấy vị trí, nhưng catalog chưa có tọa độ cơ sở. Hãy bổ sung latitude/longitude trong DB để sắp xếp chính xác hơn.',
+        );
+      },
+      (error) => {
+        setNearestActive(false);
+        setLocationStatus(LOCATION_ERROR_MESSAGE[error.code] || 'Không thể lấy vị trí hiện tại.');
+        setActiveModal('region');
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60000,
+      },
+    );
   };
 
   return (
@@ -188,18 +341,22 @@ function TrangDatLichChuyenKhoa({
         <div className="specialty-filter-row">
           <span className="sparkle" aria-hidden="true">✦</span>
           <button type="button" className="filter-chip" onClick={() => setActiveModal('place')}>
-            Nơi khám: {placeType} <span aria-hidden="true">⌄</span>
+            Nơi khám: {PLACE_TYPES.find((type) => type.value === placeType)?.label} <span aria-hidden="true">⌄</span>
           </button>
           <button type="button" className={selectedSpecialty ? 'filter-chip active' : 'filter-chip'} onClick={() => setActiveModal('specialty')}>
-            ✚ {selectedSpecialty || 'Chọn chuyên khoa'}
+            ✓ {selectedSpecialty || 'Chọn chuyên khoa'}
           </button>
-          <button type="button" className={selectedDistrict ? 'filter-chip active' : 'filter-chip'} onClick={() => setActiveModal('region')}>
-            ● {selectedDistrict ? `${selectedDistrict}, ${selectedCity}` : 'Khu vực'}
+          <button type="button" className={selectedDistrict || selectedProvince ? 'filter-chip active' : 'filter-chip'} onClick={() => setActiveModal('region')}>
+            ● {selectedDistrict ? `${selectedDistrict}, ${selectedProvince}` : selectedProvince || 'Khu vực'}
           </button>
           <button type="button" className={nearestActive ? 'filter-chip nearest active' : 'filter-chip nearest'} onClick={handleNearest}>
             ◎ Gần nhất
           </button>
+          {(keyword || selectedSpecialty || selectedProvince || placeType !== 'all' || nearestActive) && (
+            <button type="button" className="filter-chip clear" onClick={clearAllFilters}>Xóa lọc</button>
+          )}
         </div>
+        {locationStatus && <p className="specialty-location-note">{locationStatus}</p>}
       </div>
 
       <div className="specialty-results-card">
@@ -209,34 +366,39 @@ function TrangDatLichChuyenKhoa({
         </div>
         {results.length ? (
           <div className="specialty-result-list">
-            {results.map((item) => (
-              <article className="specialty-result-item" key={`${item.type}-${item.name}`}>
-                <div className="result-avatar">
-                  {item.image ? <img src={item.image} alt={item.name} /> : <span>{lay_chu_cai_dau(item.name)}</span>}
-                </div>
-                <div className="result-info">
-                  <h3>{item.name}</h3>
-                  <div className="result-tags">
-                    {(item.tags || []).slice(0, 2).map((tag) => <span key={tag}>{tag}</span>)}
+            {results.map((item) => {
+              const distance = nearestActive ? khoang_cach_km(userLocation, item) : null;
+              return (
+                <article className="specialty-result-item" key={`${item.resultType}-${item.id || item.name}`}>
+                  <div className="result-avatar">
+                    {item.image ? <img src={item.image} alt={item.name} /> : <span>{lay_chu_cai_dau(item.name)}</span>}
                   </div>
-                  <p>{item.address || item.workplace || 'Đang cập nhật địa chỉ'}</p>
-                </div>
-                <div className="result-actions">
-                  {item.type === 'Bác sĩ' && <button type="button" className="consult-button" onClick={() => handleBook(item)}>Đặt lịch tư vấn</button>}
-                  <button type="button" className="book-result-button" onClick={() => handleBook(item)}>Đặt khám</button>
-                </div>
-              </article>
-            ))}
+                  <div className="result-info">
+                    <div className="result-title-row">
+                      <h3>{item.name}</h3>
+                      <span>{item.typeLabel}</span>
+                    </div>
+                    <div className="result-tags">
+                      {(item.tags || []).slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}
+                    </div>
+                    <p>{item.address || item.workplace || 'Đang cập nhật địa chỉ'}</p>
+                    {distance !== null && <small className="result-distance">Cách bạn khoảng {hien_thi_khoang_cach(distance)}</small>}
+                  </div>
+                  <div className="result-actions">
+                    <button type="button" className="book-result-button" onClick={() => handleBook(item)}>Đặt khám</button>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         ) : (
           <div className="specialty-empty">
-            <h3>Úi, không thấy kết quả phù hợp</h3>
-            <p>Hãy tìm kiếm bằng từ khóa khác hoặc xem gợi ý bên dưới nhé.</p>
+            <h3>Chưa tìm thấy kết quả phù hợp</h3>
+            <p>Hãy thử giảm bớt bộ lọc hoặc dùng từ khóa tổng quát hơn.</p>
             <ul>
-              <li>Hãy thử tìm kiếm theo cú pháp: triệu chứng bệnh + loại dịch vụ cần tìm kiếm.</li>
-              <li>Hãy thử giảm số lượng từ trong cụm từ tìm kiếm hoặc tìm bằng cụm từ tổng quát hơn.</li>
-              <li>Sử dụng tùy chọn chuyên khoa, nơi khám và khu vực để có kết quả tối ưu.</li>
-              <li>Thay đổi tùy chọn tìm kiếm hoặc cụm từ khác phổ biến hơn.</li>
+              <li>Tìm theo triệu chứng, tên chuyên khoa hoặc tên cơ sở.</li>
+              <li>Chọn khu vực rộng hơn nếu đang lọc theo quận/huyện.</li>
+              <li>Bấm “Gần nhất” và cho phép trình duyệt lấy vị trí để ưu tiên cơ sở gần bạn.</li>
             </ul>
           </div>
         )}
@@ -247,17 +409,17 @@ function TrangDatLichChuyenKhoa({
           <div className="filter-modal place-modal" onClick={(event) => event.stopPropagation()}>
             <button className="modal-close" type="button" onClick={() => setActiveModal('')}>×</button>
             <h3>Lọc theo nơi khám</h3>
-            {placeTypes.map((type) => (
+            {PLACE_TYPES.map((type) => (
               <button
-                key={type}
+                key={type.value}
                 type="button"
-                className={type === placeType ? 'modal-option active' : 'modal-option'}
+                className={type.value === placeType ? 'modal-option active' : 'modal-option'}
                 onClick={() => {
-                  setPlaceType(type);
+                  setPlaceType(type.value);
                   setActiveModal('');
                 }}
               >
-                {type}
+                {type.label}
               </button>
             ))}
           </div>
@@ -277,11 +439,11 @@ function TrangDatLichChuyenKhoa({
               {filteredSpecialties.map((specialty) => (
                 <button
                   type="button"
-                  key={specialty.name}
+                  key={specialty.id || specialty.name}
                   className={selectedSpecialty === specialty.name ? 'modal-specialty active' : 'modal-specialty'}
                   onClick={() => setSelectedSpecialty(specialty.name)}
                 >
-                  <img src={`/images_chuyen_khoa/${specialty.image}`} alt="" />
+                  {specialty.image && <img src={duong_dan_anh('/images_chuyen_khoa', specialty.image)} alt="" />}
                   {specialty.name}
                 </button>
               ))}
@@ -299,34 +461,34 @@ function TrangDatLichChuyenKhoa({
           <div className="filter-modal region-modal" onClick={(event) => event.stopPropagation()}>
             <div className="region-modal-head">
               <h3>Chọn khu vực</h3>
-              <button type="button" onClick={clearFilters}>XÓA BỘ LỌC</button>
+              <button type="button" onClick={clearRegionFilters}>Xóa bộ lọc</button>
               <button className="modal-close" type="button" onClick={() => setActiveModal('')}>×</button>
             </div>
             <div className="region-columns">
               <div>
-                {cities.map((city) => (
+                {regions.map((region) => (
                   <button
-                    key={city}
+                    key={region.name}
                     type="button"
-                    className={selectedCity === city ? 'region-option active' : 'region-option'}
+                    className={selectedProvince === region.name ? 'region-option active' : 'region-option'}
                     onClick={() => {
-                      setSelectedCity(city);
+                      setSelectedProvince(region.name);
                       setSelectedDistrict('');
                     }}
                   >
-                    {city}
+                    {region.name}
                   </button>
                 ))}
               </div>
               <div>
-                {selectedCity ? (
-                  districts[selectedCity].map((district) => (
+                {selectedProvince ? (
+                  (currentRegion?.districts || []).map((district) => (
                     <button
                       key={district}
                       type="button"
                       className={selectedDistrict === district ? 'region-option active' : 'region-option'}
                       onClick={() => {
-                        setSelectedDistrict(district);
+                        setSelectedDistrict(district === TAT_CA_KHU_VUC ? '' : district);
                         setActiveModal('');
                       }}
                     >
@@ -334,7 +496,7 @@ function TrangDatLichChuyenKhoa({
                     </button>
                   ))
                 ) : (
-                  <p className="region-hint">Chọn thành phố bạn cần tìm</p>
+                  <p className="region-hint">Chọn tỉnh/thành phố bạn cần tìm</p>
                 )}
               </div>
             </div>

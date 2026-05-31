@@ -70,7 +70,7 @@ export async function getCatalog() {
       doctors,
     ] = await Promise.all([
       selectTable('clinic_specialties', 'id, name, image_url, is_active'),
-      selectTable('medical_facilities', 'id, type, name, subtitle, intro, address, latitude, longitude, avatar_url, background_url, is_active'),
+      selectTable('medical_facilities', 'id, type, name, subtitle, intro, address, province, district, latitude, longitude, avatar_url, background_url, is_active'),
       selectTable('facility_hours', 'facility_id, label, time_text, sort_order'),
       selectTable('facility_notes', 'facility_id, title, lines, sort_order'),
       selectTable('facility_specialties', 'facility_id, specialty_id, sort_order'),
@@ -155,15 +155,23 @@ export async function getCatalog() {
 
     const mappedDoctors = doctors
       .filter((doctor) => doctor.is_active)
-      .map((doctor) => ({
-        id: doctor.id,
-        initials: doctor.initials,
-        image: doctorImage(doctor.avatar_url || ''),
-        name: doctor.full_name,
-        specialty: specialtyNameById.get(doctor.specialty_id) || inferDoctorSpecialty(doctor.full_name),
-        workplace: facilityNameById.get(doctor.facility_id) || doctor.workplace_text || '',
-        notice: doctor.unavailable_note || doctor.notice || inferDoctorNotice(doctor.full_name),
-      }));
+      .map((doctor) => {
+        const facility = facilities.find((item) => item.id === doctor.facility_id);
+        return {
+          id: doctor.id,
+          initials: doctor.initials,
+          image: doctorImage(doctor.avatar_url || ''),
+          name: doctor.full_name,
+          specialty: specialtyNameById.get(doctor.specialty_id) || inferDoctorSpecialty(doctor.full_name),
+          workplace: facilityNameById.get(doctor.facility_id) || doctor.workplace_text || '',
+          address: facility?.address || doctor.workplace_text || '',
+          province: facility?.province || '',
+          district: facility?.district || '',
+          latitude: facility?.latitude || null,
+          longitude: facility?.longitude || null,
+          notice: doctor.unavailable_note || doctor.notice || inferDoctorNotice(doctor.full_name),
+        };
+      });
 
     const mappedHospitals = facilities
       .filter((facility) => facility.is_active && facility.type === 'hospital')
@@ -175,6 +183,8 @@ export async function getCatalog() {
         name: facility.name,
         subtitle: facility.subtitle || '',
         address: facility.address,
+        province: facility.province || '',
+        district: facility.district || '',
         latitude: facility.latitude,
         longitude: facility.longitude,
         intro: facility.intro || '',
@@ -196,6 +206,8 @@ export async function getCatalog() {
           name: facility.name,
           subtitle: facility.subtitle || '',
           address: facility.address,
+          province: facility.province || '',
+          district: facility.district || '',
           latitude: facility.latitude,
           longitude: facility.longitude,
           phone: facility.phone || facility.hotline || '',

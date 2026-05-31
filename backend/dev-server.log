@@ -2,3 +2,4 @@
 > midhealth-backend@1.0.0 dev
 > node src/server.js
 
+MidHealth backend listening on http://localhost:4000

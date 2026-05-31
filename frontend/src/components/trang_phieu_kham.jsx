@@ -1,8 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import {
-  DAN_TOC_VIET_NAM,
-  DIA_CHI_FALLBACK,
-  NGHE_NGHIEP,
   chuan_hoa_bhyt,
   chuan_hoa_cmnd_cccd,
   chuan_hoa_so_dien_thoai,
@@ -10,6 +7,7 @@ import {
   kiem_tra_ngay_sinh,
 } from '../data/du_lieu_ho_so';
 import { cancelAppointment, listAppointments, savePatientProfile } from '../lib/appointments';
+import { useReferenceData } from '../lib/reference_data';
 
 function tao_ten_benh_nhan(user) {
   return user?.displayName || user?.email?.split('@')[0] || 'Bệnh nhân';
@@ -54,16 +52,6 @@ function tao_ho_so_moi() {
     email: '',
     relationship: 'Khác',
   };
-}
-
-function chuan_hoa_dia_chi_api(items) {
-  return items.map((province) => ({
-    name: province.name,
-    districts: (province.districts || []).map((district) => ({
-      name: district.name,
-      wards: (district.wards || []).map((ward) => ward.name),
-    })),
-  }));
 }
 
 function lay_ten_tat(fullName) {
@@ -310,7 +298,7 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
   const [profiles, setProfiles] = useState(() => [{ id: 'me', ...tao_ho_so_mac_dinh(appointment, user) }]);
   const [selectedProfileId, setSelectedProfileId] = useState('me');
   const [profileDraft, setProfileDraft] = useState(() => tao_ho_so_mac_dinh(appointment, user));
-  const [addressData, setAddressData] = useState(DIA_CHI_FALLBACK);
+  const { addressData, ethnicGroups, occupations } = useReferenceData();
   const [profileError, setProfileError] = useState('');
   const [profileFieldErrors, setProfileFieldErrors] = useState({});
 
@@ -364,23 +352,6 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
     if (profileDraft.insuranceCode && !kiem_tra_bhyt(profileDraft.insuranceCode)) errors.insuranceCode = 'Mã BHYT chưa đúng định dạng';
     return errors;
   };
-
-  useEffect(() => {
-    let isMounted = true;
-
-    fetch('https://provinces.open-api.vn/api/?depth=3')
-      .then((response) => response.ok ? response.json() : Promise.reject())
-      .then((data) => {
-        if (isMounted && Array.isArray(data)) setAddressData(chuan_hoa_dia_chi_api(data));
-      })
-      .catch(() => {
-        if (isMounted) setAddressData(DIA_CHI_FALLBACK);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -727,12 +698,12 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
                   <div className="profile-edit-grid-2">
                     <ONhapHoSo label="Số CMND/CCCD" name="citizenId" value={profileDraft.citizenId} placeholder="Số CMND hoặc CCCD" onChange={updateProfileDraft} error={profileFieldErrors.citizenId} />
                     <OChonHoSo label="Dân tộc" name="ethnicity" value={profileDraft.ethnicity} placeholder="Chọn dân tộc" onChange={updateProfileDraft}>
-                      {DAN_TOC_VIET_NAM.map((ethnicity) => <option key={ethnicity}>{ethnicity}</option>)}
+                      {ethnicGroups.map((ethnicity) => <option key={ethnicity}>{ethnicity}</option>)}
                     </OChonHoSo>
                   </div>
                   <ONhapHoSo label="Quốc tịch" name="nationality" value={profileDraft.nationality || ''} placeholder="Quốc tịch" onChange={updateProfileDraft} />
                   <OChonHoSo label="Nghề nghiệp" name="job" value={profileDraft.job} placeholder="Chọn nghề nghiệp" onChange={updateProfileDraft}>
-                    {NGHE_NGHIEP.map((job) => <option key={job}>{job}</option>)}
+                    {occupations.map((job) => <option key={job}>{job}</option>)}
                   </OChonHoSo>
                   <ONhapHoSo label="Mã thẻ BHYT" name="insuranceCode" value={profileDraft.insuranceCode} placeholder="Mã số trên thẻ Bảo hiểm y tế" onChange={updateProfileDraft} error={profileFieldErrors.insuranceCode} />
                   <ONhapHoSo label="Email" name="email" value={profileDraft.email} placeholder="Địa chỉ email của bạn" onChange={updateProfileDraft} />

@@ -1,8 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  DAN_TOC_VIET_NAM,
-  DIA_CHI_FALLBACK,
-  NGHE_NGHIEP,
   chuan_hoa_bhyt,
   chuan_hoa_cmnd_cccd,
   chuan_hoa_so_dien_thoai,
@@ -11,6 +8,7 @@ import {
 } from '../data/du_lieu_ho_so';
 import { createAppointment, listDoctorSlots, listPatientProfiles, savePatientProfile } from '../lib/appointments';
 import { doctorImageName, doctorImagePath } from '../lib/doctor_images';
+import { useReferenceData } from '../lib/reference_data';
 import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './trang_phieu_kham';
 
 const DAY_LABELS = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
@@ -286,7 +284,8 @@ function SelectField({ label, name, value, required, placeholder, error, childre
 }
 
 function ProfileModal({ mode, profile, errors, isSaving, onClose, onChange, onSave }) {
-  const selectedProvince = DIA_CHI_FALLBACK.find((item) => item.name === profile.province);
+  const { addressData, ethnicGroups, occupations } = useReferenceData();
+  const selectedProvince = addressData.find((item) => item.name === profile.province);
   const selectedDistrict = selectedProvince?.districts.find((item) => item.name === profile.district);
   const canSave = Boolean(
     String(profile.name || '').trim()
@@ -319,7 +318,7 @@ function ProfileModal({ mode, profile, errors, isSaving, onClose, onChange, onSa
             {errors.gender && <small>{errors.gender}</small>}
           </div>
           <SelectField label="Tỉnh / Thành phố" name="province" value={profile.province} placeholder="Chọn tỉnh / thành phố" onChange={onChange}>
-            {DIA_CHI_FALLBACK.map((province) => <option key={province.name}>{province.name}</option>)}
+            {addressData.map((province) => <option key={province.name}>{province.name}</option>)}
           </SelectField>
           <SelectField label="Quận / Huyện" name="district" value={profile.district} placeholder="Chọn quận / huyện" onChange={onChange}>
             {(selectedProvince?.districts || []).map((district) => <option key={district.name}>{district.name}</option>)}
@@ -330,10 +329,10 @@ function ProfileModal({ mode, profile, errors, isSaving, onClose, onChange, onSa
           <Field label="Địa chỉ cụ thể" name="address" value={profile.address} required placeholder="Số nhà, tên đường" error={errors.address} onChange={onChange} />
           <Field label="Số CMND/CCCD" name="citizenId" value={profile.citizenId} placeholder="Số CMND hoặc CCCD" onChange={onChange} />
           <SelectField label="Dân tộc" name="ethnicity" value={profile.ethnicity} placeholder="Chọn dân tộc" onChange={onChange}>
-            {DAN_TOC_VIET_NAM.map((item) => <option key={item}>{item}</option>)}
+            {ethnicGroups.map((item) => <option key={item}>{item}</option>)}
           </SelectField>
           <SelectField label="Nghề nghiệp" name="job" value={profile.job} placeholder="Chọn nghề nghiệp" onChange={onChange}>
-            {NGHE_NGHIEP.map((item) => <option key={item}>{item}</option>)}
+            {occupations.map((item) => <option key={item}>{item}</option>)}
           </SelectField>
           <Field label="Mã thẻ BHYT" name="insuranceCode" value={profile.insuranceCode} placeholder="Mã số trên thẻ BHYT" error={errors.insuranceCode} onChange={onChange} />
           <Field label="Email" name="email" value={profile.email} placeholder="Địa chỉ email của bạn" error={errors.email} onChange={onChange} />

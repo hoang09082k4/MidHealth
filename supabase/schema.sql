@@ -253,6 +253,13 @@ create table if not exists public.payments (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.reference_data (
+  key text primary key,
+  value jsonb not null,
+  description text,
+  updated_at timestamptz not null default now()
+);
+
 alter table public.patient_profiles add column if not exists updated_at timestamptz not null default now();
 alter table public.clinic_specialties add column if not exists slug text;
 alter table public.clinic_specialties add column if not exists updated_at timestamptz not null default now();
@@ -461,6 +468,7 @@ alter table public.appointments enable row level security;
 alter table public.appointment_attachments enable row level security;
 alter table public.queue_tickets enable row level security;
 alter table public.payments enable row level security;
+alter table public.reference_data enable row level security;
 
 drop policy if exists "public can read active specialties" on public.clinic_specialties;
 create policy "public can read active specialties"
@@ -526,8 +534,19 @@ grant select on
   public.appointment_slots,
   public.v_doctor_cards,
   public.v_facility_cards,
-  public.v_specialty_search_results
+  public.v_specialty_search_results,
+  public.reference_data
 to anon, authenticated;
+
+drop policy if exists "public can read reference data" on public.reference_data;
+create policy "public can read reference data"
+on public.reference_data for select
+using (true);
+
+drop trigger if exists set_reference_data_updated_at on public.reference_data;
+create trigger set_reference_data_updated_at
+before update on public.reference_data
+for each row execute function public.set_updated_at();
 
 grant execute on function public.claim_appointment_slot(uuid) to anon, authenticated;
 grant execute on function public.release_appointment_slot(uuid) to anon, authenticated;
