@@ -5,6 +5,7 @@ import {
   cancelAppointment,
   createAppointment,
   listAppointments,
+  listClinicSlots,
   listDoctorSlots,
   listHospitalSlots,
   listPatientProfiles,
@@ -231,6 +232,36 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === 'GET' && url.pathname === '/api/clinics') {
+    const result = await getCatalog();
+    sendJson(response, result.status, result.ok ? { data: result.data.clinics || [] } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname.startsWith('/api/clinics/') && url.pathname.endsWith('/services')) {
+    const clinicId = decodeURIComponent(url.pathname.replace('/api/clinics/', '').replace('/services', '')).trim();
+    const result = await getCatalog();
+    const clinic = result.ok ? (result.data.clinics || []).find((item) => item.id === clinicId) : null;
+    sendJson(response, result.ok && clinic ? 200 : result.ok ? 404 : result.status, result.ok && clinic ? { data: clinic.services || [] } : result.ok ? { message: 'Khong tim thay phong kham.' } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname.startsWith('/api/clinics/') && url.pathname.endsWith('/specialties')) {
+    const clinicId = decodeURIComponent(url.pathname.replace('/api/clinics/', '').replace('/specialties', '')).trim();
+    const result = await getCatalog();
+    const clinic = result.ok ? (result.data.clinics || []).find((item) => item.id === clinicId) : null;
+    sendJson(response, result.ok && clinic ? 200 : result.ok ? 404 : result.status, result.ok && clinic ? { data: clinic.specialties || [] } : result.ok ? { message: 'Khong tim thay phong kham.' } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname.startsWith('/api/clinics/') && !url.pathname.endsWith('/slots')) {
+    const clinicId = decodeURIComponent(url.pathname.replace('/api/clinics/', '')).trim();
+    const result = await getCatalog();
+    const clinic = result.ok ? (result.data.clinics || []).find((item) => item.id === clinicId) : null;
+    sendJson(response, result.ok && clinic ? 200 : result.ok ? 404 : result.status, result.ok && clinic ? { data: clinic } : result.ok ? { message: 'Khong tim thay phong kham.' } : result.data);
+    return;
+  }
+
   if (request.method === 'GET' && url.pathname.startsWith('/api/doctors/') && url.pathname.endsWith('/slots')) {
     const doctorId = decodeURIComponent(url.pathname.replace('/api/doctors/', '').replace('/slots', '')).trim();
     const result = await listDoctorSlots(doctorId, {
@@ -244,6 +275,18 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname.startsWith('/api/hospitals/') && url.pathname.endsWith('/slots')) {
     const hospitalId = decodeURIComponent(url.pathname.replace('/api/hospitals/', '').replace('/slots', '')).trim();
     const result = await listHospitalSlots(hospitalId, {
+      fromDate: url.searchParams.get('from'),
+      days: url.searchParams.get('days'),
+      serviceName: url.searchParams.get('serviceName'),
+      specialtyName: url.searchParams.get('specialtyName'),
+    });
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname.startsWith('/api/clinics/') && url.pathname.endsWith('/slots')) {
+    const clinicId = decodeURIComponent(url.pathname.replace('/api/clinics/', '').replace('/slots', '')).trim();
+    const result = await listClinicSlots(clinicId, {
       fromDate: url.searchParams.get('from'),
       days: url.searchParams.get('days'),
       serviceName: url.searchParams.get('serviceName'),

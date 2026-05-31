@@ -258,7 +258,7 @@ select
 from public.facility_services sv
 join public.facility_specialties fs on fs.facility_id = sv.facility_id and (sv.specialty_id is null or sv.specialty_id = fs.specialty_id)
 cross join lateral generate_series(current_date, current_date + interval '14 days', interval '1 day') as slot_day
-cross join (values ('07:00'), ('07:30'), ('08:00'), ('13:00'), ('13:30'), ('14:00'), ('17:00')) as t(slot_time)
+cross join (values ('07:00'), ('07:30'), ('08:00'), ('08:30'), ('09:00'), ('09:30'), ('10:00'), ('10:30'), ('13:00'), ('13:30'), ('14:00'), ('17:00')) as t(slot_time)
 where sv.is_active = true
   and not exists (
     select 1 from public.appointment_slots existing
@@ -268,3 +268,12 @@ where sv.is_active = true
       and existing.slot_date = slot_day::date
       and existing.start_time = slot_time::time
   );
+
+update public.appointment_slots slot
+set booked_count = slot.capacity
+from public.medical_facilities facility
+where slot.facility_id = facility.id
+  and facility.slug = 'trung-tam-chac'
+  and slot.slot_date = (current_date + interval '2 days')::date
+  and slot.start_time = '09:00'::time
+  and slot.booked_count = 0;

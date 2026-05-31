@@ -45,6 +45,17 @@ export async function listHospitalSlots(hospitalId, options = {}) {
   return parseResponse(response, 'Khong the tai lich kham benh vien.');
 }
 
+export async function listClinicSlots(clinicId, options = {}) {
+  const params = new URLSearchParams();
+  if (options.fromDate) params.set('from', options.fromDate);
+  if (options.days) params.set('days', String(options.days));
+  if (options.serviceName) params.set('serviceName', options.serviceName);
+  if (options.specialtyName) params.set('specialtyName', options.specialtyName);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  const response = await fetch(`${apiBaseUrl}/api/clinics/${encodeURIComponent(clinicId)}/slots${query}`);
+  return parseResponse(response, 'Khong the tai lich kham phong kham.');
+}
+
 export async function listPatientProfiles(user) {
   const response = await fetch(`${apiBaseUrl}/api/patient/profiles`, {
     headers: await getAuthHeaders(user),
