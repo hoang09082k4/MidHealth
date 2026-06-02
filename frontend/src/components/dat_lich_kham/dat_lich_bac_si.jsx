@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import {
   chuan_hoa_bhyt,
   chuan_hoa_cmnd_cccd,
@@ -6,10 +6,10 @@ import {
   kiem_tra_bhyt,
   kiem_tra_ngay_sinh,
 } from '../../data/du_lieu_ho_so';
-import { createAppointment, listDoctorSlots, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
+import { createAppointment, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
 import { doctorImageName, doctorImagePath } from '../../lib/doctor_images';
 import { useReferenceData } from '../../lib/reference_data';
-import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './trang_phieu_kham';
+import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './phieu_kham';
 
 const DAY_LABELS = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
 const DEFAULT_ADDRESS = '250 Đ. Nguyễn Xí, Bình Lợi Trung, Hồ Chí Minh';
@@ -137,22 +137,26 @@ function ma_benh_nhan(profile) {
   return 'YM2600000527';
 }
 
+function patientProfileKey(profile) {
+  return profile?.id || profile?.phone || profile?.name || 'local-default';
+}
+
 function defaultProfile(user) {
   return {
-    id: 'local-default',
-    name: user?.displayName || user?.email?.split('@')[0] || 'Bệnh nhân',
-    phone: '0343413231',
-    birthDate: '09/08/2004',
-    gender: 'Nam',
+    id: '',
+    name: '',
+    phone: '',
+    birthDate: '',
+    gender: '',
     province: '',
     district: '',
     ward: '',
-    address: 'Chưa cập nhật',
+    address: '',
     citizenId: '',
     ethnicity: 'Kinh',
     job: '',
     insuranceCode: '',
-    email: user?.email || '',
+    email: '',
     relationship: 'Tôi',
     isMain: true,
   };
@@ -164,7 +168,7 @@ function emptyProfile(user) {
     name: '',
     phone: '',
     birthDate: '',
-    gender: 'Nam',
+    gender: '',
     province: '',
     district: '',
     ward: '',
@@ -173,7 +177,7 @@ function emptyProfile(user) {
     ethnicity: 'Kinh',
     job: '',
     insuranceCode: '',
-    email: user?.email || '',
+    email: '',
     relationship: 'Khác',
     isMain: false,
   };
@@ -370,6 +374,9 @@ function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
   const [editingSchedule, setEditingSchedule] = useState(false);
+  const [quickBookingOpen, setQuickBookingOpen] = useState(true);
+  const [patientSectionOpen, setPatientSectionOpen] = useState(true);
+  const [bookingInfoOpen, setBookingInfoOpen] = useState(true);
   const [showMoreSlots, setShowMoreSlots] = useState(false);
   const [profiles, setProfiles] = useState(() => [defaultProfile(user)]);
   const [selectedPatient, setSelectedPatient] = useState(() => defaultProfile(user));
@@ -383,7 +390,7 @@ function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
   const [appointment, setAppointment] = useState(null);
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [uploadError, setUploadError] = useState('');
-  const [expandedPatientId, setExpandedPatientId] = useState('');
+  const [expandedPatientId, setExpandedPatientId] = useState(null);
   const [showAddProfileMenu, setShowAddProfileMenu] = useState(false);
 
   const notice = cleanNoticeText(doctor.notice || doctor.unavailable_note || '');
@@ -396,29 +403,9 @@ function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
   }, []);
 
   useEffect(() => {
-    let isMounted = true;
-    setIsSlotLoading(true);
+    setIsSlotLoading(false);
     setSlotMessage('');
-
-    listDoctorSlots(doctor.id, { fromDate: rangeStart, days: DAYS_LOOKAHEAD })
-      .then((slots) => {
-        if (!isMounted) return;
-        const nextSlots = slots.length ? slots : fallbackSlots(doctor.id, rangeStart);
-        setRawSlots(nextSlots);
-        setSlotMessage(slots.length ? '' : 'Hiện chưa có lịch khám phù hợp từ hệ thống.');
-      })
-      .catch(() => {
-        if (!isMounted) return;
-        setRawSlots(fallbackSlots(doctor.id, rangeStart));
-        setSlotMessage('Đang dùng lịch tạm vì chưa tải được dữ liệu lịch khám.');
-      })
-      .finally(() => {
-        if (isMounted) setIsSlotLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
+    setRawSlots(fallbackSlots(doctor.id, rangeStart));
   }, [doctor.id, rangeStart]);
 
   useEffect(() => {
@@ -444,7 +431,11 @@ function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
         if (!isMounted) return;
         const nextProfiles = items.length ? items.map(mapApiProfile) : [defaultProfile(user)];
         setProfiles(nextProfiles);
-        setSelectedPatient((current) => nextProfiles.find((item) => item.id === current?.id) || nextProfiles[0]);
+        setSelectedPatient((current) => (
+          current?.id
+            ? nextProfiles.find((item) => item.id === current.id) || current
+            : nextProfiles[0]
+        ));
       })
       .catch(() => {});
     return () => {
@@ -461,7 +452,13 @@ function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
   const chooseSlot = (slot) => {
     setSelectedTime(slot);
     setEditingSchedule(false);
+    setPatientSectionOpen(true);
+    setExpandedPatientId(null);
     setMessage('');
+  };
+
+  const togglePatientSection = () => {
+    setPatientSectionOpen((current) => !current);
   };
 
   const changeProfileDraft = (event) => {
@@ -519,7 +516,7 @@ function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
         return exists ? current.map((item) => (item.id === nextProfile.id ? nextProfile : item)) : [nextProfile, ...current];
       });
       setSelectedPatient(nextProfile);
-      setExpandedPatientId(nextProfile.id);
+      setExpandedPatientId(patientProfileKey(nextProfile));
       setProfileMode('');
       setProfileDraft(null);
     } catch (error) {
@@ -640,14 +637,14 @@ function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
   const renderDatePicker = () => (
     <section className="quick-booking-block compact">
       <div className="booking-date-row compact">
-        <button className="round-arrow" type="button" disabled={rangeStart <= todayValue()} onClick={() => setRangeStart(addDays(rangeStart, -DAYS_PER_PAGE))}>‹</button>
+        <button className="round-arrow" type="button" disabled={rangeStart <= todayValue()} onClick={() => setRangeStart(addDays(rangeStart, -DAYS_PER_PAGE))}><i className="ui-chevron left" aria-hidden="true" /></button>
         {dates.map((date) => (
           <button className={selectedDate?.value === date.value ? 'active' : ''} key={date.value} type="button" onClick={() => chooseDate(date)}>
             <strong>{date.label}</strong>
             <span>{date.slots.length} khung giờ</span>
           </button>
         ))}
-        <button className="round-arrow" type="button" onClick={() => setRangeStart(addDays(rangeStart, DAYS_PER_PAGE))}>›</button>
+        <button className="round-arrow" type="button" onClick={() => setRangeStart(addDays(rangeStart, DAYS_PER_PAGE))}><i className="ui-chevron right" aria-hidden="true" /></button>
       </div>
       {isSlotLoading && <p className="slot-load-note">Đang tải lịch khám...</p>}
       {!isSlotLoading && slotMessage && <p className="slot-load-note">{slotMessage}</p>}
@@ -668,15 +665,17 @@ function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
   );
 
   const renderPatientCard = (profile) => {
-    const expanded = expandedPatientId === profile.id;
+    const profileKey = patientProfileKey(profile);
+    const expanded = expandedPatientId === profileKey;
+    const selected = patientProfileKey(selectedPatient) === profileKey;
 
     return (
-      <article className={selectedPatient?.id === profile.id ? 'doctor-patient-card selected' : 'doctor-patient-card'} key={profile.id}>
+      <article className={selected ? 'doctor-patient-card selected' : 'doctor-patient-card'} key={profileKey}>
         <button
           type="button"
           onClick={() => {
             setSelectedPatient(profile);
-            setExpandedPatientId(expanded ? '' : profile.id);
+            setExpandedPatientId(expanded ? null : profileKey);
           }}
         >
           <div className="patient-avatar-wrap">
@@ -687,9 +686,9 @@ function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
             <strong>{profile.name}</strong>
             <p>{profile.birthDate || profile.phone}</p>
           </div>
-          <span>{expanded ? '⌃' : '⌄'}</span>
+          <i className={`ui-chevron ${expanded ? 'up' : 'down'}`} aria-hidden="true" />
         </button>
-        {expanded && selectedPatient?.id === profile.id && (
+        {expanded && selected && (
           <div className="doctor-patient-detail">
             <div><span>Mã bệnh nhân</span><b>{ma_benh_nhan(profile)}</b></div>
             <div><span>Họ và tên</span><b>{profile.name}</b></div>
@@ -742,62 +741,80 @@ function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
         {renderNotice()}
         <div className="booking-flow-grid">
           <div className="booking-left-panel compact">
-            <button className="booking-collapse-title clickable" type="button" onClick={() => setEditingSchedule(true)}>
-              <span>1</span> Ngày và giờ khám <b>⌄</b>
+            <button
+              className="booking-collapse-title clickable"
+              type="button"
+              onClick={() => setEditingSchedule((current) => (selectedTime ? !current : true))}
+            >
+              <span>1</span> Ngày và giờ khám <i className={`ui-chevron ${!selectedTime || editingSchedule ? 'up' : 'down'}`} aria-hidden="true" />
             </button>
-            {(!selectedTime || editingSchedule) ? renderDatePicker() : (
-              <div className="selected-schedule-summary">
-                <div><strong>{selectedDate?.display}</strong><p>{selectedTime.label}</p></div>
-              </div>
-            )}
+            {(!selectedTime || editingSchedule) && renderDatePicker()}
 
             {selectedTime && !editingSchedule && (
               <>
-                <div className="booking-collapse-title"><span>2</span> Hồ sơ bệnh nhân <b>⌄</b></div>
-                <div className="doctor-patient-list">
-                  {profiles.map((profile) => renderPatientCard(profile))}
-                </div>
-                <div className="doctor-add-profile-wrap">
-                  <button className="doctor-add-profile" type="button" onClick={() => setShowAddProfileMenu((current) => !current)}>Thêm hồ sơ mới</button>
-                  {showAddProfileMenu && (
-                    <div className="doctor-add-profile-popover">
-                      <button type="button" onClick={openAddProfile}>
-                        <span>Chưa từng khám, tạo hồ sơ mới</span>
-                        <b>⊕</b>
-                      </button>
+                <button
+                  aria-expanded={patientSectionOpen}
+                  aria-controls="doctor-patient-section"
+                  className="booking-collapse-title clickable"
+                  type="button"
+                  onClick={togglePatientSection}
+                >
+                  <span>2</span> Hồ sơ bệnh nhân <i className={`ui-chevron ${patientSectionOpen ? 'up' : 'down'}`} aria-hidden="true" />
+                </button>
+                <div className="doctor-patient-section" hidden={!patientSectionOpen} id="doctor-patient-section">
+                    <div className="doctor-patient-list">
+                      {profiles.map((profile) => renderPatientCard(profile))}
                     </div>
-                  )}
+                    <div className="doctor-add-profile-wrap">
+                      <button className="doctor-add-profile" type="button" onClick={() => setShowAddProfileMenu((current) => !current)}>Thêm hồ sơ mới</button>
+                      {showAddProfileMenu && (
+                        <div className="doctor-add-profile-popover">
+                          <button type="button" onClick={openAddProfile}>
+                            <span>Chưa từng khám, tạo hồ sơ mới</span>
+                            <b>⊕</b>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <h3 className="optional-title">Thông tin bổ sung (không bắt buộc)</h3>
+                    <label className="booking-note">
+                      Ghi chú
+                      <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Triệu chứng, thuốc đang dùng, tiền sử, ..." />
+                    </label>
+                    <strong className="attachment-title">Tập tin đính kèm ({attachedFiles.length}/5)</strong>
+                    <label className="upload-box" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); addFiles(event.dataTransfer.files); }}>
+                      <input accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple type="file" onChange={(event) => addFiles(event.target.files)} />
+                      <span><strong>Chọn tập tin</strong> hoặc kéo thả vào đây</span>
+                      <small>.PNG, .JPG tối đa 15MB</small>
+                    </label>
+                    {uploadError && <p className="upload-error">{uploadError}</p>}
                 </div>
-                <h3 className="optional-title">Thông tin bổ sung (không bắt buộc)</h3>
-                <label className="booking-note">
-                  Ghi chú
-                  <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Triệu chứng, thuốc đang dùng, tiền sử, ..." />
-                </label>
-                <strong className="attachment-title">Tập tin đính kèm ({attachedFiles.length}/5)</strong>
-                <label className="upload-box" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); addFiles(event.dataTransfer.files); }}>
-                  <input accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple type="file" onChange={(event) => addFiles(event.target.files)} />
-                  <span><strong>Chọn tập tin</strong> hoặc kéo thả vào đây</span>
-                  <small>.PNG, .JPG tối đa 15MB</small>
-                </label>
-                {uploadError && <p className="upload-error">{uploadError}</p>}
               </>
             )}
           </div>
           <aside className="booking-side-card">
-            <h2>Thông tin đặt khám <span>⌃</span></h2>
-            {renderDoctorSummary()}
-            {selectedTime && selectedDate && (
-              <dl>
-                <dt>Ngày khám</dt><dd>{selectedDate.display}</dd>
-                <dt>Khung giờ</dt><dd>{selectedTime.label}</dd>
-                <dt>Bệnh nhân</dt><dd>{selectedPatient?.name || '--'}</dd>
-              </dl>
+            <h2>
+              <button className="section-toggle-button" type="button" onClick={() => setBookingInfoOpen((current) => !current)}>
+                Thông tin đặt khám <i className={`ui-chevron ${bookingInfoOpen ? 'up' : 'down'}`} aria-hidden="true" />
+              </button>
+            </h2>
+            {bookingInfoOpen && (
+              <>
+                {renderDoctorSummary()}
+                {selectedTime && selectedDate && (
+                  <dl>
+                    <dt>Ngày khám</dt><dd>{selectedDate.display}</dd>
+                    <dt>Khung giờ</dt><dd>{selectedTime.label}</dd>
+                    <dt>Bệnh nhân</dt><dd>{selectedPatient?.name || '--'}</dd>
+                  </dl>
+                )}
+                <button type="button" disabled={!selectedTime || editingSchedule || isLoading} onClick={handleConfirmBooking}>
+                  {isLoading ? 'Đang đặt lịch...' : 'Đặt lịch'}
+                </button>
+                <p>Bằng cách nhấn nút xác nhận, bạn đã đồng ý với các điều khoản và điều kiện đặt khám</p>
+                {message && <div className="booking-message">{message}</div>}
+              </>
             )}
-            <button type="button" disabled={!selectedTime || editingSchedule || isLoading} onClick={handleConfirmBooking}>
-              {isLoading ? 'Đang đặt lịch...' : 'Đặt lịch'}
-            </button>
-            <p>Bằng cách nhấn nút xác nhận, bạn đã đồng ý với các điều khoản và điều kiện đặt khám</p>
-            {message && <div className="booking-message">{message}</div>}
           </aside>
         </div>
         {profileMode && profileDraft && (
@@ -834,8 +851,12 @@ function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
         </div>
         {renderNotice()}
         <div className="quick-booking-area">
-          <h2>Đặt khám nhanh <span>⌃</span></h2>
-          {renderDatePicker()}
+          <h2>
+            <button className="section-toggle-button" type="button" onClick={() => setQuickBookingOpen((current) => !current)}>
+              Đặt khám nhanh <i className={`ui-chevron ${quickBookingOpen ? 'up' : 'down'}`} aria-hidden="true" />
+            </button>
+          </h2>
+          {quickBookingOpen && renderDatePicker()}
         </div>
         <div className="sticky-booking-bar">
           <p>Hỗ trợ đặt khám<br /><strong>1900-2805</strong></p>

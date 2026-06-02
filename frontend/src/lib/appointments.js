@@ -16,13 +16,37 @@ async function parseResponse(response, fallbackMessage) {
   return result.data;
 }
 
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value || '');
+}
+
+function stripLocalIds(value) {
+  if (Array.isArray(value)) return value.map(stripLocalIds);
+  if (!value || typeof value !== 'object') return value;
+
+  const next = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, stripLocalIds(item)]));
+  if ('id' in next && next.id && !isUuid(next.id)) {
+    delete next.id;
+  }
+  return next;
+}
+
 export async function createAppointment(user, payload) {
   const response = await fetch(`${apiBaseUrl}/api/appointments`, {
     method: 'POST',
     headers: await getAuthHeaders(user),
-    body: JSON.stringify(payload),
+    body: JSON.stringify(stripLocalIds(payload)),
   });
   return parseResponse(response, 'Khong the dat lich kham.');
+}
+
+export async function createPayPalOrder(user, appointmentId) {
+  const response = await fetch(`${apiBaseUrl}/api/payments/paypal/create-order`, {
+    method: 'POST',
+    headers: await getAuthHeaders(user),
+    body: JSON.stringify({ appointmentId }),
+  });
+  return parseResponse(response, 'Khong the tao thanh toan PayPal.');
 }
 
 export async function listDoctorSlots(doctorId, options = {}) {
@@ -85,7 +109,7 @@ export async function savePatientProfile(user, profile) {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method,
     headers: await getAuthHeaders(user),
-    body: JSON.stringify({ profile }),
+    body: JSON.stringify({ profile: stripLocalIds(profile) }),
   });
   return parseResponse(response, 'Khong the luu ho so benh nhan.');
 }

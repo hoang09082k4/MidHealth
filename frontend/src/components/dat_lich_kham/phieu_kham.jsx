@@ -10,16 +10,16 @@ import { cancelAppointment, listAppointments, savePatientProfile } from '../../l
 import { useReferenceData } from '../../lib/reference_data';
 
 function tao_ten_benh_nhan(user) {
-  return user?.displayName || user?.email?.split('@')[0] || 'Bệnh nhân';
+  return '';
 }
 
 function tao_ho_so_mac_dinh(appointment, user) {
   const patientProfile = appointment?.patientProfile || {};
   return {
-    fullName: patientProfile.fullName || patientProfile.name || appointment?.patientName || tao_ten_benh_nhan(user),
+    fullName: patientProfile.fullName || patientProfile.name || '',
     phone: patientProfile.phone || appointment?.phone || '',
     birthDate: patientProfile.birthDate || appointment?.birthDate || '',
-    gender: patientProfile.gender || appointment?.gender || 'Nam',
+    gender: patientProfile.gender || appointment?.gender || '',
     province: patientProfile.province || '',
     district: patientProfile.district || '',
     ward: patientProfile.ward || '',
@@ -29,7 +29,7 @@ function tao_ho_so_mac_dinh(appointment, user) {
     nationality: patientProfile.nationality || 'Việt Nam',
     job: patientProfile.job || patientProfile.occupation || '',
     insuranceCode: patientProfile.insuranceCode || patientProfile.healthInsuranceNumber || '',
-    email: patientProfile.email || user?.email || '',
+    email: patientProfile.email || '',
     relationship: patientProfile.relationship || 'Tôi',
   };
 }
@@ -38,15 +38,15 @@ function tao_ho_so_moi() {
   return {
     fullName: '',
     phone: '',
-    birthDate: '01/01/1990',
-    gender: 'Nam',
+    birthDate: '',
+    gender: '',
     province: '',
     district: '',
     ward: '',
     address: '',
     citizenId: '',
     ethnicity: 'Kinh',
-    nationality: 'Việt Nam',
+    nationality: '',
     job: '',
     insuranceCode: '',
     email: '',
@@ -191,7 +191,7 @@ function tao_dong_phieu_kham(appointment) {
 
   return {
     bookingRows: [
-      { label: 'Mã phiếu khám', value: appointment.appointmentCode },
+      { label: 'Mã phiếu khám điện tử', value: appointment.appointmentCode },
       { label: 'STT', value: appointment.number },
       { label: 'Dịch vụ', value: appointment.serviceName },
       { label: 'Cơ sở khám', value: appointment.hospitalName },
@@ -295,7 +295,7 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
   const [appointmentError, setAppointmentError] = useState('');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isAddingProfile, setIsAddingProfile] = useState(false);
-  const [profiles, setProfiles] = useState(() => [{ id: 'me', ...tao_ho_so_mac_dinh(appointment, user) }]);
+  const [profiles, setProfiles] = useState(() => [{ id: '', ...tao_ho_so_mac_dinh(appointment, user) }]);
   const [selectedProfileId, setSelectedProfileId] = useState('me');
   const [profileDraft, setProfileDraft] = useState(() => tao_ho_so_mac_dinh(appointment, user));
   const { addressData, ethnicGroups, occupations } = useReferenceData();
@@ -467,7 +467,7 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
         savedProfile = await savePatientProfile(user, profileDraft);
       }
     } catch (error) {
-      setProfileError(error.message || 'Không thể lưu hồ sơ bệnh nhân.');
+      setProfileError(error.message || 'Kh?ng th? l?u h? s? kh?m ?i?n t?.');
       return;
     }
 
@@ -531,7 +531,7 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
   const menu = [
     ['lich_kham', 'Lịch khám'],
     ['lich_su_thanh_toan', 'Lịch sử thanh toán'],
-    ['ho_so', 'Hồ sơ'],
+    ['ho_so', 'Hồ sơ khám điện tử'],
     ['tai_khoan', 'Tài khoản'],
   ];
 
@@ -641,10 +641,10 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
 
         {activeTab === 'ho_so' && (
           <>
-            <h2>Hồ sơ</h2>
+            <h2>Hồ sơ khám điện tử</h2>
             <div className={(isEditingProfile || isAddingProfile) ? 'profile-account-layout editing' : 'profile-account-layout'}>
               <div>
-                <input className="account-search" placeholder="Tìm nhanh hồ sơ" />
+                <input className="account-search" placeholder="T?m nhanh h? s? kh?m ?i?n t?" />
                 {profiles.map((item) => (
                   <button
                     className={item.id === selectedProfileId ? 'profile-mini-card active' : 'profile-mini-card'}
@@ -659,17 +659,17 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
                     <div className="patient-avatar">{lay_ten_tat(item.fullName)}</div>
                     <span>
                       {item.relationship === 'Tôi' && <em>Tôi</em>}
-                      <strong>{item.fullName || 'Hồ sơ mới'}</strong>
+                      <strong>{item.fullName || 'H? s? kh?m ?i?n t? m?i'}</strong>
                       <small>{item.birthDate}</small>
                     </span>
                   </button>
                 ))}
-                <button className="add-profile-button" type="button" onClick={openAddProfile}>Thêm hồ sơ</button>
+                <button className="add-profile-button" type="button" onClick={openAddProfile}>Th?m h? s? kh?m ?i?n t?</button>
               </div>
 
               {(isEditingProfile || isAddingProfile) ? (
                 <form className="profile-edit-card" onSubmit={submitProfile}>
-                  <h3>{isAddingProfile ? 'Thêm hồ sơ mới' : 'Điều chỉnh thông tin'}</h3>
+                  <h3>{isAddingProfile ? 'Th?m h? s? kh?m ?i?n t? m?i' : '?i?u ch?nh th?ng tin'}</h3>
                   <div className="profile-edit-divider" />
                   <ONhapHoSo label="Họ và tên" name="fullName" value={profileDraft.fullName} required placeholder="Họ và tên" onChange={updateProfileDraft} error={profileFieldErrors.fullName} />
                   <ONhapHoSo label="Số điện thoại" name="phone" value={profileDraft.phone} required placeholder="Số điện thoại" onChange={updateProfileDraft} error={profileFieldErrors.phone} />
@@ -727,7 +727,7 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
                   {profileError && <p className="profile-form-error">{profileError}</p>}
                   <div className="profile-edit-actions">
                     <button type="button" onClick={cancelEditProfile}>{isAddingProfile ? 'Thoát' : 'Hủy'}</button>
-                    <button type="submit">{isAddingProfile ? 'Thêm hồ sơ mới' : 'Cập nhật'}</button>
+                    <button type="submit">{isAddingProfile ? 'Th?m h? s? kh?m ?i?n t? m?i' : 'C?p nh?t'}</button>
                   </div>
                 </form>
               ) : (
@@ -736,7 +736,7 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
                     <div className="patient-avatar">{lay_ten_tat(patientName)}</div>
                     <span><strong>{patientName.toUpperCase()}</strong><small>Mã BN: {activeAppointment?.patientCode || appointment.patientCode}</small></span>
                   </div>
-                  <p className="profile-warning">Hoàn thiện thông tin để đặt khám và quản lý hồ sơ y tế được tốt hơn.</p>
+                  <p className="profile-warning">Ho?n thi?n th?ng tin ?? ??t kh?m v? qu?n l? h? s? kh?m ?i?n t? ???c t?t h?n.</p>
                   <HangThongTin label="Họ và tên" value={patientName} />
                   <HangThongTin label="Điện thoại" value={profile.phone} />
                   <HangThongTin label="Ngày sinh" value={profile.birthDate} />

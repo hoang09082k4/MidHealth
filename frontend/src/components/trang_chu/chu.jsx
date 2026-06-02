@@ -1,23 +1,19 @@
 ﻿import {
   articles,
-  editorialPolicies,
-  experts,
-  medicines,
   securityItems,
   trustItems,
 } from '../../data';
 import { fallbackCatalog } from '../../lib/catalog';
-import MucBaoMatFooter from './muc_bao_mat_footer';
-import MucChuyenGia from './muc_chuyen_gia';
-import MucTinTuong from './muc_tin_tuong';
-import MucTinYTe from '../tin_y_te/muc_tin_y_te';
+import MucBaoMatFooter from './bao_mat_footer';
+import MucTinTuong from './tin_tuong';
+import MucTinYTe from '../tin_y_te/tin_y_te';
 import TheBacSi from '../the_hien_thi/the_bac_si';
 import TheBenhVien from '../the_hien_thi/the_benh_vien';
 import TheChuyenKhoa from '../the_hien_thi/the_chuyen_khoa';
 import ThePhongKham from '../the_hien_thi/the_phong_kham';
 import TieuDeMuc from './tieu_de_muc';
 
-function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onBookClinic, onSelectSpecialty }) {
+function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onBookClinic, onSelectSpecialty, onOpenHealthNews }) {
   const { doctors, hospitals, clinics, specialties } = catalog;
 
   return (
@@ -45,14 +41,14 @@ function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onB
       </section>
 
       <section className="content-section" id="doctor">
-        <TieuDeMuc title="Đặt khám bác sĩ" subtitle="Phiếu khám kèm số thứ tự và thời gian của bạn được xác nhận." />
+        <TieuDeMuc title="Đặt khám bác sĩ" subtitle="Phiếu khám điện tử kèm số thứ tự và thời gian của bạn được xác nhận." />
         <div className="horizontal-list doctor-list">
           {doctors.map((doctor) => <TheBacSi doctor={doctor} key={doctor.name} onBook={onBookDoctor} />)}
         </div>
       </section>
 
       <section className="content-section">
-        <TieuDeMuc title="Đặt khám bệnh viện" subtitle="Đặt khám và thanh toán để có phiếu khám trước khi đi khám các bệnh viện kết nối chính thức với MidHealth." />
+        <TieuDeMuc title="Đặt khám bệnh viện" subtitle="Đặt khám và thanh toán để có phiếu khám điện tử trước khi đi khám các bệnh viện kết nối chính thức với MidHealth." />
         <div className="horizontal-list hospital-list">
           {hospitals.map((hospital) => <TheBenhVien hospital={hospital} key={hospital.name} onBook={onBookHospital} />)}
         </div>
@@ -66,8 +62,7 @@ function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onB
       </section>
 
       <TheChuyenKhoa specialties={specialties} onSelectSpecialty={onSelectSpecialty} />
-      <MucTinYTe medicines={medicines} />
-      <MucChuyenGia experts={experts} editorialPolicies={editorialPolicies} />
+      <MucTinYTe route={{ name: 'list', category: 'thuoc' }} onNavigate={onOpenHealthNews} />
       <MucTinTuong trustItems={trustItems} />
 
       <section className="booking-panel" id="consult">

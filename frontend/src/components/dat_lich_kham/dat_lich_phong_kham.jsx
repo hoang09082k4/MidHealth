@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './trang_phieu_kham';
-import { createAppointment, listAppointments, listClinicSlots, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './phieu_kham';
+import { createAppointment, listAppointments, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
 import { useReferenceData } from '../../lib/reference_data';
 import {
   chuan_hoa_bhyt,
@@ -79,6 +79,41 @@ function slot_chua_qua_gio(slot) {
   return String(slot.startTime).slice(0, 5) > gio_hien_tai();
 }
 
+function cong_phut(time, minutes) {
+  const [hour, minute] = String(time).split(':').map(Number);
+  const date = new Date(2000, 0, 1, hour, minute + minutes);
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function tao_lich_phong_kham_tinh(clinicId, monthDate) {
+  const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+  const times = ['07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '17:00', '17:30', '18:00', '18:30'];
+  const slots = [];
+
+  Array.from({ length: daysInMonth }, (_, index) => {
+    const date = new Date(monthDate.getFullYear(), monthDate.getMonth(), index + 1);
+    if (date.getDay() === 0) return;
+    const dateValue = gia_tri_ngay(date);
+    times.forEach((start) => {
+      const end = cong_phut(start, 30);
+      slots.push({
+        id: `static-clinic-${clinicId}-${dateValue}-${start}`,
+        clinicId,
+        date: dateValue,
+        startTime: start,
+        endTime: end,
+        label: `${start} - ${end}`,
+        session: start < '12:00' ? 'morning' : 'afternoon',
+        capacity: 4,
+        bookedCount: 0,
+        status: 'available',
+      });
+    });
+  });
+
+  return slots.filter(slot_chua_qua_gio);
+}
+
 function chuyen_ho_so_tu_api(profile) {
   return {
     id: profile.id,
@@ -101,12 +136,12 @@ function chuyen_ho_so_tu_api(profile) {
 
 function tao_ho_so_tu_tai_khoan(user) {
   return {
-    id: 'account',
-    name: user?.displayName || user?.email?.split('@')[0] || '',
+    id: '',
+    name: '',
     birthDate: '',
     phone: '',
     gender: '',
-    email: user?.email || '',
+    email: '',
     address: '',
   };
 }
@@ -116,9 +151,9 @@ function tao_ho_so_moi(user) {
     name: '',
     birthDate: '',
     phone: '',
-    gender: 'Nam',
+    gender: '',
     citizenId: '',
-    email: user?.email || '',
+    email: '',
     province: '',
     district: '',
     ward: '',
@@ -331,9 +366,9 @@ function LichPhongKham({ monthDate, selectedDate, slotDates, isLoading, error, o
   return (
     <div className="hospital-calendar clinic-calendar">
       <div className="hospital-calendar-head">
-        <button type="button" disabled={gia_tri_ngay(cong_thang(monthDate, -1)) < gia_tri_ngay(dau_thang())} onClick={() => onMonthChange(-1)}>‹</button>
+        <button type="button" disabled={gia_tri_ngay(cong_thang(monthDate, -1)) < gia_tri_ngay(dau_thang())} onClick={() => onMonthChange(-1)}><i className="ui-chevron left" aria-hidden="true" /></button>
         <strong>{ten_thang(monthDate)}</strong>
-        <button type="button" onClick={() => onMonthChange(1)}>›</button>
+        <button type="button" onClick={() => onMonthChange(1)}><i className="ui-chevron right" aria-hidden="true" /></button>
       </div>
       <div className="hospital-calendar-week">
         {['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ Nhật'].map((day) => <b key={day}>{day}</b>)}
@@ -646,7 +681,6 @@ function TrangDatLichPhongKham({ clinic, user, onBackHome }) {
     setSelectedSpecialty(null);
     setSelectedDate(null);
     setSelectedTime(null);
-    setSelectedPatient(null);
     setProfileModalMode(null);
     setProfileDraft(null);
     setProfileErrors({});
@@ -656,6 +690,12 @@ function TrangDatLichPhongKham({ clinic, user, onBackHome }) {
     setClinicSlots([]);
     setSlotError('');
   }, [clinic.id]);
+
+  useEffect(() => {
+    if (!selectedPatient && patientProfiles[0]) {
+      setSelectedPatient(patientProfiles[0]);
+    }
+  }, [patientProfiles, selectedPatient]);
 
   useEffect(() => {
     let isMounted = true;
@@ -672,7 +712,9 @@ function TrangDatLichPhongKham({ clinic, user, onBackHome }) {
       .then((profiles) => {
         if (!isMounted) return;
         const mapped = (profiles || []).map(chuyen_ho_so_tu_api).filter((profile) => profile.name);
-        setPatientProfiles(gop_ho_so(mapped.length ? mapped : (fallbackProfile.name ? [fallbackProfile] : [])));
+        const nextProfiles = gop_ho_so(mapped.length ? mapped : (fallbackProfile.name ? [fallbackProfile] : []));
+        setPatientProfiles(nextProfiles);
+        setSelectedPatient((current) => current || nextProfiles[0] || null);
       })
       .catch(() => {
         if (isMounted) setPatientProfiles(fallbackProfile.name ? [fallbackProfile] : []);
@@ -690,39 +732,17 @@ function TrangDatLichPhongKham({ clinic, user, onBackHome }) {
   }, [user]);
 
   useEffect(() => {
-    let isMounted = true;
     const readyForSlots = clinic.id && selectedService && (!specialtyOptions.length || selectedSpecialty);
     if (!readyForSlots) {
       setClinicSlots([]);
-      return () => {
-        isMounted = false;
-      };
+      return () => {};
     }
 
-    setIsLoadingSlots(true);
+    setIsLoadingSlots(false);
     setSlotError('');
-    const fromDate = gia_tri_ngay(calendarMonth);
-    const days = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
+    setClinicSlots(tao_lich_phong_kham_tinh(clinic.id, calendarMonth));
 
-    listClinicSlots(clinic.id, {
-      fromDate,
-      days,
-      serviceName: selectedService.name,
-      specialtyName: selectedSpecialty?.name,
-    })
-      .then((slots) => {
-        if (isMounted) setClinicSlots((slots || []).filter(slot_chua_qua_gio));
-      })
-      .catch((error) => {
-        if (isMounted) setSlotError(error.message || 'Không thể tải lịch khám phòng khám.');
-      })
-      .finally(() => {
-        if (isMounted) setIsLoadingSlots(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
+    return () => {};
   }, [clinic.id, selectedService, selectedSpecialty, specialtyOptions.length, calendarMonth]);
 
   const resetAfterStep = (stepKey) => {
@@ -730,20 +750,16 @@ function TrangDatLichPhongKham({ clinic, user, onBackHome }) {
       setSelectedSpecialty(null);
       setSelectedDate(null);
       setSelectedTime(null);
-      setSelectedPatient(null);
       setClinicSlots([]);
     }
     if (stepKey === 'specialty') {
       setSelectedDate(null);
       setSelectedTime(null);
-      setSelectedPatient(null);
       setClinicSlots([]);
     }
     if (stepKey === 'date') {
       setSelectedTime(null);
-      setSelectedPatient(null);
     }
-    if (stepKey === 'time') setSelectedPatient(null);
   };
 
   const chooseStep = (applyFn) => {
@@ -927,7 +943,7 @@ function TrangDatLichPhongKham({ clinic, user, onBackHome }) {
     return (
       <section className="hospital-booking-page clinic-booking-page">
         <div className="hospital-booking-title">
-          <button type="button" onClick={handleBack}>‹</button>
+          <button type="button" onClick={handleBack}><i className="ui-chevron left" aria-hidden="true" /></button>
           <h1>{clinic.name}</h1>
         </div>
         <div className="hospital-booking-grid">
@@ -1129,7 +1145,7 @@ function TrangDatLichPhongKham({ clinic, user, onBackHome }) {
         <article>
           <h2>Giới thiệu</h2>
           <div className={isIntroExpanded ? 'hospital-intro expanded' : 'hospital-intro'}><p>{clinic.intro}</p></div>
-          <button type="button" onClick={() => setIsIntroExpanded((value) => !value)}>{isIntroExpanded ? 'Thu gọn' : '...Xem thêm'}</button>
+          <button type="button" onClick={() => setIsIntroExpanded((value) => !value)}>{isIntroExpanded ? 'Thu gọn' : '...Xem thêm'} <i className={`ui-chevron ${isIntroExpanded ? 'up' : 'down'}`} aria-hidden="true" /></button>
         </article>
         <article>
           <h2>Giờ làm việc</h2>

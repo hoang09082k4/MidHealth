@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './trang_phieu_kham';
-import { createAppointment, listAppointments, listHospitalSlots, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './phieu_kham';
+import { createAppointment, createPayPalOrder, listAppointments, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
 import { useReferenceData } from '../../lib/reference_data';
+import { calculateAppointmentPrice, formatCurrency } from '../../lib/pricing';
 import {
   chuan_hoa_bhyt,
   chuan_hoa_cmnd_cccd,
@@ -179,19 +180,31 @@ function ManHinhDatLichThanhCong({ appointment, image, fallback, onViewTicket })
 }
 
 function lay_dich_vu_benh_vien(hospital) {
-  return (hospital.services || []).map((service) => ({
-    id: service.id,
-    name: service.name,
-    fee: service.fee || 'Thanh toán tại viện',
-    description: service.description || 'Dịch vụ khám tại bệnh viện',
-    specialtyId: service.specialtyId,
-  }));
+  return [
+    {
+      id: 'no-health-insurance',
+      name: 'Không BHYT',
+      fee: 'Thanh toán toàn bộ phí khám',
+      description: `Không áp dụng giảm trừ bảo hiểm y tế khi khám tại ${hospital.name}`,
+      specialtyId: null,
+      insuranceType: 'none',
+    },
+    {
+      id: 'standard-health-insurance',
+      name: 'BHYT thường',
+      fee: 'Áp dụng mức quỹ BHYT chi trả 80%',
+      description: `Áp dụng cho dịch vụ khám tại ${hospital.name}`,
+      specialtyId: null,
+      insuranceType: 'standard',
+    },
+  ];
 }
 
 function lay_chuyen_khoa_benh_vien(hospital) {
   return (hospital.specialties || []).map((specialty) => ({
     name: specialty,
     description: `Khám và tư vấn chuyên khoa ${specialty.toLowerCase()} tại ${hospital.name}`,
+    price: calculateAppointmentPrice(specialty, false).originalAmount,
   }));
 }
 
@@ -216,6 +229,41 @@ function slot_con_hieu_luc(slot) {
   if (slot.date < todayValue) return false;
   if (slot.date > todayValue) return true;
   return String(slot.startTime).slice(0, 5) > gio_hien_tai();
+}
+
+function cong_phut(time, minutes) {
+  const [hour, minute] = String(time).split(':').map(Number);
+  const date = new Date(2000, 0, 1, hour, minute + minutes);
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function tao_lich_benh_vien_tinh(hospitalId, monthDate) {
+  const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+  const times = ['07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '13:00', '13:30', '14:00', '14:30', '15:00'];
+  const slots = [];
+
+  Array.from({ length: daysInMonth }, (_, index) => {
+    const date = new Date(monthDate.getFullYear(), monthDate.getMonth(), index + 1);
+    if (date.getDay() === 0) return;
+    const dateValue = gia_tri_ngay(date);
+    times.forEach((start) => {
+      const end = cong_phut(start, 30);
+      slots.push({
+        id: `static-hospital-${hospitalId}-${dateValue}-${start}`,
+        hospitalId,
+        date: dateValue,
+        startTime: start,
+        endTime: end,
+        label: `${start} - ${end}`,
+        session: start < '12:00' ? 'morning' : 'afternoon',
+        capacity: 8,
+        bookedCount: 0,
+        status: 'available',
+      });
+    });
+  });
+
+  return slots.filter(slot_con_hieu_luc);
 }
 
 function lich_hen_dang_hieu_luc(appointment) {
@@ -259,12 +307,12 @@ const QUAN_HE_GIAM_HO = ['Cha', 'Mẹ', 'Con', 'Chồng', 'Vợ', 'Khác'];
 
 function tao_ho_so_mac_dinh(user) {
   return {
-    name: user?.displayName || '',
+    name: '',
     birthDate: '',
     phone: '',
-    gender: 'Nam',
+    gender: '',
     citizenId: '',
-    email: user?.email || '',
+    email: '',
     province: '',
     district: '',
     ward: '',
@@ -287,9 +335,9 @@ function tao_ho_so_moi(user) {
     name: '',
     birthDate: '',
     phone: '',
-    gender: 'Nam',
+    gender: '',
     citizenId: '',
-    email: user?.email || '',
+    email: '',
     province: '',
     district: '',
     ward: '',
@@ -526,7 +574,7 @@ function Field({ label, name, value, required, placeholder, onChange, error }) {
   return (
     <label className={error ? 'hospital-profile-field has-error' : 'hospital-profile-field'}>
       <span>{label}{required && <b> *</b>}</span>
-      <input name={name} value={value} placeholder={placeholder} onChange={onChange} />
+      <input name={name} value={value || ''} placeholder={placeholder || label} onChange={onChange} />
       {error && <small>{error}</small>}
     </label>
   );
@@ -536,8 +584,8 @@ function SelectField({ label, name, value, children, placeholder, onChange, erro
   return (
     <label className={error ? 'hospital-profile-field has-error' : 'hospital-profile-field'}>
       <span>{label}</span>
-      <select name={name} value={value} onChange={onChange}>
-        <option value="">{placeholder}</option>
+      <select name={name} value={value || ''} onChange={onChange}>
+        <option value="">{placeholder || label}</option>
         {children}
       </select>
       {error && <small>{error}</small>}
@@ -588,7 +636,7 @@ function ModalHoSo({ mode, profile, errors = {}, canSave, onClose, onEdit, onCha
           <form className="hospital-profile-form" onSubmit={onSave}>
             {!isAdding && <div className="hospital-profile-camera">
               <div>{lay_ten_tat(profile.name)}</div>
-              <span>ðŸ“·</span>
+              <span>📷</span>
             </div>}
             <Field label="Họ và tên" name="name" value={profile.name} required placeholder="Họ và tên" onChange={onChange} error={errors.name} />
             <Field label="Số điện thoại" name="phone" value={profile.phone} required placeholder="Số điện thoại" onChange={onChange} error={errors.phone} />
@@ -603,13 +651,13 @@ function ModalHoSo({ mode, profile, errors = {}, canSave, onClose, onEdit, onCha
               ))}
               {errors.gender && <small>{errors.gender}</small>}
             </div>
-            <SelectField label="Tỉnh / thành phố" name="province" value={profile.province} placeholder="Chọn tỉnh / thành phố" onChange={onChange}>
+            <SelectField label="Tỉnh / thành phố" name="province" value={profile.province} placeholder="Chọn tỉnh / thành phố" onChange={onChange} error={errors.province}>
               {addressData.map((province) => <option key={province.name}>{province.name}</option>)}
             </SelectField>
-            <SelectField label="Quận / huyện" name="district" value={profile.district} placeholder="Chọn quận / huyện" onChange={onChange}>
+            <SelectField label="Quận / huyện" name="district" value={profile.district} placeholder="Chọn quận / huyện" onChange={onChange} error={errors.district}>
               {(selectedProvince?.districts || []).map((district) => <option key={district.name}>{district.name}</option>)}
             </SelectField>
-            <SelectField label="Phường / xã" name="ward" value={profile.ward} placeholder="Chọn phường / xã" onChange={onChange}>
+            <SelectField label="Phường / xã" name="ward" value={profile.ward} placeholder="Chọn phường / xã" onChange={onChange} error={errors.ward}>
               {(selectedDistrict?.wards || []).map((ward) => <option key={ward}>{ward}</option>)}
             </SelectField>
             <Field label="Địa chỉ cụ thể" name="address" value={profile.address} required placeholder="Số nhà, tên đường" onChange={onChange} error={errors.address} />
@@ -691,11 +739,19 @@ function BuocDatKham({ step, unlockedStep, onStepClick }) {
 }
 
 function ThongTinDatKham({ service, specialty, date, time, patient, note = '', attachments = [] }) {
+  const hasStandardInsurance = service?.name === 'BHYT thường';
+  const price = calculateAppointmentPrice(specialty?.name, hasStandardInsurance);
+
   return (
     <aside className="hospital-booking-summary detailed">
       <h2>Thông tin đặt khám</h2>
       <div><p>Dịch vụ</p><strong>{service?.name || '--'}</strong></div>
       <div><p>Chuyên khoa</p><strong>{specialty?.name || '--'}</strong></div>
+      <div>
+        <p>Chi phí</p>
+        <strong>{specialty ? formatCurrency(price.finalAmount) : '--'}</strong>
+        {specialty && hasStandardInsurance && <strong>Đã giảm {formatCurrency(price.insuranceDiscount)} từ BHYT thường</strong>}
+      </div>
       <div>
         <p>Ngày và giờ khám</p>
         <strong>{date ? date.display : '--'}</strong>
@@ -749,9 +805,9 @@ function LichThang({ monthDate, selectedDate, slotDates, bookedDateMap, isLoadin
   return (
     <div className="hospital-calendar">
       <div className="hospital-calendar-head">
-        <button type="button" disabled={gia_tri_ngay(cong_thang(monthDate, -1)) < gia_tri_ngay(dau_thang())} onClick={() => onMonthChange(-1)}>←</button>
+        <button type="button" disabled={gia_tri_ngay(cong_thang(monthDate, -1)) < gia_tri_ngay(dau_thang())} onClick={() => onMonthChange(-1)}>â†</button>
         <strong>{ten_thang(monthDate)}</strong>
-        <button type="button" onClick={() => onMonthChange(1)}>→</button>
+        <button type="button" onClick={() => onMonthChange(1)}>â†’</button>
       </div>
       <div className="hospital-calendar-week">
         {['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ Nhật'].map((dayName) => <b key={dayName}>{dayName}</b>)}
@@ -796,7 +852,11 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
   const [unlockedStep, setUnlockedStep] = useState(1);
   const serviceOptions = useMemo(() => lay_dich_vu_benh_vien(hospital), [hospital]);
   const specialtyOptions = useMemo(() => lay_chuyen_khoa_benh_vien(hospital), [hospital]);
-  const [selectedService, setSelectedService] = useState(null);
+  const [insuranceChoice, setInsuranceChoice] = useState(null);
+  const selectedService = useMemo(() => (
+    serviceOptions.find((service) => service.insuranceType === insuranceChoice) || null
+  ), [insuranceChoice, serviceOptions]);
+  const hasStandardInsurance = insuranceChoice === 'standard';
   const [selectedSpecialty, setSelectedSpecialty] = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
@@ -883,6 +943,10 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
 
   const morningSlots = useMemo(() => slotsForSelectedDate.filter((slot) => slot.session === 'morning'), [slotsForSelectedDate]);
   const afternoonSlots = useMemo(() => slotsForSelectedDate.filter((slot) => slot.session !== 'morning'), [slotsForSelectedDate]);
+  const activePatient = selectedPatient || patientProfile;
+  const activePatientMissingFields = useMemo(() => (
+    activePatient ? danh_sach_thieu_ho_so(activePatient, hospital, selectedService) : []
+  ), [activePatient, hospital, selectedService]);
   const searchableProfiles = useMemo(() => {
     const keyword = profileSearchTerm.trim().toLowerCase();
     return gop_ho_so([patientProfile, ...existingProfiles])
@@ -901,8 +965,11 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
       && profileDraft.phone.length === 10
       && kiem_tra_ngay_sinh(profileDraft.birthDate)
       && profileDraft.gender
+      && profileDraft.province
+      && profileDraft.district
+      && profileDraft.ward
       && profileDraft.address.trim()
-      && (!profileDraft.citizenId || [9, 12].includes(profileDraft.citizenId.length))
+      && [9, 12].includes(profileDraft.citizenId.length)
       && (!profileDraft.insuranceCode || kiem_tra_bhyt(profileDraft.insuranceCode))
       && (!profileDraft.email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profileDraft.email));
   }, [profileDraft]);
@@ -922,7 +989,7 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
   useEffect(() => {
     setStep(1);
     setUnlockedStep(1);
-    setSelectedService(null);
+    setInsuranceChoice(null);
     setSelectedSpecialty(null);
     setSelectedDate(null);
     setSelectedTime(null);
@@ -935,6 +1002,12 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
     setHospitalSlots([]);
     setSlotError('');
   }, [hospital.name, serviceOptions, specialtyOptions]);
+
+  useEffect(() => {
+    if (!selectedPatient && patientProfile?.name) {
+      setSelectedPatient(patientProfile);
+    }
+  }, [patientProfile, selectedPatient]);
 
   useEffect(() => {
     let isMounted = true;
@@ -950,7 +1023,11 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
         if (!isMounted) return;
         const normalizedProfiles = gop_ho_so([...profiles.map(chuyen_ho_so_tu_api), ...localProfiles]);
         setExistingProfiles(normalizedProfiles);
-        if (normalizedProfiles[0]) setPatientProfile(normalizedProfiles[0]);
+        if (profiles[0]) {
+          const savedProfile = chuyen_ho_so_tu_api(profiles[0]);
+          setPatientProfile(savedProfile);
+          setSelectedPatient((current) => current || savedProfile);
+        }
       })
       .catch(() => {
         if (isMounted) setExistingProfiles(localProfiles);
@@ -988,56 +1065,27 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
   }, [user]);
 
   useEffect(() => {
-    let isMounted = true;
     if (!hospital.id || !selectedService || !selectedSpecialty) return () => {
-      isMounted = false;
+      setHospitalSlots([]);
     };
 
-    const fromDate = gia_tri_ngay(calendarMonth);
-    setIsLoadingSlots(true);
+    setIsLoadingSlots(false);
     setSlotError('');
-    listHospitalSlots(hospital.id, {
-      fromDate,
-      days: 42,
-      serviceName: selectedService.name,
-      specialtyName: selectedSpecialty.name,
-    })
-      .then((slots) => {
-        if (!isMounted) return;
-        const usableSlots = (slots || []).filter(slot_con_hieu_luc);
-        setHospitalSlots(usableSlots);
-        const firstAvailable = usableSlots.find(slot_con_hieu_luc);
-        if (firstAvailable) {
-          const availableMonth = dau_thang(new Date(`${firstAvailable.date}T00:00:00`));
-          if (gia_tri_ngay(availableMonth) !== gia_tri_ngay(calendarMonth)) {
-            setCalendarMonth(availableMonth);
-          }
-        }
-        setSelectedDate((current) => {
-          if (current && usableSlots.some((slot) => slot.date === current.value && slot_con_hieu_luc(slot))) return current;
-          return firstAvailable ? {
-            value: firstAvailable.date,
-            day: Number(String(firstAvailable.date).slice(-2)),
-            display: hien_thi_ngay(firstAvailable.date),
-            label: `Ngày khám ${hien_thi_ngay(firstAvailable.date)}`,
-          } : null;
-        });
-        setSelectedTime(null);
-      })
-      .catch((error) => {
-        if (!isMounted) return;
-        setHospitalSlots([]);
-        setSelectedDate(null);
-        setSelectedTime(null);
-        setSlotError(error.message || 'Không thể tải lịch khám bệnh viện.');
-      })
-      .finally(() => {
-        if (isMounted) setIsLoadingSlots(false);
-      });
+    const usableSlots = tao_lich_benh_vien_tinh(hospital.id, calendarMonth);
+    setHospitalSlots(usableSlots);
+    const firstAvailable = usableSlots.find(slot_con_hieu_luc);
+    setSelectedDate((current) => {
+      if (current && usableSlots.some((slot) => slot.date === current.value && slot_con_hieu_luc(slot))) return current;
+      return firstAvailable ? {
+        value: firstAvailable.date,
+        day: Number(String(firstAvailable.date).slice(-2)),
+        display: hien_thi_ngay(firstAvailable.date),
+        label: `Ngày khám ${hien_thi_ngay(firstAvailable.date)}`,
+      } : null;
+    });
+    setSelectedTime(null);
 
-    return () => {
-      isMounted = false;
-    };
+    return () => {};
   }, [hospital.id, selectedService, selectedSpecialty, calendarMonth]);
 
   useEffect(() => {
@@ -1058,18 +1106,14 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
       setSelectedSpecialty(null);
       setSelectedDate(null);
       setSelectedTime(null);
-      setSelectedPatient(null);
     }
     if (fromStep <= 2) {
       setSelectedDate(null);
       setSelectedTime(null);
-      setSelectedPatient(null);
     }
     if (fromStep <= 3) {
       setSelectedTime(null);
-      setSelectedPatient(null);
     }
-    if (fromStep <= 4) setSelectedPatient(null);
     setNote('');
     clearAttachedFiles();
   };
@@ -1109,8 +1153,8 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
     setAttachedFiles([]);
   };
 
-  const openProfileModal = (mode = 'view') => {
-    setProfileDraft(mode === 'add' ? tao_ho_so_moi(user) : { ...patientProfile });
+  const openProfileModal = (mode = 'view', profile = activePatient) => {
+    setProfileDraft(mode === 'add' ? tao_ho_so_moi(user) : { ...(profile || patientProfile) });
     setProfileErrors({});
     setProfileModalMode(mode);
   };
@@ -1172,8 +1216,11 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
     if (profile.phone.length !== 10) errors.phone = 'Vui lòng nhập số điện thoại 10 số';
     if (!kiem_tra_ngay_sinh(profile.birthDate)) errors.birthDate = 'Vui lòng nhập ngày sinh đúng dd/mm/yyyy';
     if (!profile.gender) errors.gender = 'Vui lòng chọn giới tính';
+    if (!profile.province) errors.province = 'Vui lòng chọn tỉnh / thành phố';
+    if (!profile.district) errors.district = 'Vui lòng chọn quận / huyện';
+    if (!profile.ward) errors.ward = 'Vui lòng chọn phường / xã';
     if (!profile.address.trim()) errors.address = 'Vui lòng nhập địa chỉ cụ thể';
-    if (profile.citizenId && ![9, 12].includes(profile.citizenId.length)) errors.citizenId = 'CMND/CCCD phải gồm 9 hoặc 12 số';
+    if (!profile.citizenId || ![9, 12].includes(profile.citizenId.length)) errors.citizenId = 'Vui lòng nhập CMND/CCCD gồm 9 hoặc 12 số';
     if (profile.insuranceCode && !kiem_tra_bhyt(profile.insuranceCode)) errors.insuranceCode = 'Mã BHYT chưa đúng định dạng';
     if (profile.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.email)) errors.email = 'Email chưa đúng định dạng';
 
@@ -1293,6 +1340,7 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
         specialtyName: selectedSpecialty.name,
         serviceName: selectedService.name,
         serviceId: selectedService.id,
+        hasStandardInsurance,
         address: hospital.address,
         dateDisplay: selectedDate.display,
         dateValue: selectedDate.value,
@@ -1312,6 +1360,11 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
       setAppointment(nextAppointment);
       luu_lich_kham(nextAppointment);
       setBookedAppointments((current) => [nextAppointment, ...current]);
+      const paymentOrder = await createPayPalOrder(user, nextAppointment.id);
+      if (paymentOrder.approvalUrl) {
+        window.location.assign(paymentOrder.approvalUrl);
+        return;
+      }
       setScreen('success');
     } catch (error) {
       setWarning(error.message || 'Không thể xác nhận đặt khám. Vui lòng thử lại.');
@@ -1395,7 +1448,7 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
     return (
       <section className="hospital-booking-page">
         <div className="hospital-booking-title">
-          <button type="button" onClick={handleBack}>←</button>
+          <button type="button" onClick={handleBack}>â†</button>
           <h1>{hospital.name}</h1>
         </div>
         <div className="hospital-booking-grid">
@@ -1405,20 +1458,22 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
               {step === 1 && (
                 <>
                   <h2>Chọn dịch vụ...</h2>
-                  {selectedService && (
-                    <div className="hospital-fee-note">⚠ Lưu ý: Phí đăng kí dịch vụ: {selectedService.fee} ({selectedService.description})</div>
-                  )}
-                  <div className="hospital-option-list">
-                    {serviceOptions.length > 0 ? serviceOptions.map((service) => (
+                  <div className="hospital-fee-note">BHYT thường được tính theo mức quỹ BHYT chi trả 80%, người bệnh thanh toán 20% phí khám chuyên khoa.</div>
+                  <div className="hospital-insurance-list">
+                    {serviceOptions.map((service) => (
                       <button
-                        className={selectedService?.name === service.name ? 'hospital-option-card selected' : 'hospital-option-card'}
-                        key={service.name}
+                        className={selectedService?.id === service.id ? 'hospital-insurance-check selected' : 'hospital-insurance-check'}
+                        key={service.id}
                         type="button"
-                        onClick={() => chooseWithResetConfirm(1, selectedService?.name !== service.name, () => setSelectedService(service))}
+                        onClick={() => chooseWithResetConfirm(1, selectedService?.id !== service.id, () => setInsuranceChoice(service.insuranceType))}
                       >
-                        <span><strong>{service.name}</strong><small>{service.description}</small></span><i />
+                        <span>
+                          <strong>{service.name}</strong>
+                          <small>{service.fee}</small>
+                        </span>
+                        <i />
                       </button>
-                    )) : <p className="hospital-empty-options">Bệnh viện này chưa có dịch vụ đặt khám trên hệ thống.</p>}
+                    ))}
                   </div>
                 </>
               )}
@@ -1429,7 +1484,9 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
                   <div className="hospital-option-list">
                     {specialtyOptions.length > 0 ? specialtyOptions.map((specialty) => (
                       <button className={selectedSpecialty?.name === specialty.name ? 'hospital-option-card selected' : 'hospital-option-card'} key={specialty.name} type="button" onClick={() => chooseWithResetConfirm(2, selectedSpecialty?.name !== specialty.name, () => setSelectedSpecialty(specialty))}>
-                        <span><strong>{specialty.name}</strong><small>{specialty.description}</small></span><i />
+                        <span><strong>{specialty.name}</strong><small>{specialty.description}</small></span>
+                        <b className="hospital-option-price">{formatCurrency(calculateAppointmentPrice(specialty.name, hasStandardInsurance).finalAmount)}</b>
+                        <i />
                       </button>
                     )) : <p className="hospital-empty-options">Bệnh viện này chưa có chuyên khoa đặt khám trên hệ thống.</p>}
                   </div>
@@ -1506,22 +1563,31 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
               {step === 5 && (
                 <>
                   <h2>Chọn hồ sơ cần khám...</h2>
-                  <button className={selectedPatient ? 'hospital-patient-card selected' : 'hospital-patient-card'} type="button" onClick={() => setSelectedPatient(patientProfile)}>
-                    <div className="hospital-patient-avatar">{lay_ten_tat(patientProfile.name)}</div>
+                  <button
+                    className={[
+                      selectedPatient ? 'hospital-patient-card selected' : 'hospital-patient-card',
+                      activePatientMissingFields.length > 0 ? 'has-warning' : '',
+                    ].filter(Boolean).join(' ')}
+                    type="button"
+                    onClick={() => setSelectedPatient(activePatient)}
+                  >
+                    <div className="hospital-patient-avatar">{lay_ten_tat(activePatient.name)}</div>
                     <div>
-                      <h3>{patientProfile.name || 'Chưa có hồ sơ bệnh nhân'}</h3>
-                      <p>Ngày sinh: <b>{patientProfile.birthDate || '--'}</b></p>
-                      <p>Số điện thoại: <b>{patientProfile.phone || '--'}</b></p>
-                      <small>Chính</small>
-                      <span role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); openProfileModal('view'); }}>Xem chi tiết hồ sơ</span>
+                      <h3>{activePatient.name || 'Chưa có hồ sơ bệnh nhân'}</h3>
+                      <p>Ngày sinh: <b>{activePatient.birthDate || '--'}</b></p>
+                      <p>Số điện thoại: <b>{activePatient.phone || '--'}</b></p>
+                      <small className={activePatientMissingFields.length > 0 ? 'warning' : ''}>
+                        {activePatientMissingFields.length > 0 ? 'Cần cập nhật' : 'Chính'}
+                      </small>
+                      <span role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); openProfileModal('view', activePatient); }}>Xem chi tiết hồ sơ</span>
                     </div>
                     <i />
                   </button>
 
-                  {selectedPatient && danh_sach_thieu_ho_so(selectedPatient, hospital, selectedService).length > 0 && (
+                  {selectedPatient && activePatientMissingFields.length > 0 && (
                     <div className="hospital-missing-profile">
-                      Hồ sơ cần bổ sung: {danh_sach_thieu_ho_so(selectedPatient, hospital, selectedService).join(', ')}.
-                      <button type="button" onClick={() => openProfileModal('edit')}>Cập nhật ngay</button>
+                      <span>Vui lòng nhập đầy đủ thông tin trong hồ sơ. Còn thiếu: {activePatientMissingFields.join(', ')}.</span>
+                      <button type="button" onClick={() => openProfileModal('edit', activePatient)}>Cập nhật ngay</button>
                     </div>
                   )}
 
@@ -1572,7 +1638,7 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
                         handleFiles(event.dataTransfer.files);
                       }}
                     >
-                      <span>▧</span>
+                      <span>â–§</span>
                       <strong>{attachedFiles.length >= MAX_ATTACHMENT_COUNT ? 'Đã đủ 5 ảnh' : 'Chọn tập tin'}</strong>
                       <em>hoặc kéo & thả tối đa {MAX_ATTACHMENT_COUNT} ảnh</em>
                       <small>Size thấp hơn 15MB, định dạng file png, jpg.</small>
@@ -1608,7 +1674,7 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
             </div>
             <footer>
               <button className={canGoPreviousStep ? 'hospital-back-button active' : 'hospital-back-button'} type="button" onClick={handleBack}>Quay lại</button>
-              <button type="button" disabled={!canContinue || isSubmitting} onClick={handleNext}>{step === 5 ? (isSubmitting ? 'Đang đặt khám...' : 'Xác nhận đặt khám') : 'Tiếp tục'}</button>
+              <button type="button" disabled={!canContinue || isSubmitting} onClick={handleNext}>{step === 5 ? (isSubmitting ? 'Đang tạo thanh toán...' : 'Xác nhận và thanh toán PayPal') : 'Tiếp tục'}</button>
             </footer>
           </article>
 
@@ -1674,7 +1740,7 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
           <img src={hospitalImages[1].src} alt={hospitalImages[1].alt} />
         </button>
         <button className="gallery-placeholder" type="button" onClick={() => setGalleryIndex(0)}>Y</button>
-        <button className="gallery-count" type="button" onClick={() => setGalleryIndex(0)}>ðŸ“· {hospitalImages.length}</button>
+        <button className="gallery-count" type="button" onClick={() => setGalleryIndex(0)}>📷 {hospitalImages.length}</button>
       </div>
       <button className="hospital-detail-book" type="button" onClick={() => setScreen('booking')}>Đặt khám ngay</button>
       <section className="hospital-info-grid" id="hospital-info">
@@ -1691,6 +1757,7 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
           </div>
           <button type="button" onClick={() => setIsIntroExpanded((value) => !value)}>
             {isIntroExpanded ? 'Thu gọn' : '...Xem thêm'}
+            <i className={`ui-chevron ${isIntroExpanded ? 'up' : 'down'}`} aria-hidden="true" />
           </button>
         </article>
         <article>

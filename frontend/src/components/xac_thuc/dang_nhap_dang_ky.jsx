@@ -58,7 +58,7 @@ function lay_thong_bao_loi(error) {
 }
 
 function CacBuocDangKy({ step }) {
-  const steps = ['1.Xác thực', '2.Mật khẩu', '3.Hồ sơ điện tử'];
+  const steps = ['1.X?c th?c', '2.M?t kh?u', '3.H? s? kh?m ?i?n t?'];
 
   return (
     <div className="signup-steps">
@@ -335,7 +335,7 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
 
         {signupStep === 2 && (
           <div className="signup-step-content signup-password-step">
-            <p>Nhập mật khẩu gồm tối thiểu 6 ký tự dùng để bảo vệ hồ sơ sức khỏe của bạn và đăng nhập những lần sau</p>
+            <p>Nh?p m?t kh?u g?m t?i thi?u 6 k? t? d?ng ?? b?o v? h? s? kh?m ?i?n t? c?a b?n v? ??ng nh?p nh?ng l?n sau</p>
             <label>
               Mật khẩu
               <input
@@ -356,10 +356,10 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
 
         {signupStep === 3 && (
           <div className="signup-profile-step">
-            <p>Tạo hồ sơ điện tử đầy đủ thông tin sẽ hỗ trợ việc khám chữa bệnh của bạn tốt hơn.</p>
+            <p>T?o h? s? kh?m ?i?n t? ??y ?? th?ng tin s? h? tr? vi?c kh?m ch?a b?nh c?a b?n t?t h?n.</p>
             <div className="profile-form-grid">
               <div>
-                <h3>Thông tin hồ sơ</h3>
+                <h3>Th?ng tin h? s? kh?m ?i?n t?</h3>
                 <label>Họ và tên <span>*</span><input value={form.profile.fullName} onChange={(event) => cap_nhat_ho_so('fullName', event.target.value)} placeholder="Họ và tên" required /></label>
                 <label>Số điện thoại <span>*</span><input value={form.profile.phone} onChange={(event) => cap_nhat_ho_so('phone', event.target.value)} placeholder="Số điện thoại" required /></label>
                 <label>Ngày sinh <span>*</span><input type="date" value={form.profile.dateOfBirth} onChange={(event) => cap_nhat_ho_so('dateOfBirth', event.target.value)} required /></label>

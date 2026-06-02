@@ -35,7 +35,7 @@ function TheChuyenKhoa({ specialties = [], onSelectSpecialty }) {
       {hasMore && (
         <button className="specialty-toggle" type="button" onClick={() => setIsExpanded((current) => !current)}>
           {isExpanded ? 'Thu gọn' : 'Xem thêm'}
-          <span aria-hidden="true">{isExpanded ? '⌃' : '→'}</span>
+          <i className={`ui-chevron ${isExpanded ? 'up' : 'right'}`} aria-hidden="true" />
         </button>
       )}
     </section>
