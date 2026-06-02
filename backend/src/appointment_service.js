@@ -1,4 +1,5 @@
 import { hasSupabaseConfig, supabase } from './supabase.js';
+import { calculateAppointmentPrice } from './pricing.js';
 
 function clean(value) {
   return typeof value === 'string' ? value.trim() : value;
@@ -192,9 +193,10 @@ export async function saveMedicalProfile(firebaseUser, payload = {}) {
       return { ok: false, status: 400, data: { message: 'Thiếu họ tên, số điện thoại hoặc ngày sinh.' } };
     }
 
+    const profileId = isUuid(profile.id) ? profile.id : null;
     const query = supabase.from('patient_medical_profiles');
-    const { data, error } = profile.id
-      ? await query.update(row).eq('id', profile.id).eq('owner_profile_id', owner.id).select().single()
+    const { data, error } = profileId
+      ? await query.update(row).eq('id', profileId).eq('owner_profile_id', owner.id).select().single()
       : await query.insert(row).select().single();
 
     if (error) throw error;
@@ -214,7 +216,7 @@ export async function saveMedicalProfile(firebaseUser, payload = {}) {
       if (guardians.length) await supabase.from('patient_guardians').insert(guardians);
     }
 
-    return { ok: true, status: profile.id ? 200 : 201, data };
+    return { ok: true, status: profileId ? 200 : 201, data };
   } catch (error) {
     return { ok: false, status: 500, data: { message: error.message } };
   }
@@ -834,6 +836,12 @@ function mapAppointmentResponse(appointment, ticket, input = {}) {
     } : null),
     note: appointment.note || '',
     attachments,
+    insuranceUsed: Boolean(appointment.insurance_used ?? input.insuranceUsed),
+    insuranceType: appointment.insurance_type || input.insuranceType || '',
+    originalAmount: Number(appointment.original_amount ?? input.originalAmount ?? 0),
+    insuranceDiscount: Number(appointment.insurance_discount ?? input.insuranceDiscount ?? 0),
+    finalAmount: Number(appointment.final_amount ?? input.finalAmount ?? 0),
+    paymentStatus: appointment.payment_status || input.paymentStatus || 'unpaid',
   };
 }
 
@@ -859,6 +867,11 @@ export async function createAppointment(firebaseUser, payload = {}) {
     const appointmentTime = clean(payload.time || payload.appointmentTime);
     const parsedAppointmentTime = toTime(appointmentTime);
     const patientName = clean(payload.patientName || patient.fullName || patient.name || payload.patient);
+    const hasStandardInsurance = Boolean(payload.hasStandardInsurance || payload.insuranceUsed);
+    const price = calculateAppointmentPrice({
+      specialtyName: payload.department || payload.specialtyName,
+      hasStandardInsurance,
+    });
     if (!appointmentDate || !appointmentTime || !parsedAppointmentTime || !patientName) {
       return { ok: false, status: 400, data: { message: 'Thiếu ngày khám, giờ khám hoặc tên bệnh nhân.' } };
     }
@@ -878,6 +891,24 @@ export async function createAppointment(firebaseUser, payload = {}) {
 
     let appointmentSlot = null;
     if (doctor?.id || facility?.id) {
+      if (doctor?.id) {
+        await ensureFutureDoctorSlots(doctor.id, appointmentDate, 1);
+      } else if (facility?.type === 'hospital') {
+        await ensureFutureHospitalSlots(facility.id, {
+          fromDate: appointmentDate,
+          days: 1,
+          specialtyId: specialty?.id || null,
+          serviceId: service?.id || null,
+        });
+      } else if (facility?.type === 'clinic') {
+        await ensureFutureClinicSlots(facility.id, {
+          fromDate: appointmentDate,
+          days: 1,
+          specialtyId: specialty?.id || null,
+          serviceId: service?.id || null,
+        });
+      }
+
       let slots = [];
       let slotError = null;
 
@@ -955,6 +986,13 @@ export async function createAppointment(firebaseUser, payload = {}) {
       reason: clean(payload.reason) || null,
       note: clean(payload.note) || null,
       status: 'confirmed',
+      insurance_used: hasStandardInsurance,
+      insurance_type: hasStandardInsurance ? 'BHYT thường' : null,
+      insurance_rate: price.insuranceRate,
+      original_amount: price.originalAmount,
+      insurance_discount: price.insuranceDiscount,
+      final_amount: price.finalAmount,
+      payment_status: price.finalAmount > 0 ? 'unpaid' : 'paid',
     };
 
     const { data: appointment, error: appointmentError } = await supabase
@@ -998,7 +1036,15 @@ export async function createAppointment(firebaseUser, payload = {}) {
     return {
       ok: true,
       status: 201,
-      data: mapAppointmentResponse(appointment, ticket, payload),
+      data: mapAppointmentResponse(appointment, ticket, {
+        ...payload,
+        insuranceUsed: hasStandardInsurance,
+        insuranceType: hasStandardInsurance ? 'BHYT thường' : '',
+        originalAmount: price.originalAmount,
+        insuranceDiscount: price.insuranceDiscount,
+        finalAmount: price.finalAmount,
+        paymentStatus: price.finalAmount > 0 ? 'unpaid' : 'paid',
+      }),
     };
   } catch (error) {
     try {

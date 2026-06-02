@@ -20,6 +20,21 @@ import {
   registerWithEmail,
 } from './firebase_auth.js';
 import {
+  getHealthArticle,
+  getHealthAuthor,
+  listFeaturedHealthArticles,
+  listHealthArticles,
+  listHealthAuthors,
+  listHealthCategories,
+  listHealthExperts,
+  searchHealthArticles,
+} from './health_news_service.js';
+import {
+  capturePayPalOrder,
+  createPayPalOrder,
+  handlePayPalWebhook,
+} from './paypal_service.js';
+import {
   consumeOtpToken,
   getUsableOtpToken,
   hasOtpConfig,
@@ -109,6 +124,7 @@ const server = http.createServer(async (request, response) => {
       firebase: hasFirebaseConfig ? 'connected' : 'missing-config',
       emailOtp: hasOtpConfig ? 'connected' : 'missing-config',
       supabase: hasSupabaseConfig ? 'connected' : 'missing-config',
+      paypal: config.paypalClientId && config.paypalClientSecret ? 'connected' : 'missing-config',
     });
     return;
   }
@@ -235,6 +251,63 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === 'GET' && url.pathname === '/api/reference-data') {
     const result = await getReferenceData();
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/health-news/categories') {
+    const result = await listHealthCategories();
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/health-news/articles') {
+    const result = await listHealthArticles({
+      category: url.searchParams.get('category'),
+      limit: url.searchParams.get('limit'),
+    });
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/health-news/featured') {
+    const result = await listFeaturedHealthArticles(url.searchParams.get('limit'));
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/health-news/search') {
+    const result = await searchHealthArticles({
+      keyword: url.searchParams.get('q'),
+      category: url.searchParams.get('category'),
+      limit: url.searchParams.get('limit'),
+    });
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/health-news/experts') {
+    const result = await listHealthExperts();
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/health-news/authors') {
+    const result = await listHealthAuthors();
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname.startsWith('/api/health-news/authors/')) {
+    const authorId = decodeURIComponent(url.pathname.replace('/api/health-news/authors/', '')).trim();
+    const result = await getHealthAuthor(authorId);
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname.startsWith('/api/health-news/articles/')) {
+    const identifier = decodeURIComponent(url.pathname.replace('/api/health-news/articles/', '')).trim();
+    const result = await getHealthArticle(identifier);
     sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     return;
   }
@@ -376,6 +449,46 @@ const server = http.createServer(async (request, response) => {
       sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     } catch {
       sendJson(response, 400, { message: 'Du lieu dat lich khong hop le.' });
+    }
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/payments/paypal/create-order') {
+    try {
+      const payload = await readBody(request);
+      const user = await getUserFromRequest(request);
+      const result = await createPayPalOrder(user, payload.appointmentId);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Du lieu thanh toan khong hop le.' });
+    }
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/payments/paypal/return') {
+    const orderId = url.searchParams.get('token');
+    const result = orderId
+      ? await capturePayPalOrder(orderId)
+      : { ok: false, status: 400, data: { message: 'Thieu ma don hang PayPal.' } };
+    const redirectUrl = `${config.frontendUrl}?paypalStatus=${result.ok ? 'success' : 'failed'}`;
+    response.writeHead(302, { Location: redirectUrl });
+    response.end();
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/payments/paypal/cancel') {
+    response.writeHead(302, { Location: `${config.frontendUrl}?paypalStatus=cancelled` });
+    response.end();
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/payments/paypal/webhook') {
+    try {
+      const payload = await readBody(request);
+      const result = await handlePayPalWebhook(payload, request.headers);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Webhook PayPal khong hop le.' });
     }
     return;
   }

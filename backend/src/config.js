@@ -1,9 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const envPath = path.resolve(process.cwd(), '.env');
+const envPaths = [
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(process.cwd(), '..', '.env'),
+];
 
-if (fs.existsSync(envPath)) {
+envPaths.filter((envPath, index) => envPaths.indexOf(envPath) === index && fs.existsSync(envPath)).forEach((envPath) => {
   const envFile = fs.readFileSync(envPath, 'utf8');
 
   envFile.split('\n').forEach((line) => {
@@ -20,7 +23,7 @@ if (fs.existsSync(envPath)) {
       process.env[key] = value;
     }
   });
-}
+});
 
 export const config = {
   port: process.env.PORT || 4000,
@@ -32,4 +35,13 @@ export const config = {
   gmailUser: process.env.GMAIL_USER,
   gmailAppPassword: process.env.GMAIL_APP_PASSWORD,
   otpExpiresMinutes: Number(process.env.OTP_EXPIRES_MINUTES || 5),
+  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  paypalMode: process.env.PAYPAL_MODE || 'sandbox',
+  paypalClientId: process.env.PAYPAL_CLIENT_ID,
+  paypalClientSecret: process.env.PAYPAL_CLIENT_SECRET,
+  paypalWebhookId: process.env.PAYPAL_WEBHOOK_ID,
+  paypalCurrency: process.env.PAYPAL_CURRENCY || 'USD',
+  paypalVndToUsdRate: Number(process.env.PAYPAL_VND_TO_USD_RATE || 25000),
+  paypalReturnUrl: process.env.PAYPAL_RETURN_URL || 'http://localhost:4000/api/payments/paypal/return',
+  paypalCancelUrl: process.env.PAYPAL_CANCEL_URL || 'http://localhost:4000/api/payments/paypal/cancel',
 };
