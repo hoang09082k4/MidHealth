@@ -6,7 +6,7 @@ import TrangDatLichBacSi from './components/dat_lich_kham/dat_lich_bac_si';
 import TrangDatLichBenhVien from './components/dat_lich_kham/dat_lich_benh_vien';
 import TrangDatLichChuyenKhoa from './components/dat_lich_kham/dat_lich_chuyen_khoa';
 import TrangDatLichPhongKham from './components/dat_lich_kham/dat_lich_phong_kham';
-import TrangChu from './components/trang_chu/chu';
+import TrangChu from './components/trang_chu/trang_chu';
 import MucTinYTe from './components/tin_y_te/tin_y_te';
 import { firebaseAuth } from './lib/firebase';
 import { fallbackCatalog, fetchCatalog } from './lib/catalog';
