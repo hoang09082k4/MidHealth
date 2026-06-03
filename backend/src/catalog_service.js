@@ -20,6 +20,24 @@ function specialtyImage(value = '') {
   return stripPrefix(value, '/images_chuyen_khoa/');
 }
 
+function normalizeName(value = '') {
+  return String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'd')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+const hiddenSpecialties = new Set(['di ung mien dich']);
+
+function isVisibleSpecialty(name = '') {
+  return !hiddenSpecialties.has(normalizeName(name));
+}
+
 function inferDoctorSpecialty(name = '') {
   const knownSpecialties = {
     'PGS. TS. BS Lâm Việt Trung': 'Tiêu hóa - Ngoại tiết niệu',
@@ -83,7 +101,7 @@ export async function getCatalog() {
     const facilityNameById = new Map(facilities.map((item) => [item.id, item.name]));
 
     const activeSpecialties = specialties
-      .filter((item) => item.is_active)
+      .filter((item) => item.is_active && isVisibleSpecialty(item.name))
       .map((item) => ({
         id: item.id,
         name: item.name,
@@ -114,7 +132,7 @@ export async function getCatalog() {
       .forEach((item) => {
         const current = specialtiesByFacility.get(item.facility_id) || [];
         const name = specialtyNameById.get(item.specialty_id);
-        if (name && !current.includes(name)) current.push(name);
+        if (name && isVisibleSpecialty(name) && !current.includes(name)) current.push(name);
         specialtiesByFacility.set(item.facility_id, current);
       });
 

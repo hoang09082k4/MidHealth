@@ -12,6 +12,8 @@ const PLACE_TYPES = [
   { value: 'clinic', label: 'Phòng khám' },
 ];
 
+const HIDDEN_SPECIALTIES = new Set(['di ung mien dich']);
+
 const LOCATION_ERROR_MESSAGE = {
   1: 'Trình duyệt chưa được cấp quyền vị trí. Vui lòng cho phép truy cập vị trí hoặc chọn khu vực thủ công.',
   2: 'Không xác định được vị trí hiện tại. Vui lòng thử lại hoặc chọn khu vực thủ công.',
@@ -41,6 +43,10 @@ function lay_ten_chuyen_khoa(specialty) {
   if (!specialty) return '';
   if (typeof specialty === 'string') return specialty;
   return specialty.name || '';
+}
+
+function hien_thi_chuyen_khoa(specialty) {
+  return !HIDDEN_SPECIALTIES.has(bo_dau(lay_ten_chuyen_khoa(specialty)));
 }
 
 function lay_chu_cai_dau(name = '') {
@@ -256,7 +262,7 @@ function TrangDatLichChuyenKhoa({
     });
   }, [allResults, keyword, nearestActive, placeType, selectedSpecialty, selectedProvince, selectedDistrict, userLocation]);
 
-  const filteredSpecialties = specialties.filter((specialty) => khop_tu_khoa(specialty.name, specialtySearch));
+  const filteredSpecialties = specialties.filter((specialty) => hien_thi_chuyen_khoa(specialty) && khop_tu_khoa(specialty.name, specialtySearch));
   const hasGeoResults = allResults.some(co_toa_do);
 
   const handleBook = (item) => {
@@ -443,7 +449,6 @@ function TrangDatLichChuyenKhoa({
                   className={selectedSpecialty === specialty.name ? 'modal-specialty active' : 'modal-specialty'}
                   onClick={() => setSelectedSpecialty(specialty.name)}
                 >
-                  {specialty.image && <img src={duong_dan_anh('/images_chuyen_khoa', specialty.image)} alt="" />}
                   {specialty.name}
                 </button>
               ))}

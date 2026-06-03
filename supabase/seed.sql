@@ -40,8 +40,7 @@ values
   ('tam-ly', 'Tâm lý', '/images_chuyen_khoa/tamly.webp'),
   ('phau-thuat-tao-hinh', 'Phẫu thuật tạo hình', '/images_chuyen_khoa/37_phauthuattaohinhthammy.webp'),
   ('da-khoa', 'Đa khoa', '/images_chuyen_khoa/Noitongquat (1).webp'),
-  ('phuc-hoi-chuc-nang', 'Phục hồi chức năng', '/images_chuyen_khoa/vatlitrilieu.webp'),
-  ('di-ung-mien-dich', 'Dị ứng - Miễn dịch', null)
+  ('phuc-hoi-chuc-nang', 'Phục hồi chức năng', '/images_chuyen_khoa/vatlitrilieu.webp')
 on conflict (name) do update
 set slug = excluded.slug,
     image_url = excluded.image_url,
@@ -147,7 +146,7 @@ join (values
   ('benh-vien-y-hoc-co-truyen-tphcm', 'y-hoc-co-truyen'), ('benh-vien-y-hoc-co-truyen-tphcm', 'phuc-hoi-chuc-nang'), ('benh-vien-y-hoc-co-truyen-tphcm', 'co-xuong-khop'), ('benh-vien-y-hoc-co-truyen-tphcm', 'noi-tong-quat'),
   ('phong-kham-san-phu-khoa-13-cao-thang', 'san-phu-khoa'),
   ('phong-kham-nhi-my-my', 'nhi-khoa'), ('phong-kham-nhi-my-my', 'dinh-duong'), ('phong-kham-nhi-my-my', 'ho-hap'), ('phong-kham-nhi-my-my', 'tieu-hoa'),
-  ('trung-tam-chac', 'noi-tong-quat'), ('trung-tam-chac', 'ho-hap'), ('trung-tam-chac', 'dinh-duong'), ('trung-tam-chac', 'di-ung-mien-dich'),
+  ('trung-tam-chac', 'noi-tong-quat'), ('trung-tam-chac', 'ho-hap'), ('trung-tam-chac', 'dinh-duong'),
   ('phong-kham-da-lieu-shine-clinic', 'da-lieu')
 ) as fs(facility_slug, specialty_slug) on fs.facility_slug = f.slug
 join public.clinic_specialties s on s.slug = fs.specialty_slug

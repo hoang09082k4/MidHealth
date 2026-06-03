@@ -241,7 +241,7 @@ export const clinics = [
     address: '110A Ngô Quyền, P.8, Q.5, TP.HCM',
     intro: 'Trung tâm chăm sóc sức khỏe cộng đồng (Community Health Care Center - CHAC) được thành lập vào ngày 13/09/2010. Đây là trung tâm hoạt động đa chuyên khoa, bao gồm: Nội Tổng quát, Tim mạch, Tâm thần kinh, Cơ xương khớp, Nội tiết - Tiêu hóa, Dinh dưỡng, Nhi khoa, Chẩn đoán hình ảnh và Xét nghiệm. Đặc biệt, Hô hấp và điều trị rối loạn giấc ngủ là hai chuyên khoa sâu tại CHAC với đội ngũ bác sĩ đầu ngành.',
     services: ['Nội Tổng Quát', 'Hô Hấp', 'Rối Loạn Giấc Ngủ', 'Nhi khoa Cận Lâm Sàng: Xét Nghiệm', 'X-quang', 'Siêu âm', 'Nội Soi'],
-    specialties: ['Nội tổng quát', 'Hô hấp', 'Giấc ngủ', 'Dinh dưỡng', 'Dị ứng - Miễn dịch'],
+    specialties: ['Nội tổng quát', 'Hô hấp', 'Giấc ngủ', 'Dinh dưỡng'],
     doctors: ['BS Trần Quốc Tài', 'ThS.BS Hoàng Đình Hữu Hạnh', 'ThS.BS Trần Thị Kim Thu', 'PGS.TS Lê Thị Tuyết Lan'],
     hours: [
       { label: 'Thứ 2 - Thứ 6', time: '7h00 - 19h30' },
