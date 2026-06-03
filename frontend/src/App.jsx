@@ -37,6 +37,8 @@ function slugify(value = '') {
   return String(value)
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\u0111/g, 'd')
+    .replace(/\u0110/g, 'd')
     .replace(/đ/g, 'd')
     .replace(/Đ/g, 'd')
     .toLowerCase()
@@ -45,16 +47,25 @@ function slugify(value = '') {
 }
 
 function bookingSlug(item) {
-  return encodeURIComponent(item?.slug || item?.id || slugify(item?.name || item?.title || item?.specialty || 'dat-kham'));
+  if (item?.slug) return encodeURIComponent(item.slug);
+
+  const labelSlug = slugify(item?.name || item?.title || item?.specialty || '');
+  return encodeURIComponent(labelSlug !== 'dat-kham' ? labelSlug : item?.id || labelSlug);
 }
 
-function bookingItemKey(item) {
-  return String(item?.slug || item?.id || slugify(item?.name || item?.title || item?.specialty || '')).toLowerCase();
+function bookingItemKeys(item) {
+  const labelSlug = slugify(item?.name || item?.title || item?.specialty || '');
+  return [
+    item?.slug,
+    item?.id,
+    labelSlug,
+    item?.id && labelSlug !== 'dat-kham' ? `${labelSlug}-${item.id}` : '',
+  ].filter(Boolean).map((key) => String(key).toLowerCase());
 }
 
 function findBookingItem(items, slug) {
   const normalizedSlug = decodeURIComponent(slug || '').toLowerCase();
-  return (items || []).find((item) => bookingItemKey(item) === normalizedSlug) || null;
+  return (items || []).find((item) => bookingItemKeys(item).includes(normalizedSlug)) || null;
 }
 
 function routeFromLocation() {
