@@ -95,8 +95,24 @@ export async function listHealthCategories() {
 
     if (error) throw error;
 
-    const order = ['thuoc', 'duoc-lieu', 'benh', 'co-the'];
-    const categories = (data || []).sort((a, b) => order.indexOf(a.slug) - order.indexOf(b.slug));
+    const order = [
+      'suc-khoe-tong-quat',
+      'benh-thuong-gap',
+      'thuoc',
+      'dinh-duong',
+      'me-va-be',
+      'suc-khoe-tinh-than',
+      'tin-y-te',
+      'kinh-nghiem-di-kham',
+      'duoc-lieu',
+      'benh',
+      'co-the',
+    ];
+    const orderIndex = (slug) => {
+      const index = order.indexOf(slug);
+      return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+    };
+    const categories = (data || []).sort((a, b) => orderIndex(a.slug) - orderIndex(b.slug));
     return { ok: true, status: 200, data: categories };
   } catch (error) {
     return fail(error);

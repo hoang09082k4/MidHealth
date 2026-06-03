@@ -7,6 +7,7 @@
     "dev": "node src/server.js",
     "start": "node src/server.js",
     "seed:catalog": "node scripts/seed_catalog.js",
+    "seed:health-news": "node scripts/seed_health_news_content.js",
     "seed:reference": "node scripts/seed_reference_data.js"
   },
   "engines": {
