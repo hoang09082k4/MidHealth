@@ -1,4 +1,4 @@
-﻿import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useEffect, useState } from 'react';
 import BieuTuongLogo from './components/dung_chung/bieu_tuong_logo';
 import DangNhapDangKy from './components/xac_thuc/dang_nhap_dang_ky';
@@ -12,11 +12,76 @@ import { firebaseAuth } from './lib/firebase';
 import { fallbackCatalog, fetchCatalog } from './lib/catalog';
 import { ReferenceDataProvider } from './lib/reference_data';
 
+function normalizeHealthSlug(path) {
+  if (path.startsWith('/tin-tuc/')) return path.replace('/tin-tuc/', '');
+  if (path.startsWith('/tin-y-te/')) return path.replace('/tin-y-te/', '');
+  return '';
+}
+
+const BOOKING_KIND_PATHS = {
+  doctor: 'bac-si',
+  hospital: 'benh-vien',
+  clinic: 'phong-kham',
+  specialty: 'chuyen-khoa',
+};
+
+const BOOKING_SCREEN_PATHS = {
+  detail: '',
+  booking: 'dat-lich',
+  success: 'thanh-cong',
+  ticket: 'phieu-kham',
+  account: 'phieu-kham',
+};
+
+function slugify(value = '') {
+  return String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'd')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'dat-kham';
+}
+
+function bookingSlug(item) {
+  return encodeURIComponent(item?.slug || item?.id || slugify(item?.name || item?.title || item?.specialty || 'dat-kham'));
+}
+
+function bookingItemKey(item) {
+  return String(item?.slug || item?.id || slugify(item?.name || item?.title || item?.specialty || '')).toLowerCase();
+}
+
+function findBookingItem(items, slug) {
+  const normalizedSlug = decodeURIComponent(slug || '').toLowerCase();
+  return (items || []).find((item) => bookingItemKey(item) === normalizedSlug) || null;
+}
+
 function routeFromLocation() {
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
   const params = new URLSearchParams(window.location.search);
+  const bookingMatch = path.match(/^\/dat-kham\/([^/]+)\/([^/]+)(?:\/([^/]+))?$/);
 
-  if (path === '/tin-y-te/tim-kiem') {
+  if (bookingMatch) {
+    const kind = Object.entries(BOOKING_KIND_PATHS).find(([, pathPart]) => pathPart === bookingMatch[1])?.[0];
+    const screenPath = bookingMatch[3] || '';
+    const screen = screenPath === 'phieu-kham' && kind === 'doctor'
+      ? 'account'
+      : Object.entries(BOOKING_SCREEN_PATHS).find(([, pathPart]) => pathPart === screenPath)?.[0] || 'detail';
+
+    if (kind) {
+      return {
+        page: 'booking',
+        booking: {
+          kind,
+          slug: decodeURIComponent(bookingMatch[2]),
+          screen,
+        },
+      };
+    }
+  }
+
+  if (path === '/tin-tuc/tim-kiem' || path === '/tin-y-te/tim-kiem') {
     return {
       page: 'health',
       health: {
@@ -27,17 +92,17 @@ function routeFromLocation() {
     };
   }
 
-  if (path.startsWith('/tin-y-te/') && path !== '/tin-y-te') {
+  if ((path.startsWith('/tin-tuc/') && path !== '/tin-tuc') || (path.startsWith('/tin-y-te/') && path !== '/tin-y-te')) {
     return {
       page: 'health',
       health: {
         name: 'detail',
-        slug: decodeURIComponent(path.replace('/tin-y-te/', '')),
+        slug: decodeURIComponent(normalizeHealthSlug(path)),
       },
     };
   }
 
-  if (path === '/tin-y-te') {
+  if (path === '/tin-tuc' || path === '/tin-y-te') {
     return {
       page: 'health',
       health: {
@@ -50,19 +115,26 @@ function routeFromLocation() {
   return { page: 'home', health: { name: 'list', category: 'thuoc' } };
 }
 
+function bookingRouteToUrl(kind, item, screen = 'detail') {
+  const kindPath = BOOKING_KIND_PATHS[kind] || kind;
+  const screenPath = BOOKING_SCREEN_PATHS[screen] || '';
+  const baseUrl = `/dat-kham/${kindPath}/${bookingSlug(item)}`;
+  return screenPath ? `${baseUrl}/${screenPath}` : baseUrl;
+}
+
 function healthRouteToUrl(route) {
-  if (route.name === 'detail') return `/tin-y-te/${encodeURIComponent(route.slug)}`;
+  if (route.name === 'detail') return `/tin-tuc/${encodeURIComponent(route.slug)}`;
 
   if (route.name === 'search') {
     const params = new URLSearchParams();
     params.set('q', route.keyword || '');
     params.set('category', route.category || 'thuoc');
-    return `/tin-y-te/tim-kiem?${params.toString()}`;
+    return `/tin-tuc/tim-kiem?${params.toString()}`;
   }
 
   const params = new URLSearchParams();
   params.set('category', route.category || 'thuoc');
-  return `/tin-y-te?${params.toString()}`;
+  return `/tin-tuc?${params.toString()}`;
 }
 
 function App() {
@@ -113,15 +185,30 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
+  useEffect(() => {
+    if (appRoute.page !== 'booking') return;
+
+    const { kind, slug } = appRoute.booking;
+    setIsAuthPage(false);
+    setSelectedDoctor(kind === 'doctor' ? findBookingItem(catalog.doctors, slug) : null);
+    setSelectedHospital(kind === 'hospital' ? findBookingItem(catalog.hospitals, slug) : null);
+    setSelectedClinic(kind === 'clinic' ? findBookingItem(catalog.clinics, slug) : null);
+    setSelectedSpecialty(kind === 'specialty' ? findBookingItem(catalog.specialties, slug) || { name: slug } : null);
+  }, [appRoute, catalog]);
+
+  const pushUrl = (url) => {
+    if (window.location.pathname + window.location.search !== url) {
+      window.history.pushState({}, '', url);
+    }
+  };
+
   const handleSignOut = async () => {
     await signOut(firebaseAuth);
     setUser(null);
   };
 
   const showHome = () => {
-    if (window.location.pathname !== '/') {
-      window.history.pushState({}, '', '/');
-    }
+    pushUrl('/');
     setAppRoute({ page: 'home', health: { name: 'list', category: 'thuoc' } });
     setIsAuthPage(false);
     setSelectedDoctor(null);
@@ -131,7 +218,7 @@ function App() {
   };
 
   const showHealthNews = (route = { name: 'list', category: 'thuoc' }) => {
-    window.history.pushState({}, '', healthRouteToUrl(route));
+    pushUrl(healthRouteToUrl(route));
     setAppRoute({ page: 'health', health: route });
     setIsAuthPage(false);
     setSelectedDoctor(null);
@@ -141,6 +228,8 @@ function App() {
   };
 
   const showDoctorBooking = (doctor) => {
+    pushUrl(bookingRouteToUrl('doctor', doctor));
+    setAppRoute({ page: 'booking', booking: { kind: 'doctor', slug: decodeURIComponent(bookingSlug(doctor)), screen: 'detail' } });
     setIsAuthPage(false);
     setSelectedDoctor(doctor);
     setSelectedHospital(null);
@@ -150,6 +239,8 @@ function App() {
   };
 
   const showHospitalBooking = (hospital) => {
+    pushUrl(bookingRouteToUrl('hospital', hospital));
+    setAppRoute({ page: 'booking', booking: { kind: 'hospital', slug: decodeURIComponent(bookingSlug(hospital)), screen: 'detail' } });
     setIsAuthPage(false);
     setSelectedDoctor(null);
     setSelectedHospital(hospital);
@@ -159,6 +250,8 @@ function App() {
   };
 
   const showClinicBooking = (clinic) => {
+    pushUrl(bookingRouteToUrl('clinic', clinic));
+    setAppRoute({ page: 'booking', booking: { kind: 'clinic', slug: decodeURIComponent(bookingSlug(clinic)), screen: 'detail' } });
     setIsAuthPage(false);
     setSelectedDoctor(null);
     setSelectedHospital(null);
@@ -168,12 +261,20 @@ function App() {
   };
 
   const showSpecialtyBooking = (specialty) => {
+    pushUrl(bookingRouteToUrl('specialty', specialty));
+    setAppRoute({ page: 'booking', booking: { kind: 'specialty', slug: decodeURIComponent(bookingSlug(specialty)), screen: 'detail' } });
     setIsAuthPage(false);
     setSelectedDoctor(null);
     setSelectedHospital(null);
     setSelectedClinic(null);
     setSelectedSpecialty(specialty);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const updateBookingScreen = (kind, item, screen) => {
+    const route = { page: 'booking', booking: { kind, slug: decodeURIComponent(bookingSlug(item)), screen } };
+    pushUrl(bookingRouteToUrl(kind, item, screen));
+    setAppRoute(route);
   };
 
   return (
@@ -186,7 +287,7 @@ function App() {
         <nav className="main-nav" aria-label="Điều hướng chính">
           <a href="#booking" onClick={showHome}>Đặt khám <span aria-hidden="true">▾</span></a>
           <a href="#consult" onClick={showHome}>Tư vấn trực tuyến</a>
-          <a href="/tin-y-te" onClick={(event) => { event.preventDefault(); showHealthNews(); }}>Tin Y tế</a>
+          <a href="/tin-tuc" onClick={(event) => { event.preventDefault(); showHealthNews(); }}>Tin Y tế</a>
         </nav>
         {user ? (
           <div className="user-menu">
@@ -202,11 +303,30 @@ function App() {
         {isAuthPage ? (
           <DangNhapDangKy onBack={showHome} onAuthSuccess={setUser} />
         ) : selectedDoctor ? (
-          <TrangDatLichBacSi doctor={selectedDoctor} user={user} onBackHome={showHome} onSignOut={handleSignOut} />
+          <TrangDatLichBacSi
+            doctor={selectedDoctor}
+            initialScreen={appRoute.booking?.kind === 'doctor' ? appRoute.booking.screen : 'detail'}
+            user={user}
+            onBackHome={showHome}
+            onScreenChange={(screen) => updateBookingScreen('doctor', selectedDoctor, screen)}
+            onSignOut={handleSignOut}
+          />
         ) : selectedHospital ? (
-          <TrangDatLichBenhVien hospital={selectedHospital} user={user} onBackHome={showHome} />
+          <TrangDatLichBenhVien
+            hospital={selectedHospital}
+            initialScreen={appRoute.booking?.kind === 'hospital' ? appRoute.booking.screen : 'detail'}
+            user={user}
+            onBackHome={showHome}
+            onScreenChange={(screen) => updateBookingScreen('hospital', selectedHospital, screen)}
+          />
         ) : selectedClinic ? (
-          <TrangDatLichPhongKham clinic={selectedClinic} user={user} onBackHome={showHome} />
+          <TrangDatLichPhongKham
+            clinic={selectedClinic}
+            initialScreen={appRoute.booking?.kind === 'clinic' ? appRoute.booking.screen : 'detail'}
+            user={user}
+            onBackHome={showHome}
+            onScreenChange={(screen) => updateBookingScreen('clinic', selectedClinic, screen)}
+          />
         ) : selectedSpecialty ? (
           <TrangDatLichChuyenKhoa
             catalog={catalog}

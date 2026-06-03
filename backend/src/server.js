@@ -255,6 +255,53 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === 'GET' && url.pathname === '/api/health/categories') {
+    const result = await listHealthCategories();
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/health/articles') {
+    const result = await listHealthArticles({
+      category: url.searchParams.get('category'),
+      keyword: url.searchParams.get('keyword'),
+      featured: url.searchParams.get('featured'),
+      limit: url.searchParams.get('limit'),
+    });
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/health/search') {
+    const result = await searchHealthArticles({
+      keyword: url.searchParams.get('q'),
+      category: url.searchParams.get('category'),
+      limit: url.searchParams.get('limit'),
+    });
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/health/experts') {
+    const result = await listHealthExperts();
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname.startsWith('/api/health/authors/')) {
+    const authorId = decodeURIComponent(url.pathname.replace('/api/health/authors/', '')).trim();
+    const result = await getHealthAuthor(authorId);
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname.startsWith('/api/health/articles/')) {
+    const identifier = decodeURIComponent(url.pathname.replace('/api/health/articles/', '')).trim();
+    const result = await getHealthArticle(identifier);
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
   if (request.method === 'GET' && url.pathname === '/api/health-news/categories') {
     const result = await listHealthCategories();
     sendJson(response, result.status, result.ok ? { data: result.data } : result.data);

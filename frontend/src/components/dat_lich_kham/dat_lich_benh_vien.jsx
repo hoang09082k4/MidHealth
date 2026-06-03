@@ -843,9 +843,9 @@ function LichThang({ monthDate, selectedDate, slotDates, bookedDateMap, isLoadin
   );
 }
 
-function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
+function TrangDatLichBenhVien({ hospital, initialScreen = 'detail', user, onBackHome, onScreenChange }) {
   const [showNotice, setShowNotice] = useState(true);
-  const [screen, setScreen] = useState('detail');
+  const [screen, setScreen] = useState(initialScreen);
   const [isIntroExpanded, setIsIntroExpanded] = useState(false);
   const [galleryIndex, setGalleryIndex] = useState(null);
   const [step, setStep] = useState(1);
@@ -900,6 +900,14 @@ function TrangDatLichBenhVien({ hospital, user, onBackHome }) {
       return true;
     });
   }, [hospital]);
+
+  useEffect(() => {
+    onScreenChange?.(screen);
+  }, [screen]);
+
+  useEffect(() => {
+    setScreen(initialScreen);
+  }, [hospital.id, initialScreen]);
 
   const slotDates = useMemo(() => {
     const stats = new Map();

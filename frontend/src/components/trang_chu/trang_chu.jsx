@@ -1,4 +1,4 @@
-﻿import {
+import {
   articles,
   securityItems,
   trustItems,
@@ -7,7 +7,7 @@ import { useMemo, useState } from 'react';
 import { fallbackCatalog } from '../../lib/catalog';
 import MucBaoMatFooter from './bao_mat_footer';
 import MucTinTuong from './tin_tuong';
-import MucTinYTe from '../tin_y_te/tin_y_te';
+import { MucTinYTeTrangChu } from '../tin_y_te/tin_y_te';
 import TheBacSi from '../the_hien_thi/the_bac_si';
 import TheBenhVien from '../the_hien_thi/the_benh_vien';
 import TheChuyenKhoa from '../the_hien_thi/the_chuyen_khoa';
@@ -187,7 +187,7 @@ function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onB
       </section>
 
       <TheChuyenKhoa specialties={specialties} onSelectSpecialty={onSelectSpecialty} />
-      <MucTinYTe route={{ name: 'list', category: 'thuoc' }} onNavigate={onOpenHealthNews} />
+      <MucTinYTeTrangChu onNavigate={onOpenHealthNews} />
       <MucTinTuong trustItems={trustItems} />
 
       <section className="booking-panel" id="consult">

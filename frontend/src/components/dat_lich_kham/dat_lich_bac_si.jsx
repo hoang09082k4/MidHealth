@@ -363,8 +363,8 @@ function ProfileModal({ mode, profile, errors, isSaving, onClose, onChange, onSa
   );
 }
 
-function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
-  const [screen, setScreen] = useState('detail');
+function TrangDatLichBacSi({ doctor, initialScreen = 'detail', user, onBackHome, onScreenChange, onSignOut }) {
+  const [screen, setScreen] = useState(initialScreen);
   const [rangeStart, setRangeStart] = useState(todayValue());
   const [rawSlots, setRawSlots] = useState([]);
   const [isSlotLoading, setIsSlotLoading] = useState(false);
@@ -396,6 +396,14 @@ function TrangDatLichBacSi({ doctor, user, onBackHome, onSignOut }) {
   const notice = cleanNoticeText(doctor.notice || doctor.unavailable_note || '');
   const currentSlots = selectedDate?.slots || [];
   const visibleSlots = showMoreSlots ? currentSlots : currentSlots.slice(0, 8);
+
+  useEffect(() => {
+    onScreenChange?.(screen);
+  }, [screen]);
+
+  useEffect(() => {
+    setScreen(initialScreen);
+  }, [doctor.id, initialScreen]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setClockKey(currentMinuteKey()), 60 * 1000);

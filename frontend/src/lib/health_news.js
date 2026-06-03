@@ -12,22 +12,24 @@ async function request(path) {
 }
 
 export function fetchHealthCategories() {
-  return request('/api/health-news/categories');
+  return request('/api/health/categories');
 }
 
-export function fetchHealthArticles({ category, limit = 12 } = {}) {
+export function fetchHealthArticles({ category, keyword, featured, limit = 12 } = {}) {
   const params = new URLSearchParams();
   if (category) params.set('category', category);
+  if (keyword) params.set('keyword', keyword);
+  if (featured !== undefined) params.set('featured', String(featured));
   if (limit) params.set('limit', String(limit));
-  return request(`/api/health-news/articles?${params.toString()}`);
+  return request(`/api/health/articles?${params.toString()}`);
 }
 
 export function fetchFeaturedHealthArticles(limit = 8) {
-  return request(`/api/health-news/featured?limit=${limit}`);
+  return fetchHealthArticles({ featured: true, limit });
 }
 
 export function fetchHealthArticle(identifier) {
-  return request(`/api/health-news/articles/${encodeURIComponent(identifier)}`);
+  return request(`/api/health/articles/${encodeURIComponent(identifier)}`);
 }
 
 export function searchHealthArticles({ keyword, category, limit = 30 } = {}) {
@@ -35,9 +37,9 @@ export function searchHealthArticles({ keyword, category, limit = 30 } = {}) {
   params.set('q', keyword || '');
   if (category) params.set('category', category);
   if (limit) params.set('limit', String(limit));
-  return request(`/api/health-news/search?${params.toString()}`);
+  return request(`/api/health/search?${params.toString()}`);
 }
 
 export function fetchHealthExperts() {
-  return request('/api/health-news/experts');
+  return request('/api/health/experts');
 }

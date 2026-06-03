@@ -6,13 +6,14 @@ const ARTICLE_FIELDS = `
   slug,
   summary,
   content,
-  thumbnail,
-  published_date,
-  updated_date,
+  thumbnail_url,
+  published_at,
+  updated_at,
+  is_featured,
   status,
   view_count,
   category:health_categories(id, name, slug, description),
-  author:health_authors(id, name, title, specialty, avatar, description)
+  author:health_authors(id, full_name, title, specialty, avatar_url, bio, status)
 `;
 
 function unavailable() {
@@ -53,24 +54,31 @@ function mapArticle(article) {
     slug: article.slug,
     summary: article.summary || '',
     content: article.content || '',
-    thumbnail: article.thumbnail || '',
-    publishedDate: article.published_date,
-    updatedDate: article.updated_date,
+    thumbnail: article.thumbnail_url || '',
+    thumbnailUrl: article.thumbnail_url || '',
+    publishedDate: article.published_at,
+    publishedAt: article.published_at,
+    updatedDate: article.updated_at,
+    updatedAt: article.updated_at,
+    isFeatured: Boolean(article.is_featured),
     status: article.status,
     viewCount: article.view_count || 0,
     category: article.category || null,
-    author: article.author || null,
+    author: article.author ? mapPerson(article.author) : null,
   };
 }
 
 function mapPerson(person) {
   return {
     id: person.id,
-    name: person.name,
+    name: person.full_name || person.name,
+    fullName: person.full_name || person.name,
     title: person.title || '',
     specialty: person.specialty || '',
-    avatar: person.avatar || '',
-    description: person.description || '',
+    avatar: person.avatar_url || person.avatar || '',
+    avatarUrl: person.avatar_url || person.avatar || '',
+    description: person.description || person.bio || '',
+    bio: person.bio || person.description || '',
     status: person.status,
   };
 }
@@ -95,16 +103,26 @@ export async function listHealthCategories() {
   }
 }
 
-export async function listHealthArticles({ category, limit } = {}) {
+export async function listHealthArticles({ category, keyword, featured, limit } = {}) {
   if (!hasSupabaseConfig) return unavailable();
+
+  const normalizedKeyword = cleanSearchKeyword(decodeURIComponent(keyword || ''));
 
   try {
     let query = supabase
       .from('health_articles')
       .select(ARTICLE_FIELDS)
       .eq('status', 'published')
-      .order('published_date', { ascending: false })
+      .order('published_at', { ascending: false })
       .limit(parseLimit(limit));
+
+    if (featured === 'true' || featured === true) {
+      query = query.eq('is_featured', true);
+    }
+
+    if (normalizedKeyword) {
+      query = query.or(`title.ilike.%${normalizedKeyword}%,summary.ilike.%${normalizedKeyword}%,content.ilike.%${normalizedKeyword}%`);
+    }
 
     if (category) {
       const { data: categoryRow, error: categoryError } = await supabase
@@ -135,8 +153,9 @@ export async function listFeaturedHealthArticles(limit) {
       .from('health_articles')
       .select(ARTICLE_FIELDS)
       .eq('status', 'published')
+      .eq('is_featured', true)
       .order('view_count', { ascending: false })
-      .order('published_date', { ascending: false })
+      .order('published_at', { ascending: false })
       .limit(parseLimit(limit, 8));
 
     if (error) throw error;
@@ -184,7 +203,7 @@ export async function searchHealthArticles({ keyword, category, limit } = {}) {
       .select(ARTICLE_FIELDS)
       .eq('status', 'published')
       .or(`title.ilike.%${normalizedKeyword}%,summary.ilike.%${normalizedKeyword}%,content.ilike.%${normalizedKeyword}%`)
-      .order('published_date', { ascending: false })
+      .order('published_at', { ascending: false })
       .limit(parseLimit(limit, 30));
 
     if (category) {
@@ -214,9 +233,9 @@ export async function listHealthExperts() {
   try {
     const { data, error } = await supabase
       .from('health_experts')
-      .select('id, name, title, specialty, avatar, description, status')
+      .select('id, full_name, title, specialty, avatar_url, description, status')
       .eq('status', 'active')
-      .order('name', { ascending: true });
+      .order('full_name', { ascending: true });
 
     if (error) throw error;
     return { ok: true, status: 200, data: (data || []).map(mapPerson) };
@@ -231,9 +250,9 @@ export async function listHealthAuthors() {
   try {
     const { data, error } = await supabase
       .from('health_authors')
-      .select('id, name, title, specialty, avatar, description, status')
+      .select('id, full_name, title, specialty, avatar_url, bio, status')
       .eq('status', 'active')
-      .order('name', { ascending: true });
+      .order('full_name', { ascending: true });
 
     if (error) throw error;
     return { ok: true, status: 200, data: (data || []).map(mapPerson) };
@@ -248,7 +267,7 @@ export async function getHealthAuthor(authorId) {
   try {
     const { data, error } = await supabase
       .from('health_authors')
-      .select('id, name, title, specialty, avatar, description, status')
+      .select('id, full_name, title, specialty, avatar_url, bio, status')
       .eq('id', authorId)
       .eq('status', 'active')
       .maybeSingle();

@@ -530,8 +530,8 @@ function ModalHoSoPhongKham({ mode, profile, errors = {}, canSave, isSaving, onC
   );
 }
 
-function TrangDatLichPhongKham({ clinic, user, onBackHome }) {
-  const [screen, setScreen] = useState('detail');
+function TrangDatLichPhongKham({ clinic, initialScreen = 'detail', user, onBackHome, onScreenChange }) {
+  const [screen, setScreen] = useState(initialScreen);
   const [step, setStep] = useState(1);
   const [unlockedStep, setUnlockedStep] = useState(1);
   const [selectedService, setSelectedService] = useState(null);
@@ -591,6 +591,14 @@ function TrangDatLichPhongKham({ clinic, user, onBackHome }) {
       alt: `${clinic.name} ${index + 1}`,
     }));
   }, [clinic]);
+
+  useEffect(() => {
+    onScreenChange?.(screen);
+  }, [screen]);
+
+  useEffect(() => {
+    setScreen(initialScreen);
+  }, [clinic.id, initialScreen]);
 
   const slotDates = useMemo(() => {
     const stats = new Map();
