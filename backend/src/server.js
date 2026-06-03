@@ -1,5 +1,6 @@
 import http from 'node:http';
 import { URL } from 'node:url';
+import { upsertAppUser } from './account_service.js';
 import { config } from './config.js';
 import {
   cancelAppointment,
@@ -175,7 +176,22 @@ const server = http.createServer(async (request, response) => {
     try {
       const payload = await readBody(request);
       const result = await loginWithEmail(payload);
-      sendJson(response, result.ok ? 200 : result.status, result.ok ? { data: result.data } : result.data);
+      if (result.ok) {
+        const accountResult = await upsertAppUser(result.data, {
+          authProvider: 'password',
+          email: payload.email,
+          markLogin: true,
+        });
+        if (!accountResult.ok) {
+          sendJson(response, accountResult.status, accountResult.data);
+          return;
+        }
+
+        sendJson(response, 200, { data: { ...result.data, appUser: accountResult.data } });
+        return;
+      }
+
+      sendJson(response, result.status, result.data);
     } catch {
       sendJson(response, 400, { message: 'Dữ liệu đăng nhập không hợp lệ' });
     }
@@ -186,7 +202,22 @@ const server = http.createServer(async (request, response) => {
     try {
       const payload = await readBody(request);
       const result = await lookupAccount(payload.idToken);
-      sendJson(response, result.ok ? 200 : result.status, result.ok ? { data: result.data.users?.[0] } : result.data);
+      if (result.ok) {
+        const firebaseUser = result.data.users?.[0];
+        const accountResult = await upsertAppUser(firebaseUser, {
+          authProvider: 'google',
+          markLogin: true,
+        });
+        if (!accountResult.ok) {
+          sendJson(response, accountResult.status, accountResult.data);
+          return;
+        }
+
+        sendJson(response, 200, { data: { ...firebaseUser, appUser: accountResult.data } });
+        return;
+      }
+
+      sendJson(response, result.status, result.data);
     } catch {
       sendJson(response, 400, { message: 'Token Google không hợp lệ' });
     }

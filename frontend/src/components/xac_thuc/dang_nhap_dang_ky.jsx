@@ -217,6 +217,9 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
 
     try {
       const credential = await signInWithGoogle();
+      const idToken = await credential.user.getIdToken();
+      await goi_api('/api/auth/google', { idToken });
+
       if (mode === 'signup-entry') {
         const googleUser = credential.user;
         setGoogleSignupUser(googleUser);

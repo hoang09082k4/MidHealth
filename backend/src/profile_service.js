@@ -1,3 +1,4 @@
+import { linkPatientProfileToAppUser, upsertAppUser } from './account_service.js';
 import { hasSupabaseConfig, supabase } from './supabase.js';
 
 function clean(value) {
@@ -33,10 +34,20 @@ export async function savePatientProfile(firebaseUser, payload = {}) {
     };
   }
 
+  const accountResult = await upsertAppUser(firebaseUser, {
+    authProvider: payload.authProvider || 'password',
+    fullName,
+    email,
+    emailVerified: true,
+    markLogin: true,
+  });
+  if (!accountResult.ok) return accountResult;
+
   const { data, error } = await supabase
     .from('patient_profiles')
     .upsert({
       firebase_uid: firebaseUser.localId,
+      app_user_id: accountResult.data?.id || null,
       email,
       full_name: fullName,
       phone,
@@ -51,7 +62,10 @@ export async function savePatientProfile(firebaseUser, payload = {}) {
       ethnicity: clean(profile.ethnicity) || 'Kinh',
       occupation: clean(profile.occupation) || null,
       referral_code: clean(profile.referralCode) || null,
+      role: 'patient',
+      status: 'active',
       email_verified: true,
+      last_login_at: new Date().toISOString(),
     }, { onConflict: 'firebase_uid' })
     .select()
     .single();
@@ -59,6 +73,8 @@ export async function savePatientProfile(firebaseUser, payload = {}) {
   if (error) {
     return { ok: false, status: 500, data: { message: error.message } };
   }
+
+  await linkPatientProfileToAppUser(firebaseUser.localId, accountResult.data?.id);
 
   return { ok: true, status: 200, data };
 }

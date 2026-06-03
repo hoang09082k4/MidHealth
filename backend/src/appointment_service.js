@@ -1,3 +1,4 @@
+import { linkPatientProfileToAppUser, upsertAppUser } from './account_service.js';
 import { hasSupabaseConfig, supabase } from './supabase.js';
 import { calculateAppointmentPrice } from './pricing.js';
 
@@ -110,11 +111,19 @@ async function ensureOwnerProfile(firebaseUser, profile = {}) {
   const fullName = clean(profile.fullName || profile.name) || clean(firebaseUser.displayName) || 'MidHealth User';
   const phone = clean(profile.phone) || '0000000000';
   const dateOfBirth = toDate(profile.dateOfBirth || profile.birthDate) || '1900-01-01';
+  const accountResult = await upsertAppUser(firebaseUser, {
+    fullName,
+    email,
+    emailVerified: Boolean(firebaseUser.email || profile.email),
+    markLogin: true,
+  });
+  if (!accountResult.ok) throw new Error(accountResult.data?.message || 'Khong the luu tai khoan.');
 
   const { data, error } = await supabase
     .from('patient_profiles')
     .upsert({
       firebase_uid: firebaseUser.localId,
+      app_user_id: accountResult.data?.id || null,
       email,
       full_name: fullName,
       phone,
@@ -128,12 +137,17 @@ async function ensureOwnerProfile(firebaseUser, profile = {}) {
       address: clean(profile.address) || null,
       ethnicity: clean(profile.ethnicity) || 'Kinh',
       occupation: clean(profile.occupation || profile.job) || null,
+      role: 'patient',
+      status: 'active',
       email_verified: Boolean(firebaseUser.email || profile.email),
+      last_login_at: new Date().toISOString(),
     }, { onConflict: 'firebase_uid' })
     .select()
     .single();
 
   if (error) throw error;
+  await linkPatientProfileToAppUser(firebaseUser.localId, accountResult.data?.id);
+
   return data || null;
 }
 
