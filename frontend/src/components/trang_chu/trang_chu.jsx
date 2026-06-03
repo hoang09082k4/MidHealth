@@ -1,6 +1,5 @@
 import {
   articles,
-  securityItems,
   trustItems,
 } from '../../data';
 import { useMemo, useState } from 'react';
@@ -187,24 +186,8 @@ function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onB
       </section>
 
       <TheChuyenKhoa specialties={specialties} onSelectSpecialty={onSelectSpecialty} />
-      <MucTinYTeTrangChu onNavigate={onOpenHealthNews} />
+      <MucTinYTeTrangChu onNavigate={onOpenHealthNews} onSelectSpecialty={onSelectSpecialty} />
       <MucTinTuong trustItems={trustItems} />
-
-      <section className="booking-panel" id="consult">
-        <div>
-          <h2>Đặt lịch nhanh với MidHealth</h2>
-          <p>Nhập thông tin cơ bản, đội ngũ MidHealth sẽ hỗ trợ xác nhận lịch khám phù hợp.</p>
-        </div>
-        <form>
-          <input placeholder="Họ và tên" />
-          <input placeholder="Số điện thoại" />
-          <select defaultValue="">
-            <option value="" disabled>Chọn chuyên khoa</option>
-            {specialties.slice(0, 10).map((specialty) => <option key={specialty.name}>{specialty.name}</option>)}
-          </select>
-          <button type="button">Gửi yêu cầu</button>
-        </form>
-      </section>
 
       <section className="article-section" id="assistant">
         <TieuDeMuc title="Cẩm nang sức khỏe" subtitle="Thông tin tham khảo giúp bạn chuẩn bị tốt hơn trước khi khám." />
@@ -219,7 +202,7 @@ function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onB
         </div>
       </section>
 
-      <MucBaoMatFooter securityItems={securityItems} />
+      <MucBaoMatFooter />
     </>
   );
 }

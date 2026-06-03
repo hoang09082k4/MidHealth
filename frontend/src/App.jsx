@@ -13,10 +13,18 @@ import { firebaseAuth } from './lib/firebase';
 import { fallbackCatalog, fetchCatalog } from './lib/catalog';
 import { ReferenceDataProvider } from './lib/reference_data';
 
+const HEALTH_BASE_PATH = '/tin-tuc';
+const HEALTH_PATH_ALIASES = ['/tin-tuc', '/tin-y-te', '/tin-tu'];
+const DEFAULT_HEALTH_CATEGORY = 'suc-khoe-tong-quat';
+
+function healthPathMatch(path) {
+  return HEALTH_PATH_ALIASES.find((basePath) => path === basePath || path.startsWith(`${basePath}/`)) || '';
+}
+
 function normalizeHealthSlug(path) {
-  if (path.startsWith('/tin-tuc/')) return path.replace('/tin-tuc/', '');
-  if (path.startsWith('/tin-y-te/')) return path.replace('/tin-y-te/', '');
-  return '';
+  const basePath = healthPathMatch(path);
+  if (!basePath || path === basePath) return '';
+  return path.slice(basePath.length + 1);
 }
 
 const BOOKING_KIND_PATHS = {
@@ -40,8 +48,6 @@ function slugify(value = '') {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\u0111/g, 'd')
     .replace(/\u0110/g, 'd')
-    .replace(/đ/g, 'd')
-    .replace(/Đ/g, 'd')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'dat-kham';
@@ -98,18 +104,39 @@ function routeFromLocation() {
     }
   }
 
-  if (path === '/tin-tuc/tim-kiem' || path === '/tin-y-te/tim-kiem') {
+  const healthBasePath = healthPathMatch(path);
+
+  if (healthBasePath && path === `${healthBasePath}/tim-kiem`) {
     return {
       page: 'health',
       health: {
         name: 'search',
         keyword: params.get('q') || '',
-        category: params.get('category') || 'thuoc',
+        category: params.get('category') || DEFAULT_HEALTH_CATEGORY,
       },
     };
   }
 
-  if ((path.startsWith('/tin-tuc/') && path !== '/tin-tuc') || (path.startsWith('/tin-y-te/') && path !== '/tin-y-te')) {
+  if (healthBasePath && path.startsWith(`${healthBasePath}/doi-ngu-chuyen-gia/`)) {
+    return {
+      page: 'health',
+      health: {
+        name: 'expert-profile',
+        slug: decodeURIComponent(path.slice(`${healthBasePath}/doi-ngu-chuyen-gia/`.length)),
+      },
+    };
+  }
+
+  if (healthBasePath && path === `${healthBasePath}/doi-ngu-chuyen-gia`) {
+    return {
+      page: 'health',
+      health: {
+        name: 'expert-profile',
+      },
+    };
+  }
+
+  if (healthBasePath && path !== healthBasePath) {
     return {
       page: 'health',
       health: {
@@ -119,17 +146,17 @@ function routeFromLocation() {
     };
   }
 
-  if (path === '/tin-tuc' || path === '/tin-y-te') {
+  if (healthBasePath) {
     return {
       page: 'health',
       health: {
         name: 'list',
-        category: params.get('category') || 'thuoc',
+        category: params.get('category') || DEFAULT_HEALTH_CATEGORY,
       },
     };
   }
 
-  return { page: 'home', health: { name: 'list', category: 'thuoc' } };
+  return { page: 'home', health: { name: 'list', category: DEFAULT_HEALTH_CATEGORY } };
 }
 
 function bookingRouteToUrl(kind, item, screen = 'detail') {
@@ -142,18 +169,27 @@ function bookingRouteToUrl(kind, item, screen = 'detail') {
 }
 
 function healthRouteToUrl(route) {
-  if (route.name === 'detail') return `/tin-tuc/${encodeURIComponent(route.slug)}`;
+  if (route.name === 'expert-profile') {
+    return route.slug
+      ? `${HEALTH_BASE_PATH}/doi-ngu-chuyen-gia/${encodeURIComponent(route.slug)}`
+      : `${HEALTH_BASE_PATH}/doi-ngu-chuyen-gia`;
+  }
+
+  if (route.name === 'detail') return `${HEALTH_BASE_PATH}/${encodeURIComponent(route.slug)}`;
 
   if (route.name === 'search') {
     const params = new URLSearchParams();
     params.set('q', route.keyword || '');
-    params.set('category', route.category || 'thuoc');
-    return `/tin-tuc/tim-kiem?${params.toString()}`;
+    params.set('category', route.category || DEFAULT_HEALTH_CATEGORY);
+    return `${HEALTH_BASE_PATH}/tim-kiem?${params.toString()}`;
   }
 
+  const category = route.category || DEFAULT_HEALTH_CATEGORY;
+  if (category === DEFAULT_HEALTH_CATEGORY) return HEALTH_BASE_PATH;
+
   const params = new URLSearchParams();
-  params.set('category', route.category || 'thuoc');
-  return `/tin-tuc?${params.toString()}`;
+  params.set('category', category);
+  return `${HEALTH_BASE_PATH}?${params.toString()}`;
 }
 
 function App() {
@@ -165,6 +201,23 @@ function App() {
   const [user, setUser] = useState(null);
   const [catalog, setCatalog] = useState(fallbackCatalog);
   const [appRoute, setAppRoute] = useState(routeFromLocation);
+
+  useEffect(() => {
+    const previousScrollRestoration = window.history.scrollRestoration;
+    if ('scrollRestoration' in window.history) {
+      window.history.scrollRestoration = 'manual';
+    }
+
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    });
+
+    return () => {
+      if ('scrollRestoration' in window.history) {
+        window.history.scrollRestoration = previousScrollRestoration;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(firebaseAuth, (currentUser) => {
@@ -229,7 +282,7 @@ function App() {
   const signOutToAuth = async () => {
     await handleSignOut();
     pushUrl('/');
-    setAppRoute({ page: 'home', health: { name: 'list', category: 'thuoc' } });
+    setAppRoute({ page: 'home', health: { name: 'list', category: DEFAULT_HEALTH_CATEGORY } });
     setIsAuthPage(true);
     setSelectedDoctor(null);
     setSelectedHospital(null);
@@ -240,15 +293,16 @@ function App() {
 
   const showHome = () => {
     pushUrl('/');
-    setAppRoute({ page: 'home', health: { name: 'list', category: 'thuoc' } });
+    setAppRoute({ page: 'home', health: { name: 'list', category: DEFAULT_HEALTH_CATEGORY } });
     setIsAuthPage(false);
     setSelectedDoctor(null);
     setSelectedHospital(null);
     setSelectedClinic(null);
     setSelectedSpecialty(null);
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
   };
 
-  const showHealthNews = (route = { name: 'list', category: 'thuoc' }) => {
+  const showHealthNews = (route = { name: 'list', category: DEFAULT_HEALTH_CATEGORY }) => {
     pushUrl(healthRouteToUrl(route));
     setAppRoute({ page: 'health', health: route });
     setIsAuthPage(false);
@@ -256,6 +310,7 @@ function App() {
     setSelectedHospital(null);
     setSelectedClinic(null);
     setSelectedSpecialty(null);
+    window.scrollTo({ top: 0, behavior: 'auto' });
   };
 
   const showDoctorBooking = (doctor) => {
@@ -308,27 +363,30 @@ function App() {
     setAppRoute(route);
   };
 
+  const isHealthPage = appRoute.page === 'health';
+
   return (
     <ReferenceDataProvider>
-    <div className="site-shell" id="home">
-      <header className="site-header">
-        <button className="logo-button" type="button" onClick={showHome} aria-label="Về trang chủ MidHealth">
-          <BieuTuongLogo />
-        </button>
-        <nav className="main-nav" aria-label="Điều hướng chính">
-          <a href="#booking" onClick={showHome}>Đặt khám <span aria-hidden="true">▾</span></a>
-          <a href="#consult" onClick={showHome}>Tư vấn trực tuyến</a>
-          <a href="/tin-tuc" onClick={(event) => { event.preventDefault(); showHealthNews(); }}>Tin Y tế</a>
-        </nav>
-        {user ? (
-          <div className="user-menu">
-            <span>{user.displayName || user.email}</span>
-            <button className="login-button" type="button" onClick={signOutToAuth}>Đăng xuất</button>
-          </div>
-        ) : (
-          <button className="login-button" type="button" onClick={() => setIsAuthPage(true)}>Đăng nhập</button>
-        )}
-      </header>
+    <div className={`site-shell${isHealthPage ? ' health-news-shell' : ''}`} id="home">
+      {!isHealthPage ? (
+        <header className="site-header">
+          <button className="logo-button" type="button" onClick={showHome} aria-label="Về trang chủ MidHealth">
+            <BieuTuongLogo />
+          </button>
+          <nav className="main-nav" aria-label="Điều hướng chính">
+            <a href="#booking" onClick={showHome}>Đặt khám <span aria-hidden="true">▾</span></a>
+            <a href="/tin-tuc" onClick={(event) => { event.preventDefault(); showHealthNews(); }}>Tin Y tế</a>
+          </nav>
+          {user ? (
+            <div className="user-menu">
+              <span>{user.displayName || user.email}</span>
+              <button className="login-button" type="button" onClick={signOutToAuth}>Đăng xuất</button>
+            </div>
+          ) : (
+            <button className="login-button" type="button" onClick={() => setIsAuthPage(true)}>Đăng nhập</button>
+          )}
+        </header>
+      ) : null}
 
       <main>
         {isAuthPage ? (
@@ -373,7 +431,7 @@ function App() {
             onLogout={signOutToAuth}
           />
         ) : appRoute.page === 'health' ? (
-          <MucTinYTe route={appRoute.health} onNavigate={showHealthNews} />
+          <MucTinYTe route={appRoute.health} onNavigate={showHealthNews} onHome={showHome} onBookSpecialty={showSpecialtyBooking} />
         ) : (
           <TrangChu
             catalog={catalog}
