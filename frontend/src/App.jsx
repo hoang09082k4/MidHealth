@@ -6,6 +6,7 @@ import TrangDatLichBacSi from './components/dat_lich_kham/dat_lich_bac_si';
 import TrangDatLichBenhVien from './components/dat_lich_kham/dat_lich_benh_vien';
 import TrangDatLichChuyenKhoa from './components/dat_lich_kham/dat_lich_chuyen_khoa';
 import TrangDatLichPhongKham from './components/dat_lich_kham/dat_lich_phong_kham';
+import TrangPhieuKhamDienTu from './components/dat_lich_kham/phieu_kham-dien-tu';
 import TrangChu from './components/trang_chu/trang_chu';
 import MucTinYTe from './components/tin_y_te/tin_y_te';
 import { firebaseAuth } from './lib/firebase';
@@ -29,8 +30,8 @@ const BOOKING_SCREEN_PATHS = {
   detail: '',
   booking: 'dat-lich',
   success: 'thanh-cong',
-  ticket: 'phieu-kham',
-  account: 'phieu-kham',
+  ticket: 'phieu-kham-dien-tu',
+  account: 'phieu-kham-dien-tu',
 };
 
 function slugify(value = '') {
@@ -73,12 +74,17 @@ function routeFromLocation() {
   const params = new URLSearchParams(window.location.search);
   const bookingMatch = path.match(/^\/dat-kham\/([^/]+)\/([^/]+)(?:\/([^/]+))?$/);
 
+  if (path === '/phieu-kham-dien-tu' || path === '/phieu-kham') {
+    return { page: 'ticket' };
+  }
+
   if (bookingMatch) {
     const kind = Object.entries(BOOKING_KIND_PATHS).find(([, pathPart]) => pathPart === bookingMatch[1])?.[0];
     const screenPath = bookingMatch[3] || '';
-    const screen = screenPath === 'phieu-kham' && kind === 'doctor'
+    const normalizedScreenPath = screenPath === 'phieu-kham' ? 'phieu-kham-dien-tu' : screenPath;
+    const screen = normalizedScreenPath === 'phieu-kham-dien-tu' && kind === 'doctor'
       ? 'account'
-      : Object.entries(BOOKING_SCREEN_PATHS).find(([, pathPart]) => pathPart === screenPath)?.[0] || 'detail';
+      : Object.entries(BOOKING_SCREEN_PATHS).find(([, pathPart]) => pathPart === normalizedScreenPath)?.[0] || 'detail';
 
     if (kind) {
       return {
@@ -127,6 +133,8 @@ function routeFromLocation() {
 }
 
 function bookingRouteToUrl(kind, item, screen = 'detail') {
+  if (screen === 'ticket' || screen === 'account') return '/phieu-kham-dien-tu';
+
   const kindPath = BOOKING_KIND_PATHS[kind] || kind;
   const screenPath = BOOKING_SCREEN_PATHS[screen] || '';
   const baseUrl = `/dat-kham/${kindPath}/${bookingSlug(item)}`;
@@ -218,6 +226,18 @@ function App() {
     setUser(null);
   };
 
+  const signOutToAuth = async () => {
+    await handleSignOut();
+    pushUrl('/');
+    setAppRoute({ page: 'home', health: { name: 'list', category: 'thuoc' } });
+    setIsAuthPage(true);
+    setSelectedDoctor(null);
+    setSelectedHospital(null);
+    setSelectedClinic(null);
+    setSelectedSpecialty(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const showHome = () => {
     pushUrl('/');
     setAppRoute({ page: 'home', health: { name: 'list', category: 'thuoc' } });
@@ -303,7 +323,7 @@ function App() {
         {user ? (
           <div className="user-menu">
             <span>{user.displayName || user.email}</span>
-            <button className="login-button" type="button" onClick={handleSignOut}>Đăng xuất</button>
+            <button className="login-button" type="button" onClick={signOutToAuth}>Đăng xuất</button>
           </div>
         ) : (
           <button className="login-button" type="button" onClick={() => setIsAuthPage(true)}>Đăng nhập</button>
@@ -320,7 +340,7 @@ function App() {
             user={user}
             onBackHome={showHome}
             onScreenChange={(screen) => updateBookingScreen('doctor', selectedDoctor, screen)}
-            onSignOut={handleSignOut}
+            onSignOut={signOutToAuth}
           />
         ) : selectedHospital ? (
           <TrangDatLichBenhVien
@@ -345,6 +365,12 @@ function App() {
             onBookDoctor={showDoctorBooking}
             onBookHospital={showHospitalBooking}
             onBookClinic={showClinicBooking}
+          />
+        ) : appRoute.page === 'ticket' ? (
+          <TrangPhieuKhamDienTu
+            appointment={null}
+            user={user}
+            onLogout={signOutToAuth}
           />
         ) : appRoute.page === 'health' ? (
           <MucTinYTe route={appRoute.health} onNavigate={showHealthNews} />

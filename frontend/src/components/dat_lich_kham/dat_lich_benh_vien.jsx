@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
-import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './phieu_kham';
+import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './phieu_kham-dien-tu';
 import { createAppointment, createPayPalOrder, listAppointments, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
 import { useReferenceData } from '../../lib/reference_data';
 import { calculateAppointmentPrice, formatCurrency } from '../../lib/pricing';
@@ -141,7 +141,7 @@ function tai_anh_phieu(appointment) {
   drawSection('Thông tin bệnh nhân', visiblePatientRows, nextY);
 
   const link = document.createElement('a');
-  link.download = `${appointment.appointmentCode}.png`;
+  link.download = `${appointment.appointmentCode || 'phieu-kham-dien-tu'}.png`;
   link.href = canvas.toDataURL('image/png');
   link.click();
 }
@@ -171,7 +171,7 @@ function ManHinhDatLichThanhCong({ appointment, image, fallback, onViewTicket })
         <PhieuKhamChiTiet appointment={appointment} />
 
         <div className="success-actions">
-          <button type="button" onClick={onViewTicket}>Xem phiếu khám</button>
+          <button type="button" onClick={onViewTicket}>Xem phiếu khám điện tử</button>
           <button type="button" onClick={() => tai_anh_phieu(appointment)}>Lưu lại phiếu</button>
         </div>
       </article>

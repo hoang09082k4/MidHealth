@@ -1,8 +1,10 @@
 import {
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
+  updatePassword,
 } from 'firebase/auth';
 import { useEffect, useRef, useState } from 'react';
+import { savePatientProfile } from '../../lib/appointments';
 import { firebaseAuth, signInWithGoogle } from '../../lib/firebase';
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
@@ -58,7 +60,7 @@ function lay_thong_bao_loi(error) {
 }
 
 function CacBuocDangKy({ step }) {
-  const steps = ['1.X?c th?c', '2.M?t kh?u', '3.H? s? kh?m ?i?n t?'];
+  const steps = ['1. Xác thực', '2. Mật khẩu', '3. Hồ sơ khám điện tử'];
 
   return (
     <div className="signup-steps">
@@ -78,6 +80,7 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
   const [signupStep, setSignupStep] = useState(1);
   const [otpSent, setOtpSent] = useState(false);
   const [otpToken, setOtpToken] = useState('');
+  const [googleSignupUser, setGoogleSignupUser] = useState(null);
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -108,6 +111,7 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
     if (field === 'email') {
       setOtpSent(false);
       setOtpToken('');
+      setGoogleSignupUser(null);
       setSignupStep(1);
     }
   };
@@ -124,6 +128,7 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
     setSignupStep(1);
     setOtpSent(false);
     setOtpToken('');
+    setGoogleSignupUser(null);
     setMessage('');
     setForm((current) => ({ ...current, otp: '' }));
   };
@@ -168,6 +173,23 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
     setMessage('');
   };
 
+  const hoan_tat_dang_ky_google = async () => {
+    const profile = {
+      ...form.profile,
+      email: googleSignupUser.email || form.email.trim(),
+      fullName: form.profile.fullName || googleSignupUser.displayName || '',
+    };
+
+    await savePatientProfile(googleSignupUser, profile);
+    return googleSignupUser;
+  };
+
+  const tao_mat_khau_google = async () => {
+    await updatePassword(googleSignupUser, form.password);
+    setSignupStep(3);
+    setMessage('');
+  };
+
   const hoan_tat_dang_ky = async () => {
     const profile = {
       ...form.profile,
@@ -195,6 +217,28 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
 
     try {
       const credential = await signInWithGoogle();
+      if (mode === 'signup-entry') {
+        const googleUser = credential.user;
+        setGoogleSignupUser(googleUser);
+        setMode('signup');
+        setSignupStep(1);
+        setOtpSent(false);
+        setOtpToken('');
+        setForm((current) => ({
+          ...current,
+          email: googleUser.email || '',
+          otp: '',
+          password: '',
+          profile: {
+            ...current.profile,
+            email: googleUser.email || '',
+            fullName: current.profile.fullName || googleUser.displayName || '',
+          },
+        }));
+        setMessage('Google đã xác thực email. Bấm tiếp tục để tạo mật khẩu.');
+        return;
+      }
+
       onAuthSuccess(credential.user);
       onBack();
     } catch (error) {
@@ -238,6 +282,12 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
         return;
       }
 
+      if (googleSignupUser && signupStep === 1) {
+        setSignupStep(2);
+        setMessage('');
+        return;
+      }
+
       if (signupStep === 1 && !otpSent) {
         await gui_otp_dang_ky();
         return;
@@ -249,11 +299,18 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
       }
 
       if (signupStep === 2) {
+        if (googleSignupUser) {
+          await tao_mat_khau_google();
+          return;
+        }
+
         setSignupStep(3);
         return;
       }
 
-      const authUser = await hoan_tat_dang_ky();
+      const authUser = googleSignupUser
+        ? await hoan_tat_dang_ky_google()
+        : await hoan_tat_dang_ky();
       onAuthSuccess(authUser);
       onBack();
     } catch (error) {
@@ -286,7 +343,11 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
 
         {signupStep === 1 && (
           <div className="signup-step-content signup-otp-step">
-            {!otpSent ? (
+            {googleSignupUser ? (
+              <>
+                <p>Google đã xác thực email {form.email}. Bấm tiếp tục để tạo mật khẩu cho tài khoản MidHealth.</p>
+              </>
+            ) : !otpSent ? (
               <>
                 <p>Nhập Gmail để MidHealth gửi mã OTP xác thực tài khoản.</p>
                 <input
@@ -321,10 +382,10 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
               </>
             )}
             {message && <div className="auth-message">{message}</div>}
-            <button type="submit" disabled={isLoading || (otpSent && form.otp.length < 6)}>
-              {isLoading ? 'Đang xử lý...' : otpSent ? 'Tiếp tục' : 'Gửi OTP'}
+            <button type="submit" disabled={isLoading || (!googleSignupUser && otpSent && form.otp.length < 6)}>
+              {isLoading ? 'Đang xử lý...' : googleSignupUser || otpSent ? 'Tiếp tục' : 'Gửi OTP'}
             </button>
-            {otpSent && (
+            {!googleSignupUser && otpSent && (
               <div className="resend-otp">
                 Không nhận được mã OTP?
                 <button type="button" onClick={bat_dau_dang_ky} disabled={isLoading}>Thử lại</button>
@@ -335,7 +396,7 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
 
         {signupStep === 2 && (
           <div className="signup-step-content signup-password-step">
-            <p>Nh?p m?t kh?u g?m t?i thi?u 6 k? t? d?ng ?? b?o v? h? s? kh?m ?i?n t? c?a b?n v? ??ng nh?p nh?ng l?n sau</p>
+            <p>Nhập mật khẩu gồm tối thiểu 6 ký tự để bảo vệ hồ sơ khám điện tử của bạn và đăng nhập những lần sau.</p>
             <label>
               Mật khẩu
               <input
@@ -356,10 +417,10 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
 
         {signupStep === 3 && (
           <div className="signup-profile-step">
-            <p>T?o h? s? kh?m ?i?n t? ??y ?? th?ng tin s? h? tr? vi?c kh?m ch?a b?nh c?a b?n t?t h?n.</p>
+            <p>Tạo hồ sơ khám điện tử đầy đủ thông tin sẽ hỗ trợ việc khám chữa bệnh của bạn tốt hơn.</p>
             <div className="profile-form-grid">
               <div>
-                <h3>Th?ng tin h? s? kh?m ?i?n t?</h3>
+                <h3>Thông tin hồ sơ khám điện tử</h3>
                 <label>Họ và tên <span>*</span><input value={form.profile.fullName} onChange={(event) => cap_nhat_ho_so('fullName', event.target.value)} placeholder="Họ và tên" required /></label>
                 <label>Số điện thoại <span>*</span><input value={form.profile.phone} onChange={(event) => cap_nhat_ho_so('phone', event.target.value)} placeholder="Số điện thoại" required /></label>
                 <label>Ngày sinh <span>*</span><input type="date" value={form.profile.dateOfBirth} onChange={(event) => cap_nhat_ho_so('dateOfBirth', event.target.value)} required /></label>
@@ -530,4 +591,3 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
 }
 
 export default DangNhapDangKy;
-

@@ -1,4 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import {
   chuan_hoa_bhyt,
   chuan_hoa_cmnd_cccd,
@@ -6,18 +7,20 @@ import {
   kiem_tra_bhyt,
   kiem_tra_ngay_sinh,
 } from '../../data/du_lieu_ho_so';
-import { cancelAppointment, listAppointments, savePatientProfile } from '../../lib/appointments';
+import { cancelAppointment, listAppointments, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
 import { useReferenceData } from '../../lib/reference_data';
 
 function tao_ten_benh_nhan(user) {
-  return '';
+  if (!user) return '';
+  return user.displayName || user.phoneNumber || user.email?.split('@')[0] || '';
 }
 
 function tao_ho_so_mac_dinh(appointment, user) {
   const patientProfile = appointment?.patientProfile || {};
   return {
-    fullName: patientProfile.fullName || patientProfile.name || '',
-    phone: patientProfile.phone || appointment?.phone || '',
+    id: patientProfile.id || 'me',
+    fullName: patientProfile.fullName || patientProfile.name || tao_ten_benh_nhan(user),
+    phone: patientProfile.phone || appointment?.phone || user?.phoneNumber || '',
     birthDate: patientProfile.birthDate || appointment?.birthDate || '',
     gender: patientProfile.gender || appointment?.gender || '',
     province: patientProfile.province || '',
@@ -29,9 +32,44 @@ function tao_ho_so_mac_dinh(appointment, user) {
     nationality: patientProfile.nationality || 'Việt Nam',
     job: patientProfile.job || patientProfile.occupation || '',
     insuranceCode: patientProfile.insuranceCode || patientProfile.healthInsuranceNumber || '',
-    email: patientProfile.email || '',
+    email: patientProfile.email || user?.email || '',
     relationship: patientProfile.relationship || 'Tôi',
   };
+}
+
+function chuyen_ho_so_tu_api(profile) {
+  return {
+    id: profile.id || `profile_${Date.now()}`,
+    fullName: profile.full_name || profile.fullName || profile.name || '',
+    phone: profile.phone || '',
+    birthDate: profile.birthDate || profile.birth_date || profile.dateOfBirth || '',
+    gender: profile.gender === 'female' ? 'Nữ' : profile.gender === 'male' ? 'Nam' : profile.gender || '',
+    province: profile.province || '',
+    district: profile.district || '',
+    ward: profile.ward || '',
+    address: profile.address || '',
+    citizenId: profile.citizen_id || profile.citizenId || '',
+    ethnicity: profile.ethnicity || 'Kinh',
+    nationality: profile.nationality || 'Việt Nam',
+    job: profile.occupation || profile.job || '',
+    insuranceCode: profile.health_insurance_number || profile.healthInsuranceNumber || profile.insuranceCode || '',
+    email: profile.email || '',
+    relationship: profile.relationship || (profile.is_primary || profile.isMain ? 'Tôi' : 'Khác'),
+  };
+}
+
+function khoa_ho_so(profile) {
+  return profile.id || `${profile.fullName || ''}-${profile.phone || ''}`;
+}
+
+function gop_ho_so(profiles) {
+  const seen = new Set();
+  return profiles.filter((profile) => {
+    const key = khoa_ho_so(profile);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function tao_ho_so_moi() {
@@ -119,6 +157,12 @@ const FILTER_DEFAULT = {
   status: 'all',
   serviceType: 'all',
   placeType: 'all',
+};
+
+const PAYMENT_FILTER_DEFAULT = {
+  fromDate: '',
+  toDate: '',
+  status: 'all',
 };
 
 function co_gia_tri(value) {
@@ -284,7 +328,7 @@ function PhieuKhamChiTiet({ appointment, compact = false }) {
   );
 }
 
-function TrangPhieuKham({ appointment, user, onLogout }) {
+function TrangPhieuKhamDienTu({ appointment, user, onLogout }) {
   const [activeTab, setActiveTab] = useState('lich_kham');
   const [selectedAppointment, setSelectedAppointment] = useState(appointment);
   const [appointments, setAppointments] = useState(() => gop_lich_kham([appointment, ...doc_lich_kham_luu_cuc_bo()].filter(Boolean)));
@@ -293,14 +337,24 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
   const [filterDraft, setFilterDraft] = useState(FILTER_DEFAULT);
   const [filters, setFilters] = useState(FILTER_DEFAULT);
   const [appointmentError, setAppointmentError] = useState('');
+  const [paymentSearchTerm, setPaymentSearchTerm] = useState('');
+  const [isPaymentFilterOpen, setIsPaymentFilterOpen] = useState(false);
+  const [paymentFilterDraft, setPaymentFilterDraft] = useState(PAYMENT_FILTER_DEFAULT);
+  const [paymentFilters, setPaymentFilters] = useState(PAYMENT_FILTER_DEFAULT);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isAddingProfile, setIsAddingProfile] = useState(false);
-  const [profiles, setProfiles] = useState(() => [{ id: '', ...tao_ho_so_mac_dinh(appointment, user) }]);
+  const [profileSearchTerm, setProfileSearchTerm] = useState('');
+  const [profiles, setProfiles] = useState(() => [tao_ho_so_mac_dinh(appointment, user)]);
   const [selectedProfileId, setSelectedProfileId] = useState('me');
   const [profileDraft, setProfileDraft] = useState(() => tao_ho_so_mac_dinh(appointment, user));
   const { addressData, ethnicGroups, occupations } = useReferenceData();
   const [profileError, setProfileError] = useState('');
   const [profileFieldErrors, setProfileFieldErrors] = useState({});
+  const [passwordDraft, setPasswordDraft] = useState({ currentPassword: '', newPassword: '' });
+  const [passwordMessage, setPasswordMessage] = useState('');
+  const [isPasswordSaving, setIsPasswordSaving] = useState(false);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const profile = profiles.find((item) => item.id === selectedProfileId) || profiles[0];
   const selectedProvince = useMemo(
@@ -313,6 +367,17 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
   );
 
   const patientName = profile.fullName || tao_ten_benh_nhan(user);
+  const visibleProfiles = useMemo(() => {
+    const keyword = profileSearchTerm.trim().toLowerCase();
+    if (!keyword) return profiles;
+    return profiles.filter((item) => [
+      item.fullName,
+      item.phone,
+      item.birthDate,
+      item.citizenId,
+      item.relationship,
+    ].join(' ').toLowerCase().includes(keyword));
+  }, [profileSearchTerm, profiles]);
   const visibleAppointments = useMemo(() => appointments.filter((item) => {
     const appointmentDate = chuyen_ngay_loc(item.dateValue || item.dateDisplay);
     const searchable = [
@@ -335,6 +400,33 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
     if (filters.placeType !== 'all' && loai_noi_kham(item) !== filters.placeType) return false;
     return true;
   }), [appointments, filters, searchTerm]);
+  const visiblePayments = useMemo(() => appointments
+    .map((item) => ({
+      ...item,
+      paymentCode: item.paymentCode || item.transactionCode || item.appointmentCode || item.ticket,
+      paymentAmount: item.paymentAmount || item.amount || item.price || item.fee,
+      paymentStatus: item.paymentStatus || item.payment_status || (item.isPaid ? 'Đã thanh toán' : ''),
+      paymentDate: item.paymentDate || item.paidAt || item.dateDisplay,
+    }))
+    .filter((item) => co_gia_tri(item.paymentStatus) || co_gia_tri(item.paymentAmount))
+    .filter((item) => {
+      const paymentDate = chuyen_ngay_loc(item.paymentDate || item.dateValue || item.dateDisplay);
+      const keyword = paymentSearchTerm.trim().toLowerCase();
+      const searchable = [
+        item.paymentCode,
+        item.serviceName,
+        item.patientName,
+        item.doctorName,
+        item.hospitalName,
+        item.paymentStatus,
+      ].join(' ').toLowerCase();
+
+      if (keyword && !searchable.includes(keyword)) return false;
+      if (paymentFilters.fromDate && paymentDate && paymentDate < paymentFilters.fromDate) return false;
+      if (paymentFilters.toDate && paymentDate && paymentDate > paymentFilters.toDate) return false;
+      if (paymentFilters.status !== 'all' && item.paymentStatus !== paymentFilters.status) return false;
+      return true;
+    }), [appointments, paymentFilters, paymentSearchTerm]);
   const activeAppointment = selectedAppointment || visibleAppointments[0] || appointments[0] || appointment;
   const canSubmitProfile = profileDraft.fullName.trim()
     && profileDraft.phone.length === 10
@@ -379,6 +471,31 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
   }, [appointment, user]);
 
   useEffect(() => {
+    const defaultProfile = tao_ho_so_mac_dinh(appointment, user);
+    setProfiles((current) => gop_ho_so([defaultProfile, ...current]));
+    setSelectedProfileId((current) => current || defaultProfile.id);
+
+    if (!user) return;
+
+    let isMounted = true;
+    listPatientProfiles(user)
+      .then((items) => {
+        if (!isMounted) return;
+        const apiProfiles = items.map(chuyen_ho_so_tu_api);
+        const nextProfiles = gop_ho_so([...apiProfiles, defaultProfile]);
+        setProfiles(nextProfiles);
+        setSelectedProfileId((current) => (
+          nextProfiles.some((item) => item.id === current) ? current : nextProfiles[0]?.id || defaultProfile.id
+        ));
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [appointment, user]);
+
+  useEffect(() => {
     if (!selectedAppointment && visibleAppointments.length > 0) {
       setSelectedAppointment(visibleAppointments[0]);
       return;
@@ -391,6 +508,7 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
   const handleCancel = async () => {
     const targetAppointment = selectedAppointment || activeAppointment;
     if (!targetAppointment) return;
+    if (!window.confirm('Bạn muốn hủy lịch khám này?')) return;
 
     try {
       if (targetAppointment.id && user) {
@@ -408,6 +526,20 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
       });
     } catch (error) {
       setProfileError(error.message || 'Không thể hủy lịch khám. Vui lòng thử lại.');
+    }
+  };
+
+  const handleLogout = async () => {
+    setIsLogoutConfirmOpen(true);
+  };
+
+  const confirmLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await onLogout?.();
+    } finally {
+      setIsLoggingOut(false);
+      setIsLogoutConfirmOpen(false);
     }
   };
 
@@ -467,7 +599,7 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
         savedProfile = await savePatientProfile(user, profileDraft);
       }
     } catch (error) {
-      setProfileError(error.message || 'Kh?ng th? l?u h? s? kh?m ?i?n t?.');
+      setProfileError(error.message || 'Không thể lưu hồ sơ khám điện tử.');
       return;
     }
 
@@ -489,7 +621,7 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
       birthDate: profileDraft.birthDate,
       gender: profileDraft.gender,
       patientAddress: [profileDraft.address, profileDraft.ward, profileDraft.district, profileDraft.province].filter(Boolean).join(', ') || 'Chưa cập nhật',
-      patientProfile: { ...(current.patientProfile || {}), ...profileDraft },
+      patientProfile: { ...(current?.patientProfile || {}), ...profileDraft },
     }));
     setAppointments((current) => {
       const nextAppointments = current.map((item) => (
@@ -509,6 +641,57 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
       return nextAppointments;
     });
     setIsEditingProfile(false);
+  };
+
+  const updatePaymentFilterDraft = (event) => {
+    const { name, value } = event.target;
+    setPaymentFilterDraft((current) => ({ ...current, [name]: value }));
+  };
+
+  const applyPaymentFilters = () => {
+    setPaymentFilters(paymentFilterDraft);
+    setIsPaymentFilterOpen(false);
+  };
+
+  const clearPaymentFilters = () => {
+    setPaymentFilterDraft(PAYMENT_FILTER_DEFAULT);
+    setPaymentFilters(PAYMENT_FILTER_DEFAULT);
+    setPaymentSearchTerm('');
+    setIsPaymentFilterOpen(false);
+  };
+
+  const updatePasswordDraft = (event) => {
+    const { name, value } = event.target;
+    setPasswordDraft((current) => ({ ...current, [name]: value }));
+    setPasswordMessage('');
+  };
+
+  const submitPasswordChange = async (event) => {
+    event.preventDefault();
+    if (!user?.email) {
+      setPasswordMessage('Tài khoản này không hỗ trợ đổi mật khẩu bằng email/mật khẩu.');
+      return;
+    }
+    if (!passwordDraft.currentPassword || passwordDraft.newPassword.length < 6) {
+      setPasswordMessage('Vui lòng nhập mật khẩu hiện tại và mật khẩu mới từ 6 ký tự.');
+      return;
+    }
+
+    setIsPasswordSaving(true);
+    setPasswordMessage('');
+    try {
+      const credential = EmailAuthProvider.credential(user.email, passwordDraft.currentPassword);
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, passwordDraft.newPassword);
+      setPasswordDraft({ currentPassword: '', newPassword: '' });
+      setPasswordMessage('Đã thay đổi mật khẩu.');
+    } catch (error) {
+      setPasswordMessage(error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential'
+        ? 'Mật khẩu hiện tại chưa đúng.'
+        : 'Không thể đổi mật khẩu. Vui lòng thử lại.');
+    } finally {
+      setIsPasswordSaving(false);
+    }
   };
 
   const updateFilterDraft = (event) => {
@@ -536,22 +719,23 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
   ];
 
   return (
-    <section className="account-page">
-      <aside className="account-sidebar">
-        {menu.map(([key, label]) => (
-          <button className={activeTab === key ? 'active' : ''} key={key} type="button" onClick={() => setActiveTab(key)}>
-            {label}
-          </button>
-        ))}
-        <button type="button" onClick={onLogout}>Đăng xuất</button>
-      </aside>
+    <>
+      <section className="account-page">
+        <aside className="account-sidebar">
+          {menu.map(([key, label]) => (
+            <button className={activeTab === key ? 'active' : ''} key={key} type="button" onClick={() => setActiveTab(key)}>
+              {label}
+            </button>
+          ))}
+          <button type="button" onClick={handleLogout}>Đăng xuất</button>
+        </aside>
 
-      <main className="account-content">
+        <main className="account-content">
         {activeTab === 'lich_kham' && (
           <>
             <div className="account-title-row">
               <h2>Lịch khám</h2>
-              <button type="button" onClick={() => { setFilterDraft(filters); setIsFilterOpen((current) => !current); }}>⚱ Lọc</button>
+              <button type="button" onClick={() => { setFilterDraft(filters); setIsFilterOpen((current) => !current); }}>Lọc</button>
             </div>
             {isFilterOpen && (
               <div className="appointment-filter-panel">
@@ -632,10 +816,52 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
           <>
             <div className="account-title-row">
               <h2>Lịch sử thanh toán</h2>
-              <button type="button">⚱ Lọc</button>
+              <button type="button" onClick={() => { setPaymentFilterDraft(paymentFilters); setIsPaymentFilterOpen((current) => !current); }}>Lọc</button>
             </div>
-            <input className="account-search" placeholder="Mã giao dịch, tên dịch vụ, tên bệnh nhân, số điện thoại ..." />
-            <div className="empty-payment"><span>▤</span><p>Chưa có thông tin thanh toán</p></div>
+            {isPaymentFilterOpen && (
+              <div className="appointment-filter-panel">
+                <label>
+                  Ngày bắt đầu
+                  <input name="fromDate" type="date" value={paymentFilterDraft.fromDate} onChange={updatePaymentFilterDraft} />
+                </label>
+                <label>
+                  Ngày kết thúc
+                  <input name="toDate" type="date" value={paymentFilterDraft.toDate} onChange={updatePaymentFilterDraft} />
+                </label>
+                <label>
+                  Trạng thái
+                  <select name="status" value={paymentFilterDraft.status} onChange={updatePaymentFilterDraft}>
+                    <option value="all">Tất cả</option>
+                    <option value="Đã thanh toán">Đã thanh toán</option>
+                    <option value="Chờ thanh toán">Chờ thanh toán</option>
+                    <option value="Đã hoàn tiền">Đã hoàn tiền</option>
+                  </select>
+                </label>
+                <div className="appointment-filter-actions">
+                  <button type="button" onClick={clearPaymentFilters}>Bỏ lọc</button>
+                  <button type="button" onClick={applyPaymentFilters}>Áp dụng</button>
+                </div>
+              </div>
+            )}
+            <input
+              className="account-search"
+              value={paymentSearchTerm}
+              placeholder="Mã giao dịch, tên dịch vụ, tên bệnh nhân, số điện thoại ..."
+              onChange={(event) => setPaymentSearchTerm(event.target.value)}
+            />
+            {visiblePayments.length > 0 ? visiblePayments.map((item) => (
+              <button className="appointment-list-item" key={item.paymentCode} type="button" onClick={() => setSelectedAppointment(item)}>
+                <span>
+                  <strong>{item.serviceName || item.doctorName || item.hospitalName || 'Dịch vụ khám'}</strong>
+                  <small>{item.paymentCode}</small>
+                  <small>{item.paymentDate || item.dateDisplay}</small>
+                  <em className={item.paymentStatus === 'Đã thanh toán' ? 'done-badge' : ''}>{item.paymentStatus}</em>
+                </span>
+                <b>{item.paymentAmount ? `${Number(item.paymentAmount).toLocaleString('vi-VN')}đ` : '--'}</b>
+              </button>
+            )) : (
+              <div className="empty-payment"><span>▤</span><p>Chưa có thông tin thanh toán</p></div>
+            )}
           </>
         )}
 
@@ -644,8 +870,13 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
             <h2>Hồ sơ khám điện tử</h2>
             <div className={(isEditingProfile || isAddingProfile) ? 'profile-account-layout editing' : 'profile-account-layout'}>
               <div>
-                <input className="account-search" placeholder="T?m nhanh h? s? kh?m ?i?n t?" />
-                {profiles.map((item) => (
+                <input
+                  className="account-search"
+                  value={profileSearchTerm}
+                  placeholder="Tìm nhanh hồ sơ khám điện tử"
+                  onChange={(event) => setProfileSearchTerm(event.target.value)}
+                />
+                {visibleProfiles.map((item) => (
                   <button
                     className={item.id === selectedProfileId ? 'profile-mini-card active' : 'profile-mini-card'}
                     key={item.id}
@@ -659,17 +890,17 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
                     <div className="patient-avatar">{lay_ten_tat(item.fullName)}</div>
                     <span>
                       {item.relationship === 'Tôi' && <em>Tôi</em>}
-                      <strong>{item.fullName || 'H? s? kh?m ?i?n t? m?i'}</strong>
+                      <strong>{item.fullName || 'Hồ sơ khám điện tử mới'}</strong>
                       <small>{item.birthDate}</small>
                     </span>
                   </button>
                 ))}
-                <button className="add-profile-button" type="button" onClick={openAddProfile}>Th?m h? s? kh?m ?i?n t?</button>
+                <button className="add-profile-button" type="button" onClick={openAddProfile}>Thêm hồ sơ khám điện tử</button>
               </div>
 
               {(isEditingProfile || isAddingProfile) ? (
                 <form className="profile-edit-card" onSubmit={submitProfile}>
-                  <h3>{isAddingProfile ? 'Th?m h? s? kh?m ?i?n t? m?i' : '?i?u ch?nh th?ng tin'}</h3>
+                  <h3>{isAddingProfile ? 'Thêm hồ sơ khám điện tử mới' : 'Điều chỉnh thông tin'}</h3>
                   <div className="profile-edit-divider" />
                   <ONhapHoSo label="Họ và tên" name="fullName" value={profileDraft.fullName} required placeholder="Họ và tên" onChange={updateProfileDraft} error={profileFieldErrors.fullName} />
                   <ONhapHoSo label="Số điện thoại" name="phone" value={profileDraft.phone} required placeholder="Số điện thoại" onChange={updateProfileDraft} error={profileFieldErrors.phone} />
@@ -727,16 +958,16 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
                   {profileError && <p className="profile-form-error">{profileError}</p>}
                   <div className="profile-edit-actions">
                     <button type="button" onClick={cancelEditProfile}>{isAddingProfile ? 'Thoát' : 'Hủy'}</button>
-                    <button type="submit">{isAddingProfile ? 'Th?m h? s? kh?m ?i?n t? m?i' : 'C?p nh?t'}</button>
+                    <button type="submit">{isAddingProfile ? 'Thêm hồ sơ khám điện tử mới' : 'Cập nhật'}</button>
                   </div>
                 </form>
               ) : (
                 <div className="profile-detail-card">
                   <div className="profile-detail-head">
                     <div className="patient-avatar">{lay_ten_tat(patientName)}</div>
-                    <span><strong>{patientName.toUpperCase()}</strong><small>Mã BN: {activeAppointment?.patientCode || appointment.patientCode}</small></span>
+                    <span><strong>{patientName.toUpperCase()}</strong><small>Mã BN: {activeAppointment?.patientCode || appointment?.patientCode}</small></span>
                   </div>
-                  <p className="profile-warning">Ho?n thi?n th?ng tin ?? ??t kh?m v? qu?n l? h? s? kh?m ?i?n t? ???c t?t h?n.</p>
+                  <p className="profile-warning">Hoàn thiện thông tin để đặt khám và quản lý hồ sơ khám điện tử được tốt hơn.</p>
                   <HangThongTin label="Họ và tên" value={patientName} />
                   <HangThongTin label="Điện thoại" value={profile.phone} />
                   <HangThongTin label="Ngày sinh" value={profile.birthDate} />
@@ -773,19 +1004,60 @@ function TrangPhieuKham({ appointment, user, onLogout }) {
                 <HangThongTin label="Quốc tịch" value={profile.nationality || 'Việt Nam'} />
                 <button type="button" onClick={() => { setActiveTab('ho_so'); openEditProfile(); }}>Thay đổi thông tin</button>
               </div>
-              <div className="profile-detail-card">
+              <form className="profile-detail-card" onSubmit={submitPasswordChange}>
                 <h3>Thay đổi mật khẩu</h3>
-                <label>Mật khẩu hiện tại<input type="password" placeholder="Mật khẩu hiện tại của bạn" /></label>
-                <label>Mật khẩu mới<input type="password" placeholder="Nhập mật khẩu mới" /></label>
-                <button type="button" disabled>Thay đổi</button>
-              </div>
+                <label>
+                  Mật khẩu hiện tại
+                  <input
+                    name="currentPassword"
+                    type="password"
+                    value={passwordDraft.currentPassword}
+                    placeholder="Mật khẩu hiện tại của bạn"
+                    onChange={updatePasswordDraft}
+                  />
+                </label>
+                <label>
+                  Mật khẩu mới
+                  <input
+                    name="newPassword"
+                    type="password"
+                    value={passwordDraft.newPassword}
+                    placeholder="Nhập mật khẩu mới"
+                    onChange={updatePasswordDraft}
+                  />
+                </label>
+                {passwordMessage && <p className="profile-form-error">{passwordMessage}</p>}
+                <button type="submit" disabled={isPasswordSaving}>
+                  {isPasswordSaving ? 'Đang đổi...' : 'Thay đổi'}
+                </button>
+              </form>
             </div>
           </>
         )}
-      </main>
-    </section>
+        </main>
+      </section>
+
+      {isLogoutConfirmOpen && (
+        <div className="doctor-modal-backdrop">
+          <article className="logout-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="logout-confirm-title">
+            <header>
+              <h2 id="logout-confirm-title">Thông báo</h2>
+            </header>
+            <section>
+              <p>Bạn muốn đăng xuất khỏi tài khoản MidHealth?</p>
+            </section>
+            <footer>
+              <button type="button" disabled={isLoggingOut} onClick={() => setIsLogoutConfirmOpen(false)}>Không</button>
+              <button type="button" disabled={isLoggingOut} onClick={confirmLogout}>
+                {isLoggingOut ? 'Đang đăng xuất...' : 'Có'}
+              </button>
+            </footer>
+          </article>
+        </div>
+      )}
+    </>
   );
 }
 
 export { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham };
-export default TrangPhieuKham;
+export default TrangPhieuKhamDienTu;

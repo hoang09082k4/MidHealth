@@ -7,13 +7,13 @@ import {
 } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: 'AIzaSyD_I5u2Zad8ZiVzhT3J_86gK4VnERmdy30',
-  authDomain: 'midhof-c36fa.firebaseapp.com',
-  projectId: 'midhof-c36fa',
-  storageBucket: 'midhof-c36fa.firebasestorage.app',
-  messagingSenderId: '935367903965',
-  appId: '1:935367903965:web:e022a65f7889dbb2fb2934',
-  measurementId: 'G-6WHSKR02Y4',
+  apiKey: 'AIzaSyBfkTA39JCh8YtBkj0Iyq-cL6Oruo7jk6M',
+  authDomain: 'midhealth-1c1b9.firebaseapp.com',
+  projectId: 'midhealth-1c1b9',
+  storageBucket: 'midhealth-1c1b9.firebasestorage.app',
+  messagingSenderId: '620573602820',
+  appId: '1:620573602820:web:24a4202de863356b5ff151',
+  measurementId: 'G-NR4CFHZ1DS',
 };
 
 export const firebaseApp = initializeApp(firebaseConfig);

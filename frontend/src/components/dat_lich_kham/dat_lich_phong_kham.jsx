@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
-import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './phieu_kham';
+import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './phieu_kham-dien-tu';
 import { createAppointment, listAppointments, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
 import { useReferenceData } from '../../lib/reference_data';
 import {
@@ -263,7 +263,7 @@ function tai_anh_phieu(appointment) {
     ctx.fillText(String(row.value), 360, y);
   });
   const link = document.createElement('a');
-  link.download = `${appointment.appointmentCode}.png`;
+  link.download = `${appointment.appointmentCode || 'phieu-kham-dien-tu'}.png`;
   link.href = canvas.toDataURL('image/png');
   link.click();
 }
@@ -284,7 +284,7 @@ function ManHinhDatLichThanhCong({ appointment, image, fallback, onViewTicket })
         </div>
         <PhieuKhamChiTiet appointment={appointment} />
         <div className="success-actions">
-          <button type="button" onClick={onViewTicket}>Xem phiếu khám</button>
+          <button type="button" onClick={onViewTicket}>Xem phiếu khám điện tử</button>
           <button type="button" onClick={() => tai_anh_phieu(appointment)}>Lưu lại phiếu</button>
         </div>
       </article>

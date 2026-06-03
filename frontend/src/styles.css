@@ -4340,6 +4340,70 @@ a {
   background: rgba(0, 0, 0, 0.42);
 }
 
+.logout-confirm-modal {
+  width: min(560px, calc(100vw - 40px));
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.25);
+  overflow: hidden;
+}
+
+.logout-confirm-modal header,
+.logout-confirm-modal footer {
+  display: flex;
+  align-items: center;
+  padding: 20px 32px;
+  background: #ffffff;
+}
+
+.logout-confirm-modal header {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.logout-confirm-modal h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.25rem;
+}
+
+.logout-confirm-modal section {
+  padding: 28px 32px;
+}
+
+.logout-confirm-modal p {
+  margin: 0;
+  color: #334155;
+  font-size: 1.05rem;
+  line-height: 1.55;
+}
+
+.logout-confirm-modal footer {
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.logout-confirm-modal footer button {
+  min-width: 96px;
+  height: 44px;
+  border: 1px solid #dbe3ee;
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.logout-confirm-modal footer button:last-child {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #ffffff;
+}
+
+.logout-confirm-modal footer button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
 .doctor-profile-modal {
   display: grid;
   grid-template-rows: auto 1fr auto;

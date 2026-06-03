@@ -9,7 +9,7 @@ import {
 import { createAppointment, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
 import { doctorImageName, doctorImagePath } from '../../lib/doctor_images';
 import { useReferenceData } from '../../lib/reference_data';
-import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './phieu_kham';
+import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './phieu_kham-dien-tu';
 
 const DAY_LABELS = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
 const DEFAULT_ADDRESS = '250 Đ. Nguyễn Xí, Bình Lợi Trung, Hồ Chí Minh';
@@ -246,7 +246,7 @@ function tai_anh_phieu(appointment) {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#176bdd';
   ctx.font = 'bold 28px Arial';
-  ctx.fillText('MidHealth - Phiếu khám', 40, 60);
+  ctx.fillText('MidHealth - Phiếu khám điện tử', 40, 60);
   ctx.fillStyle = '#111827';
   ctx.font = 'bold 20px Arial';
   ctx.fillText(appointment.doctorShortName || appointment.doctorName, 40, 105);
@@ -259,7 +259,7 @@ function tai_anh_phieu(appointment) {
     ctx.fillText(String(row.value), 300, y);
   });
   const link = document.createElement('a');
-  link.download = `${appointment.appointmentCode || 'phieu-kham'}.png`;
+  link.download = `${appointment.appointmentCode || 'phieu-kham-dien-tu'}.png`;
   link.href = canvas.toDataURL('image/png');
   link.click();
 }
@@ -730,7 +730,7 @@ function TrangDatLichBacSi({ doctor, initialScreen = 'detail', user, onBackHome,
           </div>
           <PhieuKhamChiTiet appointment={appointment} />
           <div className="success-actions">
-            <button type="button" onClick={() => setScreen('account')}>Xem phiếu khám</button>
+            <button type="button" onClick={() => setScreen('account')}>Xem phiếu khám điện tử</button>
             <button type="button" onClick={() => tai_anh_phieu(appointment)}>Lưu lại phiếu</button>
           </div>
         </article>
