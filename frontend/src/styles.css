@@ -1,7 +1,7 @@
 ﻿:root {
   --font-main: Arial, Helvetica, sans-serif;
   --blue: #176bdd;
-  --blue-dark: #0f4fb3;
+  --blue-dark: #176bdd;
   --green: #16b978;
   --ink: #071832;
   --muted: #5e6b7d;
@@ -734,41 +734,37 @@ a {
 .hero {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(390px, 620px);
-  min-height: 585px;
-  padding: 92px 7vw 46px;
+  grid-template-columns: 1fr;
+  place-items: center;
+  min-height: 640px;
+  padding: 118px 7vw 82px;
   overflow: hidden;
-  background: var(--blue);
+  background: #176bdd;
   color: #ffffff;
 }
 
-.hero::before,
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  background: linear-gradient(90deg, rgba(12, 67, 142, 0.42), rgba(12, 67, 142, 0.3));
+  pointer-events: none;
+}
+
 .hero::after {
   content: "";
   display: none;
 }
 
-.hero::before {
-  right: 28%;
-  top: 46px;
-  width: 330px;
-  height: 560px;
-}
-
-.hero::after {
-  right: 23%;
-  top: 112px;
-  width: 205px;
-  height: 370px;
-}
-
 .hero-content {
   position: relative;
   z-index: 4;
-  align-self: center;
-  justify-self: center;
-  max-width: 930px;
+  width: min(1040px, 100%);
+  max-width: 1040px;
   text-align: center;
+  text-shadow: 0 3px 18px rgba(2, 25, 61, 0.28);
 }
 
 .hero h1 {
@@ -789,7 +785,7 @@ a {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) 54px;
   align-items: center;
-  width: min(980px, 74vw);
+  width: min(980px, 88vw);
   height: 62px;
   margin: 0 auto;
   border-radius: 999px;
@@ -901,20 +897,15 @@ a {
 }
 
 .hero-banner-visual {
-  position: relative;
-  z-index: 2;
-  align-self: end;
-  justify-self: end;
-  width: min(560px, 40vw);
-  aspect-ratio: 1;
-  height: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
-  border-radius: 50%;
-  background: #2871D5;
-  box-shadow: 0 22px 44px rgba(4, 34, 87, 0.14);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .hero-banner-visual::before {
@@ -928,14 +919,39 @@ a {
 }
 
 .hero-banner-visual img {
-  position: relative;
-  z-index: 2;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
   object-position: center;
-  filter: drop-shadow(0 18px 34px rgba(4, 34, 87, 0.18));
-  transform: scale(0.82);
+  opacity: 1;
+  filter: none;
+  transform: translate3d(0, 0, 0);
+  animation: heroBannerDrift 18s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes heroBannerDrift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  45% {
+    transform: translate3d(-8px, -6px, 0);
+  }
+
+  72% {
+    transform: translate3d(6px, 4px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-banner-visual img {
+    animation: none;
+    transform: none;
+  }
 }
 
 .intro {
@@ -6199,8 +6215,8 @@ a {
 
   .hero {
     grid-template-columns: 1fr;
-    min-height: 520px;
-    padding: 88px 6vw 58px;
+    min-height: 580px;
+    padding: 104px 6vw 68px;
   }
 
   .hero-search {
@@ -6209,11 +6225,10 @@ a {
 
   .hero-banner-visual {
     position: absolute;
-    right: -130px;
-    bottom: -40px;
-    width: 520px;
-    height: 520px;
-    opacity: 0.32;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 1;
   }
 
   .specialty-grid {
@@ -6393,7 +6408,8 @@ a {
   }
 
   .hero {
-    padding: 70px 18px 54px;
+    min-height: 540px;
+    padding: 86px 18px 58px;
   }
 
   .hero-search {
@@ -6418,7 +6434,7 @@ a {
   }
 
   .hero-banner-visual {
-    display: none;
+    display: block;
   }
 
   .hero-search input,
