@@ -8,9 +8,39 @@ begin
 end;
 $$ language plpgsql;
 
+do $$
+begin
+  create type public.app_user_role as enum ('patient', 'doctor', 'staff', 'admin');
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  create type public.app_user_status as enum ('active', 'disabled', 'pending');
+exception
+  when duplicate_object then null;
+end $$;
+
+create table if not exists public.app_users (
+  id uuid primary key default gen_random_uuid(),
+  firebase_uid text not null unique,
+  email text not null unique,
+  full_name text,
+  avatar_url text,
+  role public.app_user_role not null default 'patient',
+  status public.app_user_status not null default 'active',
+  auth_provider text not null default 'password',
+  email_verified boolean not null default false,
+  last_login_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.patient_profiles (
   id uuid primary key default gen_random_uuid(),
   firebase_uid text not null unique,
+  app_user_id uuid references public.app_users(id) on delete cascade,
   email text not null unique,
   full_name text not null,
   phone text not null,
@@ -25,7 +55,10 @@ create table if not exists public.patient_profiles (
   ethnicity text default 'Kinh',
   occupation text,
   referral_code text,
+  role public.app_user_role not null default 'patient',
+  status public.app_user_status not null default 'active',
   email_verified boolean not null default true,
+  last_login_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -272,7 +305,70 @@ create table if not exists public.reference_data (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.health_categories (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  slug text not null unique,
+  description text,
+  status text not null default 'active' check (status in ('active', 'inactive')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.health_authors (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  full_name text,
+  title text,
+  specialty text,
+  avatar text,
+  avatar_url text,
+  description text,
+  bio text,
+  status text not null default 'active' check (status in ('active', 'inactive')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.health_experts (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  full_name text,
+  title text,
+  specialty text,
+  avatar text,
+  avatar_url text,
+  description text,
+  status text not null default 'active' check (status in ('active', 'inactive')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.health_articles (
+  id uuid primary key default gen_random_uuid(),
+  category_id uuid not null references public.health_categories(id) on delete restrict,
+  title text not null,
+  slug text not null unique,
+  summary text,
+  content text not null,
+  thumbnail text,
+  thumbnail_url text,
+  author_id uuid references public.health_authors(id) on delete set null,
+  published_date timestamptz not null default now(),
+  published_at timestamptz,
+  updated_date timestamptz not null default now(),
+  is_featured boolean not null default false,
+  status text not null default 'published' check (status in ('draft', 'published', 'archived')),
+  view_count integer not null default 0 check (view_count >= 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 alter table public.patient_profiles add column if not exists updated_at timestamptz not null default now();
+alter table public.patient_profiles add column if not exists app_user_id uuid references public.app_users(id) on delete cascade;
+alter table public.patient_profiles add column if not exists role public.app_user_role not null default 'patient';
+alter table public.patient_profiles add column if not exists status public.app_user_status not null default 'active';
+alter table public.patient_profiles add column if not exists last_login_at timestamptz;
 alter table public.clinic_specialties add column if not exists slug text;
 alter table public.clinic_specialties add column if not exists updated_at timestamptz not null default now();
 alter table public.medical_facilities add column if not exists updated_at timestamptz not null default now();
@@ -327,6 +423,27 @@ alter table public.payments add column if not exists paypal_order_id text;
 alter table public.payments add column if not exists paypal_capture_id text;
 alter table public.payments add column if not exists receipt_number text;
 alter table public.payments add column if not exists raw_payload jsonb;
+alter table public.health_authors add column if not exists full_name text;
+alter table public.health_authors add column if not exists avatar_url text;
+alter table public.health_authors add column if not exists bio text;
+alter table public.health_experts add column if not exists full_name text;
+alter table public.health_experts add column if not exists avatar_url text;
+alter table public.health_articles add column if not exists thumbnail_url text;
+alter table public.health_articles add column if not exists published_at timestamptz;
+alter table public.health_articles add column if not exists is_featured boolean not null default false;
+
+update public.health_authors
+set full_name = coalesce(full_name, name),
+    avatar_url = coalesce(avatar_url, avatar),
+    bio = coalesce(bio, description);
+
+update public.health_experts
+set full_name = coalesce(full_name, name),
+    avatar_url = coalesce(avatar_url, avatar);
+
+update public.health_articles
+set thumbnail_url = coalesce(thumbnail_url, thumbnail),
+    published_at = coalesce(published_at, published_date);
 
 create unique index if not exists payments_paypal_order_id_unique_idx
 on public.payments(paypal_order_id)
@@ -409,6 +526,11 @@ create trigger set_patient_profiles_updated_at
 before update on public.patient_profiles
 for each row execute function public.set_updated_at();
 
+drop trigger if exists set_app_users_updated_at on public.app_users;
+create trigger set_app_users_updated_at
+before update on public.app_users
+for each row execute function public.set_updated_at();
+
 drop trigger if exists set_patient_medical_profiles_updated_at on public.patient_medical_profiles;
 create trigger set_patient_medical_profiles_updated_at
 before update on public.patient_medical_profiles
@@ -484,6 +606,7 @@ as $$
   where id = slot_id;
 $$;
 
+alter table public.app_users enable row level security;
 alter table public.patient_profiles enable row level security;
 alter table public.patient_medical_profiles enable row level security;
 alter table public.patient_guardians enable row level security;
@@ -502,6 +625,158 @@ alter table public.appointment_attachments enable row level security;
 alter table public.queue_tickets enable row level security;
 alter table public.payments enable row level security;
 alter table public.reference_data enable row level security;
+alter table public.health_categories enable row level security;
+alter table public.health_authors enable row level security;
+alter table public.health_experts enable row level security;
+alter table public.health_articles enable row level security;
+
+create or replace function public.current_firebase_uid()
+returns text
+language sql
+stable
+as $$
+  with claims as (
+    select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb as value
+  )
+  select coalesce(
+    nullif(value ->> 'firebase_uid', ''),
+    nullif(value ->> 'user_id', ''),
+    nullif(value ->> 'sub', '')
+  )
+  from claims;
+$$;
+
+create or replace function public.current_app_role()
+returns public.app_user_role
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (
+      select role
+      from public.app_users
+      where firebase_uid = public.current_firebase_uid()
+        and status = 'active'
+      limit 1
+    ),
+    'patient'::public.app_user_role
+  );
+$$;
+
+drop policy if exists "service role can manage app users" on public.app_users;
+create policy "service role can manage app users"
+on public.app_users for all
+using (auth.role() = 'service_role')
+with check (auth.role() = 'service_role');
+
+drop policy if exists "users can read own app account" on public.app_users;
+create policy "users can read own app account"
+on public.app_users for select
+using (
+  auth.role() = 'service_role'
+  or firebase_uid = public.current_firebase_uid()
+  or public.current_app_role() in ('staff', 'admin')
+);
+
+drop policy if exists "admins can manage app accounts" on public.app_users;
+create policy "admins can manage app accounts"
+on public.app_users for all
+using (auth.role() = 'service_role' or public.current_app_role() = 'admin')
+with check (auth.role() = 'service_role' or public.current_app_role() = 'admin');
+
+drop policy if exists "users can read own patient profile" on public.patient_profiles;
+create policy "users can read own patient profile"
+on public.patient_profiles for select
+using (
+  auth.role() = 'service_role'
+  or firebase_uid = public.current_firebase_uid()
+  or public.current_app_role() in ('staff', 'admin')
+);
+
+drop policy if exists "users can update own patient profile" on public.patient_profiles;
+create policy "users can update own patient profile"
+on public.patient_profiles for update
+using (
+  auth.role() = 'service_role'
+  or firebase_uid = public.current_firebase_uid()
+  or public.current_app_role() in ('staff', 'admin')
+)
+with check (
+  auth.role() = 'service_role'
+  or firebase_uid = public.current_firebase_uid()
+  or public.current_app_role() in ('staff', 'admin')
+);
+
+drop policy if exists "service role can insert patient profiles" on public.patient_profiles;
+create policy "service role can insert patient profiles"
+on public.patient_profiles for insert
+with check (auth.role() = 'service_role' or public.current_app_role() in ('staff', 'admin'));
+
+drop policy if exists "users can read own medical profiles" on public.patient_medical_profiles;
+create policy "users can read own medical profiles"
+on public.patient_medical_profiles for select
+using (
+  auth.role() = 'service_role'
+  or exists (
+    select 1
+    from public.patient_profiles owner
+    where owner.id = patient_medical_profiles.owner_profile_id
+      and owner.firebase_uid = public.current_firebase_uid()
+  )
+  or public.current_app_role() in ('staff', 'admin')
+);
+
+drop policy if exists "users can manage own medical profiles" on public.patient_medical_profiles;
+create policy "users can manage own medical profiles"
+on public.patient_medical_profiles for all
+using (
+  auth.role() = 'service_role'
+  or exists (
+    select 1
+    from public.patient_profiles owner
+    where owner.id = patient_medical_profiles.owner_profile_id
+      and owner.firebase_uid = public.current_firebase_uid()
+  )
+  or public.current_app_role() in ('staff', 'admin')
+)
+with check (
+  auth.role() = 'service_role'
+  or exists (
+    select 1
+    from public.patient_profiles owner
+    where owner.id = patient_medical_profiles.owner_profile_id
+      and owner.firebase_uid = public.current_firebase_uid()
+  )
+  or public.current_app_role() in ('staff', 'admin')
+);
+
+drop policy if exists "users can manage own guardians" on public.patient_guardians;
+create policy "users can manage own guardians"
+on public.patient_guardians for all
+using (
+  auth.role() = 'service_role'
+  or exists (
+    select 1
+    from public.patient_medical_profiles medical
+    join public.patient_profiles owner on owner.id = medical.owner_profile_id
+    where medical.id = patient_guardians.patient_medical_profile_id
+      and owner.firebase_uid = public.current_firebase_uid()
+  )
+  or public.current_app_role() in ('staff', 'admin')
+)
+with check (
+  auth.role() = 'service_role'
+  or exists (
+    select 1
+    from public.patient_medical_profiles medical
+    join public.patient_profiles owner on owner.id = medical.owner_profile_id
+    where medical.id = patient_guardians.patient_medical_profile_id
+      and owner.firebase_uid = public.current_firebase_uid()
+  )
+  or public.current_app_role() in ('staff', 'admin')
+);
 
 drop policy if exists "public can read active specialties" on public.clinic_specialties;
 create policy "public can read active specialties"
@@ -553,8 +828,29 @@ create policy "public can read active slots"
 on public.appointment_slots for select
 using (is_active = true and booked_count < capacity);
 
+drop policy if exists "public can read active health categories" on public.health_categories;
+create policy "public can read active health categories"
+on public.health_categories for select
+using (status = 'active');
+
+drop policy if exists "public can read active health authors" on public.health_authors;
+create policy "public can read active health authors"
+on public.health_authors for select
+using (status = 'active');
+
+drop policy if exists "public can read active health experts" on public.health_experts;
+create policy "public can read active health experts"
+on public.health_experts for select
+using (status = 'active');
+
+drop policy if exists "public can read published health articles" on public.health_articles;
+create policy "public can read published health articles"
+on public.health_articles for select
+using (status = 'published');
+
 grant usage on schema public to anon, authenticated;
 grant select on
+  public.app_users,
   public.clinic_specialties,
   public.medical_facilities,
   public.facility_images,
@@ -568,8 +864,19 @@ grant select on
   public.v_doctor_cards,
   public.v_facility_cards,
   public.v_specialty_search_results,
-  public.reference_data
+  public.reference_data,
+  public.health_categories,
+  public.health_authors,
+  public.health_experts,
+  public.health_articles
 to anon, authenticated;
+
+grant select on public.app_users to authenticated;
+grant select, update on public.patient_profiles to authenticated;
+grant select, insert, update, delete on public.patient_medical_profiles to authenticated;
+grant select, insert, update, delete on public.patient_guardians to authenticated;
+grant execute on function public.current_firebase_uid() to anon, authenticated;
+grant execute on function public.current_app_role() to anon, authenticated;
 
 drop policy if exists "public can read reference data" on public.reference_data;
 create policy "public can read reference data"
@@ -581,11 +888,36 @@ create trigger set_reference_data_updated_at
 before update on public.reference_data
 for each row execute function public.set_updated_at();
 
+drop trigger if exists set_health_categories_updated_at on public.health_categories;
+create trigger set_health_categories_updated_at
+before update on public.health_categories
+for each row execute function public.set_updated_at();
+
+drop trigger if exists set_health_authors_updated_at on public.health_authors;
+create trigger set_health_authors_updated_at
+before update on public.health_authors
+for each row execute function public.set_updated_at();
+
+drop trigger if exists set_health_experts_updated_at on public.health_experts;
+create trigger set_health_experts_updated_at
+before update on public.health_experts
+for each row execute function public.set_updated_at();
+
+drop trigger if exists set_health_articles_updated_at on public.health_articles;
+create trigger set_health_articles_updated_at
+before update on public.health_articles
+for each row execute function public.set_updated_at();
+
 grant execute on function public.claim_appointment_slot(uuid) to anon, authenticated;
 grant execute on function public.release_appointment_slot(uuid) to anon, authenticated;
 
 create index if not exists patient_profiles_firebase_uid_idx on public.patient_profiles(firebase_uid);
 create index if not exists patient_profiles_email_idx on public.patient_profiles(email);
+create unique index if not exists patient_profiles_app_user_id_idx on public.patient_profiles(app_user_id) where app_user_id is not null;
+create index if not exists app_users_firebase_uid_idx on public.app_users(firebase_uid);
+create index if not exists app_users_email_idx on public.app_users(email);
+create index if not exists app_users_role_idx on public.app_users(role);
+create index if not exists app_users_status_idx on public.app_users(status);
 create index if not exists patient_medical_profiles_owner_idx on public.patient_medical_profiles(owner_profile_id);
 create index if not exists patient_guardians_profile_idx on public.patient_guardians(patient_medical_profile_id);
 create index if not exists medical_facilities_type_idx on public.medical_facilities(type);
@@ -621,3 +953,13 @@ create index if not exists queue_tickets_owner_profile_id_idx on public.queue_ti
 create index if not exists queue_tickets_appointment_id_idx on public.queue_tickets(appointment_id);
 create index if not exists payments_owner_profile_id_idx on public.payments(owner_profile_id);
 create index if not exists payments_appointment_id_idx on public.payments(appointment_id);
+create index if not exists health_categories_slug_idx on public.health_categories(slug);
+create index if not exists health_articles_category_published_idx on public.health_articles(category_id, published_at desc);
+create index if not exists health_articles_slug_idx on public.health_articles(slug);
+create index if not exists health_articles_published_at_idx on public.health_articles(published_at desc);
+create index if not exists health_articles_featured_idx
+on public.health_articles(is_featured, published_at desc)
+where status = 'published';
+create index if not exists health_articles_search_idx on public.health_articles using gin (
+  to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(content, ''))
+);

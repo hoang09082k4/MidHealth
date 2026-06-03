@@ -6,14 +6,28 @@ Thu muc nay dung de thiet lap va dong bo database Supabase cho do an.
 
 - `schema.sql`: dinh nghia cau truc database hien tai, gom bang, view, function, trigger, index va RLS policy.
 - `seed.sql`: du lieu khoi tao/mau cho chuyen khoa, benh vien, phong kham, bac si, dich vu va slot kham.
-- `migrations/`: lich su thay doi schema khi dung Supabase CLI.
 - `config.toml`: cau hinh Supabase CLI cho project local/remote.
 
-## Migration hien tai
+## Cach quan ly database trong do an
 
-- `migrations/20260601023000_create_shared_reference_data_table.sql`
+Do an dung huong snapshot schema + seed:
 
-File nay tao bang `public.reference_data`.
+- `schema.sql` la nguon chinh cho cau truc database hien tai. File nay phu hop de khoi tao nhanh database khi demo, bao ve do an hoac can reset moi.
+- `seed.sql` la du lieu mau cot loi cho luong dat lich kham: chuyen khoa, co so y te, bac si, dich vu va slot kham.
+- Cac script seed backend nhu `npm run seed:reference` va `npm run seed:health-news` dung cho cac tap du lieu lon/de cap nhat rieng.
+- `config.toml` cau hinh `db reset` chay `schema.sql` truoc `seed.sql`.
+
+Cach giai thich ngan khi bao ve:
+
+> Em quan ly database theo huong snapshot schema. Toan bo cau truc hien tai nam trong `schema.sql`, du lieu mau nam trong `seed.sql` va cac script seed rieng. Cach nay giup em khoi tao lai database demo nhanh, tranh phai giai thich tung thay doi nho, nhung van dam bao schema co day du bang, khoa ngoai, index, trigger va RLS policy ma ung dung dang su dung.
+
+## Luong khoi tao toi uu
+
+Luong khoi tao database cua do an la:
+
+1. `schema.sql`
+2. `seed.sql`
+3. script seed backend neu can
 
 Bang `reference_data` dung de luu du lieu tham chieu dung chung cho frontend/backend, vi du:
 
@@ -22,33 +36,34 @@ Bang `reference_data` dung de luu du lieu tham chieu dung chung cho frontend/bac
 - danh sach nghe nghiep,
 - du lieu dia chi can cho form ho so va dat lich.
 
-Ten file migration co dang:
-
-`YYYYMMDDHHMMSS_mo_ta_thay_doi.sql`
-
-Phan so dau la timestamp de Supabase CLI biet thu tu chay migration. Phan sau la mo ta noi dung thay doi.
-
 ## Cach dung
 
 Neu chay bang Supabase SQL Editor:
 
 1. Chay `schema.sql`
 2. Chay `seed.sql`
-
-Neu chay bang Supabase CLI:
-
-```bash
-supabase db push
-```
-
-Sau do seed du lieu tham chieu qua backend:
+3. Vao thu muc `backend`, chay cac script seed bo sung neu can:
 
 ```bash
 npm run seed:reference
+npm run seed:health-news
+```
+
+Neu chay local bang Supabase CLI:
+
+```bash
+supabase db reset
+```
+
+Trong `config.toml`, `db reset` duoc cau hinh de chay `schema.sql` + `seed.sql`. Sau do seed du lieu bo sung qua backend:
+
+```bash
+npm run seed:reference
+npm run seed:health-news
 ```
 
 ## Ghi chu
 
-`schema.sql` da co bang `reference_data` de nhin duoc schema tong the.
+`schema.sql` da co schema tong the cho cac module chinh: tai khoan/phan quyen, ho so benh nhan, dat lich kham, thanh toan, du lieu tham chieu va Tin y te.
 
-Migration van nen giu rieng vi Supabase CLI can no de dong bo thay doi database theo tung moc thoi gian. Khong nen xoa folder `migrations` neu project can nguoi khac cai dat lai database dung cach.
+Trong pham vi do an/demo, workflow snapshot schema + seed la don gian va on dinh: chi can cap nhat `schema.sql` khi thay doi cau truc va cap nhat `seed.sql` hoac script seed khi thay doi du lieu mau.
