@@ -805,9 +805,9 @@ function LichThang({ monthDate, selectedDate, slotDates, bookedDateMap, isLoadin
   return (
     <div className="hospital-calendar">
       <div className="hospital-calendar-head">
-        <button type="button" disabled={gia_tri_ngay(cong_thang(monthDate, -1)) < gia_tri_ngay(dau_thang())} onClick={() => onMonthChange(-1)}>â†</button>
+        <button type="button" disabled={gia_tri_ngay(cong_thang(monthDate, -1)) < gia_tri_ngay(dau_thang())} onClick={() => onMonthChange(-1)}>&larr;</button>
         <strong>{ten_thang(monthDate)}</strong>
-        <button type="button" onClick={() => onMonthChange(1)}>â†’</button>
+        <button type="button" onClick={() => onMonthChange(1)}>&rarr;</button>
       </div>
       <div className="hospital-calendar-week">
         {['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ Nhật'].map((dayName) => <b key={dayName}>{dayName}</b>)}
@@ -1456,7 +1456,7 @@ function TrangDatLichBenhVien({ hospital, initialScreen = 'detail', user, onBack
     return (
       <section className="hospital-booking-page">
         <div className="hospital-booking-title">
-          <button type="button" onClick={handleBack}>â†</button>
+          <button type="button" onClick={handleBack}>&larr;</button>
           <h1>{hospital.name}</h1>
         </div>
         <div className="hospital-booking-grid">
@@ -1646,7 +1646,7 @@ function TrangDatLichBenhVien({ hospital, initialScreen = 'detail', user, onBack
                         handleFiles(event.dataTransfer.files);
                       }}
                     >
-                      <span>â–§</span>
+                      <span>&#9633;</span>
                       <strong>{attachedFiles.length >= MAX_ATTACHMENT_COUNT ? 'Đã đủ 5 ảnh' : 'Chọn tập tin'}</strong>
                       <em>hoặc kéo & thả tối đa {MAX_ATTACHMENT_COUNT} ảnh</em>
                       <small>Size thấp hơn 15MB, định dạng file png, jpg.</small>

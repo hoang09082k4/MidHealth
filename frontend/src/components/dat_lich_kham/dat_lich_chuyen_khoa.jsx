@@ -342,21 +342,24 @@ function TrangDatLichChuyenKhoa({
             onChange={(event) => setKeyword(event.target.value)}
             placeholder="Tìm theo triệu chứng, bác sĩ, bệnh viện..."
           />
-          <span aria-hidden="true">⌕</span>
+          <span aria-hidden="true">&#8981;</span>
         </label>
         <div className="specialty-filter-row">
-          <span className="sparkle" aria-hidden="true">✦</span>
           <button type="button" className="filter-chip" onClick={() => setActiveModal('place')}>
-            Nơi khám: {PLACE_TYPES.find((type) => type.value === placeType)?.label} <span aria-hidden="true">⌄</span>
+            <span>Nơi khám: {PLACE_TYPES.find((type) => type.value === placeType)?.label}</span>
+            <span className="chip-icon chip-chevron" aria-hidden="true" />
           </button>
           <button type="button" className={selectedSpecialty ? 'filter-chip active' : 'filter-chip'} onClick={() => setActiveModal('specialty')}>
-            ✓ {selectedSpecialty || 'Chọn chuyên khoa'}
+            <span className="chip-icon chip-check" aria-hidden="true" />
+            <span>{selectedSpecialty || 'Chọn chuyên khoa'}</span>
           </button>
           <button type="button" className={selectedDistrict || selectedProvince ? 'filter-chip active' : 'filter-chip'} onClick={() => setActiveModal('region')}>
-            ● {selectedDistrict ? `${selectedDistrict}, ${selectedProvince}` : selectedProvince || 'Khu vực'}
+            <span className="chip-icon chip-pin" aria-hidden="true" />
+            <span>{selectedDistrict ? `${selectedDistrict}, ${selectedProvince}` : selectedProvince || 'Khu vực'}</span>
           </button>
           <button type="button" className={nearestActive ? 'filter-chip nearest active' : 'filter-chip nearest'} onClick={handleNearest}>
-            ◎ Gần nhất
+            <span className="chip-icon chip-target" aria-hidden="true" />
+            <span>Gần nhất</span>
           </button>
           {(keyword || selectedSpecialty || selectedProvince || placeType !== 'all' || nearestActive) && (
             <button type="button" className="filter-chip clear" onClick={clearAllFilters}>Xóa lọc</button>
@@ -413,7 +416,7 @@ function TrangDatLichChuyenKhoa({
       {activeModal === 'place' && (
         <div className="filter-modal-backdrop" onClick={() => setActiveModal('')}>
           <div className="filter-modal place-modal" onClick={(event) => event.stopPropagation()}>
-            <button className="modal-close" type="button" onClick={() => setActiveModal('')}>×</button>
+            <button className="modal-close" type="button" onClick={() => setActiveModal('')}>&times;</button>
             <h3>Lọc theo nơi khám</h3>
             {PLACE_TYPES.map((type) => (
               <button
@@ -435,10 +438,10 @@ function TrangDatLichChuyenKhoa({
       {activeModal === 'specialty' && (
         <div className="filter-modal-backdrop" onClick={() => setActiveModal('')}>
           <div className="filter-modal specialty-modal" onClick={(event) => event.stopPropagation()}>
-            <button className="modal-close" type="button" onClick={() => setActiveModal('')}>×</button>
+            <button className="modal-close" type="button" onClick={() => setActiveModal('')}>&times;</button>
             <h3>Tìm theo chuyên khoa</h3>
             <label className="modal-search">
-              <span aria-hidden="true">⌕</span>
+              <span aria-hidden="true">&#8981;</span>
               <input value={specialtySearch} onChange={(event) => setSpecialtySearch(event.target.value)} placeholder="Tìm theo tên" />
             </label>
             <div className="modal-specialty-list">
@@ -467,7 +470,7 @@ function TrangDatLichChuyenKhoa({
             <div className="region-modal-head">
               <h3>Chọn khu vực</h3>
               <button type="button" onClick={clearRegionFilters}>Xóa bộ lọc</button>
-              <button className="modal-close" type="button" onClick={() => setActiveModal('')}>×</button>
+              <button className="modal-close" type="button" onClick={() => setActiveModal('')}>&times;</button>
             </div>
             <div className="region-columns">
               <div>

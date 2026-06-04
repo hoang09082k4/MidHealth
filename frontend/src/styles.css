@@ -3114,13 +3114,6 @@ a {
   flex-wrap: wrap;
 }
 
-.specialty-filter-row .sparkle {
-  width: 100%;
-  color: #70757d;
-  font-size: 1.3rem;
-  line-height: 1;
-}
-
 .filter-chip {
   display: inline-flex;
   align-items: center;
@@ -3133,6 +3126,57 @@ a {
   color: var(--ink);
   font-size: 0.96rem;
   font-weight: 600;
+}
+
+.filter-chip .chip-icon {
+  position: relative;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: currentColor;
+}
+
+.filter-chip .chip-chevron {
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+  opacity: 0.72;
+}
+
+.filter-chip .chip-check::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 8px;
+  height: 5px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+}
+
+.filter-chip .chip-pin::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.9;
+}
+
+.filter-chip .chip-target {
+  border: 2px solid currentColor;
+  border-radius: 999px;
+}
+
+.filter-chip .chip-target::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 999px;
+  background: currentColor;
 }
 
 .filter-chip.active {

@@ -49,6 +49,9 @@ function lay_thong_bao_loi(error) {
   if (code.includes('auth/invalid-email')) return 'Email không hợp lệ.';
   if (code.includes('auth/missing-password')) return 'Vui lòng nhập mật khẩu.';
   if (code.includes('auth/popup-closed-by-user')) return 'Bạn đã đóng cửa sổ đăng nhập Google.';
+  if (code.includes('auth/unauthorized-domain')) {
+    return 'Tên miền hiện tại chưa được thêm vào Firebase Authentication. Hãy thêm localhost hoặc domain đang chạy web trong Authorized domains.';
+  }
   if (code.includes('auth/account-exists-with-different-credential')) {
     return 'Email này đã tồn tại với phương thức đăng nhập khác.';
   }
