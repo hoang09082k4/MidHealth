@@ -103,7 +103,7 @@ export function getUserFromIdToken(idToken) {
 
   const now = Math.floor(Date.now() / 1000);
   if (payload.exp && payload.exp < now) return null;
-  if (config.firebaseProjectId && payload.aud && payload.aud !== config.firebaseProjectId) return null;
+  if (payload.iss && !String(payload.iss).startsWith('https://securetoken.google.com/')) return null;
 
   const providerInfo = Object.entries(payload.firebase?.identities || {}).flatMap(([providerId, values]) => (
     (Array.isArray(values) ? values : [values]).filter(Boolean).map((rawId) => ({ providerId, rawId }))

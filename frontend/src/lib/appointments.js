@@ -1,7 +1,27 @@
+import { onAuthStateChanged } from 'firebase/auth';
+import { firebaseAuth } from './firebase';
+
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
 
-async function getAuthHeaders(user) {
-  const token = user ? await user.getIdToken() : '';
+function waitForCurrentUser(timeoutMs = 2500) {
+  if (firebaseAuth.currentUser) return Promise.resolve(firebaseAuth.currentUser);
+
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      unsubscribe();
+      resolve(firebaseAuth.currentUser);
+    }, timeoutMs);
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (currentUser) => {
+      clearTimeout(timeout);
+      unsubscribe();
+      resolve(currentUser);
+    });
+  });
+}
+
+async function getAuthHeaders(user, options = {}) {
+  const authUser = user || await waitForCurrentUser();
+  const token = authUser ? await authUser.getIdToken(Boolean(options.forceRefresh)) : '';
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -108,7 +128,7 @@ export async function savePatientProfile(user, profile) {
   const path = hasDatabaseId ? `/api/patient/profiles/${profile.id}` : '/api/patient/profiles';
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method,
-    headers: await getAuthHeaders(user),
+    headers: await getAuthHeaders(user, { forceRefresh: true }),
     body: JSON.stringify({ profile: stripLocalIds(profile) }),
   });
   return parseResponse(response, 'Khong the luu ho so benh nhan.');
