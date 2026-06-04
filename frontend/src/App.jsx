@@ -409,7 +409,6 @@ function App() {
           ) : (
             <div className="user-menu">
               <button className="login-button" type="button" onClick={() => openAuth('signin')}>Đăng nhập</button>
-              <button className="login-button" type="button" onClick={() => openAuth('signup-entry')}>Đăng ký</button>
             </div>
           )}
         </header>

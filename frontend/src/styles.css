@@ -16,6 +16,8 @@
 }
 
 html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
   scroll-behavior: smooth;
 }
 
@@ -50,7 +52,7 @@ a {
 
 .site-shell {
   min-height: 100vh;
-  overflow-x: hidden;
+  overflow-x: clip;
   padding-top: 76px;
 }
 
@@ -504,7 +506,8 @@ a {
 }
 
 .signup-wizard-page {
-  min-height: 760px;
+  min-height: calc(100vh - 76px);
+  overflow: visible;
   padding: 76px 24px;
   background: #ffffff;
 }
