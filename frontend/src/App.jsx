@@ -80,6 +80,14 @@ function routeFromLocation() {
   const params = new URLSearchParams(window.location.search);
   const bookingMatch = path.match(/^\/dat-kham\/([^/]+)\/([^/]+)(?:\/([^/]+))?$/);
 
+  if (path === '/dang-nhap') {
+    return { page: 'auth', authMode: 'signin' };
+  }
+
+  if (path === '/dang-ky') {
+    return { page: 'auth', authMode: 'signup-entry' };
+  }
+
   if (path === '/phieu-kham-dien-tu' || path === '/phieu-kham') {
     return { page: 'ticket' };
   }
@@ -194,6 +202,7 @@ function healthRouteToUrl(route) {
 
 function App() {
   const [isAuthPage, setIsAuthPage] = useState(false);
+  const [authMode, setAuthMode] = useState('signin');
   const [selectedDoctor, setSelectedDoctor] = useState(null);
   const [selectedHospital, setSelectedHospital] = useState(null);
   const [selectedClinic, setSelectedClinic] = useState(null);
@@ -258,6 +267,16 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (appRoute.page === 'auth') {
+      setIsAuthPage(true);
+      setAuthMode(appRoute.authMode || 'signin');
+      setSelectedDoctor(null);
+      setSelectedHospital(null);
+      setSelectedClinic(null);
+      setSelectedSpecialty(null);
+      return;
+    }
+
     if (appRoute.page !== 'booking') return;
 
     const { kind, slug } = appRoute.booking;
@@ -279,16 +298,21 @@ function App() {
     setUser(null);
   };
 
-  const signOutToAuth = async () => {
-    await handleSignOut();
-    pushUrl('/');
-    setAppRoute({ page: 'home', health: { name: 'list', category: DEFAULT_HEALTH_CATEGORY } });
+  const openAuth = (mode = 'signin') => {
+    pushUrl(mode === 'signup-entry' ? '/dang-ky' : '/dang-nhap');
+    setAppRoute({ page: 'auth', authMode: mode });
+    setAuthMode(mode);
     setIsAuthPage(true);
     setSelectedDoctor(null);
     setSelectedHospital(null);
     setSelectedClinic(null);
     setSelectedSpecialty(null);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+  };
+
+  const signOutToAuth = async () => {
+    await handleSignOut();
+    showHome();
   };
 
   const showHome = () => {
@@ -374,7 +398,7 @@ function App() {
             <BieuTuongLogo />
           </button>
           <nav className="main-nav" aria-label="Điều hướng chính">
-            <a href="#booking" onClick={showHome}>Đặt khám <span aria-hidden="true">▾</span></a>
+            <a href="#booking" onClick={(event) => { event.preventDefault(); showHome(); }}>Đặt khám <span aria-hidden="true">▾</span></a>
             <a href="/tin-tuc" onClick={(event) => { event.preventDefault(); showHealthNews(); }}>Tin Y tế</a>
           </nav>
           {user ? (
@@ -383,14 +407,24 @@ function App() {
               <button className="login-button" type="button" onClick={signOutToAuth}>Đăng xuất</button>
             </div>
           ) : (
-            <button className="login-button" type="button" onClick={() => setIsAuthPage(true)}>Đăng nhập</button>
+            <div className="user-menu">
+              <button className="login-button" type="button" onClick={() => openAuth('signin')}>Đăng nhập</button>
+              <button className="login-button" type="button" onClick={() => openAuth('signup-entry')}>Đăng ký</button>
+            </div>
           )}
         </header>
       ) : null}
 
       <main>
         {isAuthPage ? (
-          <DangNhapDangKy onBack={showHome} onAuthSuccess={setUser} />
+          <DangNhapDangKy
+            initialMode={authMode}
+            onBack={showHome}
+            onAuthSuccess={(authUser) => {
+              setUser(authUser);
+              showHome();
+            }}
+          />
         ) : selectedDoctor ? (
           <TrangDatLichBacSi
             doctor={selectedDoctor}

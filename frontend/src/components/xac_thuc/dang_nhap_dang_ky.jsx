@@ -81,7 +81,7 @@ function CacBuocDangKy({ step }) {
   );
 }
 
-function DangNhapDangKy({ onBack, onAuthSuccess }) {
+function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
   const otpInputRefs = useRef([]);
   const [mode, setMode] = useState('signin');
   const [signupStep, setSignupStep] = useState(1);
@@ -108,6 +108,21 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
       profile: initialProfile,
     });
   }, []);
+
+  useEffect(() => {
+    if (initialMode === 'signup-entry') {
+      mo_form_dang_ky();
+      return;
+    }
+
+    setMode('signin');
+    setSignupStep(1);
+    setOtpSent(false);
+    setOtpToken('');
+    setGoogleSignupUser(null);
+    setSignupAuthUser(null);
+    setMessage('');
+  }, [initialMode]);
 
   const cap_nhat_form = (field, value) => {
     setForm((current) => ({
