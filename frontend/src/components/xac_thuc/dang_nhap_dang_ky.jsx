@@ -1,7 +1,9 @@
 import {
+  createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   updatePassword,
+  updateProfile,
 } from 'firebase/auth';
 import { useEffect, useRef, useState } from 'react';
 import { savePatientProfile } from '../../lib/appointments';
@@ -42,6 +44,8 @@ async function goi_api(path, payload) {
 
 function lay_thong_bao_loi(error) {
   const code = error?.code || '';
+  if (code.includes('auth/operation-not-allowed')) return 'Firebase chua bat phuong thuc dang nhap Email/Password.';
+  if (code.includes('auth/network-request-failed')) return 'Khong ket noi duoc Firebase. Vui long kiem tra mang hoac cau hinh Firebase.';
 
   if (code.includes('auth/invalid-credential')) return 'Email hoặc mật khẩu không đúng.';
   if (code.includes('auth/email-already-in-use')) return 'Email này đã được đăng ký.';
@@ -198,14 +202,11 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
   };
 
   const tao_tai_khoan_email = async () => {
-    await goi_api('/api/auth/register', {
-      email: form.email.trim(),
-      password: form.password,
-      otpToken,
-      skipProfile: true,
-    });
+    if (!otpToken) {
+      throw new Error('Vui long xac minh OTP email truoc khi dang ky.');
+    }
 
-    const credential = await signInWithEmailAndPassword(
+    const credential = await createUserWithEmailAndPassword(
       firebaseAuth,
       form.email.trim(),
       form.password,
@@ -216,12 +217,15 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
   };
 
   const hoan_tat_ho_so_email = async () => {
-    const authUser = signupAuthUser || await dang_nhap_email();
+    const authUser = signupAuthUser || firebaseAuth.currentUser || await dang_nhap_email();
     await savePatientProfile(authUser, {
       ...form.profile,
       email: form.email.trim(),
       fullName: form.profile.fullName,
     });
+    if (form.profile.fullName && authUser.displayName !== form.profile.fullName) {
+      await updateProfile(authUser, { displayName: form.profile.fullName });
+    }
     return authUser;
   };
 

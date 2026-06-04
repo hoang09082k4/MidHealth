@@ -32,6 +32,11 @@ async function firebaseRequest(path, payload) {
 }
 
 function mapFirebaseError(code = '') {
+  if (code.includes('MISSING_PASSWORD')) return 'Vui long nhap mat khau.';
+  if (code.includes('USER_NOT_FOUND')) return 'Khong tim thay tai khoan Firebase.';
+  if (code.includes('TOKEN_EXPIRED')) return 'Phien dang nhap da het han. Vui long dang nhap lai.';
+  if (code.includes('OPERATION_NOT_ALLOWED')) return 'Firebase chua bat phuong thuc dang nhap Email/Password.';
+  if (code.includes('TOO_MANY_ATTEMPTS_TRY_LATER')) return 'Ban thao tac qua nhieu lan. Vui long thu lai sau.';
   if (code.includes('EMAIL_EXISTS')) return 'Email này đã được đăng ký.';
   if (code.includes('EMAIL_NOT_FOUND')) return 'Email chưa được đăng ký.';
   if (code.includes('INVALID_PASSWORD')) return 'Mật khẩu không đúng.';
@@ -39,7 +44,7 @@ function mapFirebaseError(code = '') {
   if (code.includes('WEAK_PASSWORD')) return 'Mật khẩu cần tối thiểu 6 ký tự.';
   if (code.includes('USER_DISABLED')) return 'Tài khoản đã bị vô hiệu hóa.';
   if (code.includes('INVALID_ID_TOKEN')) return 'Phiên đăng nhập không hợp lệ.';
-  return 'Không thể xử lý yêu cầu xác thực.';
+  return `Khong the xu ly yeu cau xac thuc (${code || 'UNKNOWN'}).`;
 }
 
 export async function registerWithEmail({ email, password, fullName }) {
