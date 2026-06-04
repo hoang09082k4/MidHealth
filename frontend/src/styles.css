@@ -660,8 +660,7 @@ a {
 }
 
 .profile-form-grid label {
-  display: grid;
-  gap: 8px;
+  display: block;
   margin-bottom: 20px;
   color: var(--ink);
   font-weight: 700;
@@ -669,6 +668,12 @@ a {
 
 .profile-form-grid label span {
   color: #e11d48;
+}
+
+.profile-form-grid label > input,
+.profile-form-grid label > select {
+  display: block;
+  margin-top: 8px;
 }
 
 .profile-form-grid input:disabled {

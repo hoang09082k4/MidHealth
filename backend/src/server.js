@@ -140,6 +140,18 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
+      if (payload.skipProfile) {
+        const result = await registerWithEmail(payload);
+        if (!result.ok) {
+          sendJson(response, result.status, result.data);
+          return;
+        }
+
+        consumeOtpToken(payload.otpToken, payload.email);
+        sendJson(response, 201, { data: result.data });
+        return;
+      }
+
       const tableReady = await ensureProfileTableReady();
       if (!tableReady.ok) {
         sendJson(response, tableReady.status, tableReady.data);

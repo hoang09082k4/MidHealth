@@ -84,6 +84,7 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
   const [otpSent, setOtpSent] = useState(false);
   const [otpToken, setOtpToken] = useState('');
   const [googleSignupUser, setGoogleSignupUser] = useState(null);
+  const [signupAuthUser, setSignupAuthUser] = useState(null);
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -115,6 +116,7 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
       setOtpSent(false);
       setOtpToken('');
       setGoogleSignupUser(null);
+      setSignupAuthUser(null);
       setSignupStep(1);
     }
   };
@@ -132,6 +134,7 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
     setOtpSent(false);
     setOtpToken('');
     setGoogleSignupUser(null);
+    setSignupAuthUser(null);
     setMessage('');
     setForm((current) => ({ ...current, otp: '' }));
   };
@@ -176,7 +179,7 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
     setMessage('');
   };
 
-  const hoan_tat_dang_ky_google = async () => {
+  const hoan_tat_ho_so_google = async () => {
     const profile = {
       ...form.profile,
       email: googleSignupUser.email || form.email.trim(),
@@ -189,21 +192,17 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
 
   const tao_mat_khau_google = async () => {
     await updatePassword(googleSignupUser, form.password);
+    setSignupAuthUser(googleSignupUser);
     setSignupStep(3);
     setMessage('');
   };
 
-  const hoan_tat_dang_ky = async () => {
-    const profile = {
-      ...form.profile,
-      email: form.email.trim(),
-    };
+  const tao_tai_khoan_email = async () => {
     await goi_api('/api/auth/register', {
       email: form.email.trim(),
       password: form.password,
-      fullName: profile.fullName,
       otpToken,
-      profile,
+      skipProfile: true,
     });
 
     const credential = await signInWithEmailAndPassword(
@@ -211,7 +210,19 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
       form.email.trim(),
       form.password,
     );
-    return credential.user;
+    setSignupAuthUser(credential.user);
+    setSignupStep(3);
+    setMessage('');
+  };
+
+  const hoan_tat_ho_so_email = async () => {
+    const authUser = signupAuthUser || await dang_nhap_email();
+    await savePatientProfile(authUser, {
+      ...form.profile,
+      email: form.email.trim(),
+      fullName: form.profile.fullName,
+    });
+    return authUser;
   };
 
   const dang_nhap_google = async () => {
@@ -226,6 +237,7 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
       if (mode === 'signup-entry') {
         const googleUser = credential.user;
         setGoogleSignupUser(googleUser);
+        setSignupAuthUser(null);
         setMode('signup');
         setSignupStep(1);
         setOtpSent(false);
@@ -310,13 +322,13 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
           return;
         }
 
-        setSignupStep(3);
+        await tao_tai_khoan_email();
         return;
       }
 
       const authUser = googleSignupUser
-        ? await hoan_tat_dang_ky_google()
-        : await hoan_tat_dang_ky();
+        ? await hoan_tat_ho_so_google()
+        : await hoan_tat_ho_so_email();
       onAuthSuccess(authUser);
       onBack();
     } catch (error) {
