@@ -206,11 +206,24 @@ function DangNhapDangKy({ onBack, onAuthSuccess }) {
       throw new Error('Vui long xac minh OTP email truoc khi dang ky.');
     }
 
-    const credential = await createUserWithEmailAndPassword(
-      firebaseAuth,
-      form.email.trim(),
-      form.password,
-    );
+    let credential;
+    try {
+      credential = await createUserWithEmailAndPassword(
+        firebaseAuth,
+        form.email.trim(),
+        form.password,
+      );
+    } catch (error) {
+      if (!error?.code?.includes('auth/email-already-in-use')) {
+        throw error;
+      }
+
+      credential = await signInWithEmailAndPassword(
+        firebaseAuth,
+        form.email.trim(),
+        form.password,
+      );
+    }
     setSignupAuthUser(credential.user);
     setSignupStep(3);
     setMessage('');

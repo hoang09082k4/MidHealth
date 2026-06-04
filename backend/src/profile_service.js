@@ -43,32 +43,52 @@ export async function savePatientProfile(firebaseUser, payload = {}) {
   });
   if (!accountResult.ok) return accountResult;
 
-  const { data, error } = await supabase
+  const profileRow = {
+    firebase_uid: firebaseUser.localId,
+    app_user_id: accountResult.data?.id || null,
+    email,
+    full_name: fullName,
+    phone,
+    date_of_birth: dateOfBirth,
+    gender: mapGender(profile.gender),
+    citizen_id: clean(profile.citizenId) || null,
+    health_insurance_number: clean(profile.healthInsuranceNumber) || null,
+    province: clean(profile.province) || null,
+    district: clean(profile.district) || null,
+    ward: clean(profile.ward) || null,
+    address: clean(profile.address) || null,
+    ethnicity: clean(profile.ethnicity) || 'Kinh',
+    occupation: clean(profile.occupation) || null,
+    referral_code: clean(profile.referralCode) || null,
+    role: 'patient',
+    status: 'active',
+    email_verified: true,
+    last_login_at: new Date().toISOString(),
+  };
+
+  const { data: existingProfile, error: lookupError } = await supabase
     .from('patient_profiles')
-    .upsert({
-      firebase_uid: firebaseUser.localId,
-      app_user_id: accountResult.data?.id || null,
-      email,
-      full_name: fullName,
-      phone,
-      date_of_birth: dateOfBirth,
-      gender: mapGender(profile.gender),
-      citizen_id: clean(profile.citizenId) || null,
-      health_insurance_number: clean(profile.healthInsuranceNumber) || null,
-      province: clean(profile.province) || null,
-      district: clean(profile.district) || null,
-      ward: clean(profile.ward) || null,
-      address: clean(profile.address) || null,
-      ethnicity: clean(profile.ethnicity) || 'Kinh',
-      occupation: clean(profile.occupation) || null,
-      referral_code: clean(profile.referralCode) || null,
-      role: 'patient',
-      status: 'active',
-      email_verified: true,
-      last_login_at: new Date().toISOString(),
-    }, { onConflict: 'firebase_uid' })
-    .select()
-    .single();
+    .select('id')
+    .or(`firebase_uid.eq.${firebaseUser.localId},email.eq.${email}`)
+    .limit(1)
+    .maybeSingle();
+
+  if (lookupError) {
+    return { ok: false, status: 500, data: { message: lookupError.message } };
+  }
+
+  const { data, error } = existingProfile?.id
+    ? await supabase
+      .from('patient_profiles')
+      .update(profileRow)
+      .eq('id', existingProfile.id)
+      .select()
+      .single()
+    : await supabase
+      .from('patient_profiles')
+      .insert(profileRow)
+      .select()
+      .single();
 
   if (error) {
     return { ok: false, status: 500, data: { message: error.message } };

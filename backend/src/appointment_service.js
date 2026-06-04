@@ -6,6 +6,10 @@ function clean(value) {
   return typeof value === 'string' ? value.trim() : value;
 }
 
+function normalizeEmail(email = '') {
+  return clean(email).toLowerCase();
+}
+
 function mapGender(gender) {
   if (gender === 'Nam' || gender === 'male') return 'male';
   if (gender === 'Nữ' || gender === 'female') return 'female';
@@ -91,11 +95,18 @@ async function requireSupabase() {
 
 export async function findOwnerProfile(firebaseUser) {
   if (!firebaseUser?.localId) return null;
+  const email = normalizeEmail(firebaseUser.email);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('patient_profiles')
     .select('*')
-    .eq('firebase_uid', firebaseUser.localId)
+    .limit(1);
+
+  query = email
+    ? query.or(`firebase_uid.eq.${firebaseUser.localId},email.eq.${email}`)
+    : query.eq('firebase_uid', firebaseUser.localId);
+
+  const { data, error } = await query
     .maybeSingle();
 
   if (error) throw error;
@@ -107,7 +118,7 @@ async function ensureOwnerProfile(firebaseUser, profile = {}) {
   if (existing) return existing;
   if (!firebaseUser?.localId) return null;
 
-  const email = clean(profile.email) || clean(firebaseUser.email) || `${firebaseUser.localId}@midhealth.local`;
+  const email = normalizeEmail(profile.email || firebaseUser.email || `${firebaseUser.localId}@midhealth.local`);
   const fullName = clean(profile.fullName || profile.name) || clean(firebaseUser.displayName) || 'MidHealth User';
   const phone = clean(profile.phone) || '0000000000';
   const dateOfBirth = toDate(profile.dateOfBirth || profile.birthDate) || '1900-01-01';
@@ -119,31 +130,49 @@ async function ensureOwnerProfile(firebaseUser, profile = {}) {
   });
   if (!accountResult.ok) throw new Error(accountResult.data?.message || 'Khong the luu tai khoan.');
 
-  const { data, error } = await supabase
+  const ownerRow = {
+    firebase_uid: firebaseUser.localId,
+    app_user_id: accountResult.data?.id || null,
+    email,
+    full_name: fullName,
+    phone,
+    date_of_birth: dateOfBirth,
+    gender: mapGender(profile.gender),
+    citizen_id: clean(profile.citizenId) || null,
+    health_insurance_number: clean(profile.healthInsuranceNumber || profile.insuranceCode) || null,
+    province: clean(profile.province) || null,
+    district: clean(profile.district) || null,
+    ward: clean(profile.ward) || null,
+    address: clean(profile.address) || null,
+    ethnicity: clean(profile.ethnicity) || 'Kinh',
+    occupation: clean(profile.occupation || profile.job) || null,
+    role: 'patient',
+    status: 'active',
+    email_verified: Boolean(firebaseUser.email || profile.email),
+    last_login_at: new Date().toISOString(),
+  };
+
+  const { data: existingOwner, error: lookupError } = await supabase
     .from('patient_profiles')
-    .upsert({
-      firebase_uid: firebaseUser.localId,
-      app_user_id: accountResult.data?.id || null,
-      email,
-      full_name: fullName,
-      phone,
-      date_of_birth: dateOfBirth,
-      gender: mapGender(profile.gender),
-      citizen_id: clean(profile.citizenId) || null,
-      health_insurance_number: clean(profile.healthInsuranceNumber || profile.insuranceCode) || null,
-      province: clean(profile.province) || null,
-      district: clean(profile.district) || null,
-      ward: clean(profile.ward) || null,
-      address: clean(profile.address) || null,
-      ethnicity: clean(profile.ethnicity) || 'Kinh',
-      occupation: clean(profile.occupation || profile.job) || null,
-      role: 'patient',
-      status: 'active',
-      email_verified: Boolean(firebaseUser.email || profile.email),
-      last_login_at: new Date().toISOString(),
-    }, { onConflict: 'firebase_uid' })
-    .select()
-    .single();
+    .select('id')
+    .or(`firebase_uid.eq.${firebaseUser.localId},email.eq.${email}`)
+    .limit(1)
+    .maybeSingle();
+
+  if (lookupError) throw lookupError;
+
+  const { data, error } = existingOwner?.id
+    ? await supabase
+      .from('patient_profiles')
+      .update(ownerRow)
+      .eq('id', existingOwner.id)
+      .select()
+      .single()
+    : await supabase
+      .from('patient_profiles')
+      .insert(ownerRow)
+      .select()
+      .single();
 
   if (error) throw error;
   await linkPatientProfileToAppUser(firebaseUser.localId, accountResult.data?.id);

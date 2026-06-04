@@ -16,6 +16,7 @@ import { getCatalog } from './catalog_service.js';
 import { getReferenceData } from './reference_service.js';
 import {
   hasFirebaseConfig,
+  getUserFromIdToken,
   loginWithEmail,
   lookupAccount,
   registerWithEmail,
@@ -84,6 +85,9 @@ async function getUserFromRequest(request) {
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
 
   if (!token) return null;
+
+  const tokenUser = getUserFromIdToken(token);
+  if (tokenUser) return tokenUser;
 
   const result = await lookupAccount(token);
   if (!result.ok) return null;
@@ -213,23 +217,22 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'POST' && url.pathname === '/api/auth/google') {
     try {
       const payload = await readBody(request);
-      const result = await lookupAccount(payload.idToken);
-      if (result.ok) {
-        const firebaseUser = result.data.users?.[0];
-        const accountResult = await upsertAppUser(firebaseUser, {
-          authProvider: 'google',
-          markLogin: true,
-        });
-        if (!accountResult.ok) {
-          sendJson(response, accountResult.status, accountResult.data);
-          return;
-        }
-
-        sendJson(response, 200, { data: { ...firebaseUser, appUser: accountResult.data } });
+      const firebaseUser = getUserFromIdToken(payload.idToken);
+      if (!firebaseUser) {
+        sendJson(response, 401, { message: 'Token Google khong hop le hoac da het han.' });
         return;
       }
 
-      sendJson(response, result.status, result.data);
+      const accountResult = await upsertAppUser(firebaseUser, {
+        authProvider: 'google',
+        markLogin: true,
+      });
+      if (!accountResult.ok) {
+        sendJson(response, accountResult.status, accountResult.data);
+        return;
+      }
+
+      sendJson(response, 200, { data: { ...firebaseUser, appUser: accountResult.data } });
     } catch {
       sendJson(response, 400, { message: 'Token Google không hợp lệ' });
     }
@@ -281,8 +284,13 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    const result = await lookupAccount(idToken);
-    sendJson(response, result.ok ? 200 : result.status, result.ok ? { data: result.data.users?.[0] } : result.data);
+    const firebaseUser = getUserFromIdToken(idToken);
+    if (!firebaseUser) {
+      sendJson(response, 401, { message: 'Phien dang nhap khong hop le hoac da het han.' });
+      return;
+    }
+
+    sendJson(response, 200, { data: firebaseUser });
     return;
   }
 

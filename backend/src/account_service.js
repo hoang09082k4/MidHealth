@@ -45,15 +45,33 @@ export async function upsertAppUser(firebaseUser = {}, options = {}) {
 
   const { data, error } = await supabase
     .from('app_users')
-    .upsert(row, { onConflict: 'firebase_uid' })
-    .select()
-    .single();
+    .select('id')
+    .or(`firebase_uid.eq.${firebaseUid},email.eq.${email}`)
+    .limit(1)
+    .maybeSingle();
 
   if (error) {
     return { ok: false, status: 500, data: { message: error.message } };
   }
 
-  return { ok: true, status: 200, data };
+  const saveResult = data?.id
+    ? await supabase
+      .from('app_users')
+      .update(row)
+      .eq('id', data.id)
+      .select()
+      .single()
+    : await supabase
+      .from('app_users')
+      .insert(row)
+      .select()
+      .single();
+
+  if (saveResult.error) {
+    return { ok: false, status: 500, data: { message: saveResult.error.message } };
+  }
+
+  return { ok: true, status: 200, data: saveResult.data };
 }
 
 export async function linkPatientProfileToAppUser(firebaseUid, appUserId) {

@@ -86,3 +86,35 @@ export function loginWithEmail({ email, password }) {
 export function lookupAccount(idToken) {
   return firebaseRequest('accounts:lookup', { idToken });
 }
+
+function decodeJwtPayload(token = '') {
+  try {
+    const [, encodedPayload] = token.split('.');
+    if (!encodedPayload) return null;
+    return JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+}
+
+export function getUserFromIdToken(idToken) {
+  const payload = decodeJwtPayload(idToken);
+  if (!payload?.user_id && !payload?.sub) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  if (payload.exp && payload.exp < now) return null;
+  if (config.firebaseProjectId && payload.aud && payload.aud !== config.firebaseProjectId) return null;
+
+  const providerInfo = Object.entries(payload.firebase?.identities || {}).flatMap(([providerId, values]) => (
+    (Array.isArray(values) ? values : [values]).filter(Boolean).map((rawId) => ({ providerId, rawId }))
+  ));
+
+  return {
+    localId: payload.user_id || payload.sub,
+    email: payload.email || '',
+    emailVerified: Boolean(payload.email_verified),
+    displayName: payload.name || '',
+    photoUrl: payload.picture || '',
+    providerUserInfo: providerInfo,
+  };
+}
