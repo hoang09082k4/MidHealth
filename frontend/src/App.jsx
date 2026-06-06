@@ -1,12 +1,14 @@
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useEffect, useState } from 'react';
 import BieuTuongLogo from './components/dung_chung/bieu_tuong_logo';
+import ChatbotAI from './components/dung_chung/chatbot_ai';
 import DangNhapDangKy from './components/xac_thuc/dang_nhap_dang_ky';
 import TrangDatLichBacSi from './components/dat_lich_kham/dat_lich_bac_si';
 import TrangDatLichBenhVien from './components/dat_lich_kham/dat_lich_benh_vien';
 import TrangDatLichChuyenKhoa from './components/dat_lich_kham/dat_lich_chuyen_khoa';
 import TrangDatLichPhongKham from './components/dat_lich_kham/dat_lich_phong_kham';
-import TrangPhieuKhamDienTu from './components/dat_lich_kham/phieu_kham-dien-tu';
+import TrangDatKhamTongQuan from './components/dat_lich_kham/dat_kham_tong_quan';
+import TrangPhieuKhamDienTu from './components/phieu_kham/phieu_kham_dien_tu';
 import TrangChu from './components/trang_chu/trang_chu';
 import MucTinYTe from './components/tin_y_te/tin_y_te';
 import { firebaseAuth } from './lib/firebase';
@@ -79,6 +81,21 @@ function routeFromLocation() {
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
   const params = new URLSearchParams(window.location.search);
   const bookingMatch = path.match(/^\/dat-kham\/([^/]+)\/([^/]+)(?:\/([^/]+))?$/);
+  const bookingOverviewMatch = path.match(/^\/dat-kham\/([^/]+)$/);
+  const placeTypeParam = params.get('noi-kham') || params.get('placeType') || '';
+
+  if (path === '/dat-kham/tim-kiem') {
+    const placeType = {
+      'bac-si': 'doctor',
+      'benh-vien': 'hospital',
+      'phong-kham': 'clinic',
+      doctor: 'doctor',
+      hospital: 'hospital',
+      clinic: 'clinic',
+    }[placeTypeParam] || 'all';
+
+    return { page: 'booking-search', bookingSearch: { placeType } };
+  }
 
   if (path === '/dang-nhap') {
     return { page: 'auth', authMode: 'signin' };
@@ -337,6 +354,34 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'auto' });
   };
 
+  const showBookingOverview = (kind = 'doctor') => {
+    const kindPath = BOOKING_KIND_PATHS[kind] || BOOKING_KIND_PATHS.doctor;
+    pushUrl(/dat-kham/);
+    setAppRoute({ page: 'booking-overview', bookingOverview: { kind } });
+    setIsAuthPage(false);
+    setSelectedDoctor(null);
+    setSelectedHospital(null);
+    setSelectedClinic(null);
+    setSelectedSpecialty(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const showBookingSearch = (placeType = 'doctor') => {
+    const placePath = {
+      doctor: 'bac-si',
+      hospital: 'benh-vien',
+      clinic: 'phong-kham',
+    }[placeType] || 'tat-ca';
+    pushUrl(/dat-kham/tim-kiem?noi-kham=);
+    setAppRoute({ page: 'booking-search', bookingSearch: { placeType } });
+    setIsAuthPage(false);
+    setSelectedDoctor(null);
+    setSelectedHospital(null);
+    setSelectedClinic(null);
+    setSelectedSpecialty(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const showDoctorBooking = (doctor) => {
     pushUrl(bookingRouteToUrl('doctor', doctor));
     setAppRoute({ page: 'booking', booking: { kind: 'doctor', slug: decodeURIComponent(bookingSlug(doctor)), screen: 'detail' } });
@@ -398,7 +443,7 @@ function App() {
             <BieuTuongLogo />
           </button>
           <nav className="main-nav" aria-label="Điều hướng chính">
-            <a href="#booking" onClick={(event) => { event.preventDefault(); showHome(); }}>Đặt khám <span aria-hidden="true">▾</span></a>
+            <a href="/dat-kham/bac-si" onClick={(event) => { event.preventDefault(); showBookingOverview('doctor'); }}>Đặt khám <span aria-hidden="true">▾</span></a>
             <a href="/tin-tuc" onClick={(event) => { event.preventDefault(); showHealthNews(); }}>Tin Y tế</a>
           </nav>
           {user ? (
@@ -456,6 +501,26 @@ function App() {
             onBookDoctor={showDoctorBooking}
             onBookHospital={showHospitalBooking}
             onBookClinic={showClinicBooking}
+          />
+        ) : appRoute.page === 'booking-search' ? (
+          <TrangDatLichChuyenKhoa
+            catalog={catalog}
+            initialPlaceType={appRoute.bookingSearch?.placeType || 'all'}
+            onBookDoctor={showDoctorBooking}
+            onBookHospital={showHospitalBooking}
+            onBookClinic={showClinicBooking}
+          />
+        ) : appRoute.page === 'booking-overview' ? (
+          <TrangDatKhamTongQuan
+            catalog={catalog}
+            activeTab={appRoute.bookingOverview?.kind || 'doctor'}
+            onBookDoctor={showDoctorBooking}
+            onBookHospital={showHospitalBooking}
+            onBookClinic={showClinicBooking}
+            onSelectSpecialty={showSpecialtyBooking}
+            onChangeTab={showBookingOverview}
+            onOpenSearch={showBookingSearch}
+            user={user}
           />
         ) : appRoute.page === 'ticket' ? (
           <TrangPhieuKhamDienTu

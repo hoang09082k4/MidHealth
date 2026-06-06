@@ -1,9 +1,12 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
+
+const SPECIALTY_PREVIEW_LIMIT = 6;
 
 function TheChuyenKhoa({ specialties = [], onSelectSpecialty }) {
+  const visibleSpecialties = specialties.filter((specialty) => !/ti[eê]m\s*ch[uủ]ng/i.test(specialty.name || ''));
   const [isExpanded, setIsExpanded] = useState(false);
-  const visibleSpecialties = isExpanded ? specialties : specialties.slice(0, 6);
-  const hasMore = specialties.length > 6;
+  const hasMoreSpecialties = visibleSpecialties.length > SPECIALTY_PREVIEW_LIMIT;
+  const displayedSpecialties = isExpanded ? visibleSpecialties : visibleSpecialties.slice(0, SPECIALTY_PREVIEW_LIMIT);
 
   const handleSelect = (event, specialty) => {
     if (!onSelectSpecialty) return;
@@ -14,12 +17,12 @@ function TheChuyenKhoa({ specialties = [], onSelectSpecialty }) {
   return (
     <section className="content-section specialty-section" id="specialty">
       <div className="plain-head">
-        <h2>Đặt lịch theo Chuyên khoa</h2>
-        <p>Danh sách bác sĩ, bệnh viện, phòng khám theo chuyên khoa</p>
+        <h2>Đa dạng chuyên khoa khám</h2>
+        <p>Đặt khám dễ dàng và tiện lợi hơn với đầy đủ các chuyên khoa</p>
       </div>
 
       <div className="specialty-grid">
-        {visibleSpecialties.map((specialty) => (
+        {displayedSpecialties.map((specialty) => (
           <a
             className="specialty-item"
             href="#specialty-search"
@@ -32,11 +35,13 @@ function TheChuyenKhoa({ specialties = [], onSelectSpecialty }) {
         ))}
       </div>
 
-      {hasMore && (
-        <button className="specialty-toggle" type="button" onClick={() => setIsExpanded((current) => !current)}>
-          {isExpanded ? 'Thu gọn' : 'Xem thêm'}
-          <i className={`ui-chevron ${isExpanded ? 'up' : 'right'}`} aria-hidden="true" />
-        </button>
+      {hasMoreSpecialties && (
+        <div className="specialty-actions">
+          <button className="specialty-toggle" type="button" onClick={() => setIsExpanded((current) => !current)}>
+            {isExpanded ? 'Thu gọn' : 'Xem thêm'}
+            <span className={isExpanded ? 'toggle-arrow up' : 'toggle-arrow'} aria-hidden="true" />
+          </button>
+        </div>
       )}
     </section>
   );

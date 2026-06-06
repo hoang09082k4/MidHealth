@@ -4,6 +4,7 @@ import { fallbackCatalog } from '../../lib/catalog';
 import { useReferenceData } from '../../lib/reference_data';
 
 const TAT_CA_KHU_VUC = 'Tất cả khu vực';
+const SO_KET_QUA_MOI_TRANG = 10;
 
 const PLACE_TYPES = [
   { value: 'all', label: 'Tất cả' },
@@ -192,20 +193,64 @@ function khop_khu_vuc(addressText, regionName, regions) {
   return names.some((name) => khop_tu_khoa(addressText, name));
 }
 
+function tao_moc_phan_trang(page, totalPages) {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1);
+
+  const pages = new Set([1, totalPages, page, page - 1, page + 1]);
+  if (page <= 4) {
+    [2, 3, 4, 5].forEach((item) => pages.add(item));
+  }
+  if (page >= totalPages - 3) {
+    [totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1].forEach((item) => pages.add(item));
+  }
+
+  const sortedPages = [...pages].filter((item) => item >= 1 && item <= totalPages).sort((a, b) => a - b);
+  return sortedPages.reduce((items, item, index) => {
+    if (index > 0 && item - sortedPages[index - 1] > 1) items.push('ellipsis');
+    items.push(item);
+    return items;
+  }, []);
+}
+
+function Pagination({ page, totalPages, onPageChange }) {
+  if (totalPages <= 1) return null;
+
+  const visiblePages = tao_moc_phan_trang(page, totalPages);
+
+  return (
+    <div className="booking-pagination specialty-result-pagination">
+      {visiblePages.map((pageNumber, index) => (
+        pageNumber === 'ellipsis'
+          ? <span key={`ellipsis-${index}`}>...</span>
+          : (
+            <button className={pageNumber === page ? 'active' : ''} key={pageNumber} type="button" onClick={() => onPageChange(pageNumber)}>
+              {pageNumber}
+            </button>
+          )
+      ))}
+      <button type="button" disabled={page >= totalPages} onClick={() => onPageChange(Math.min(page + 1, totalPages))}>
+        <i className="ui-chevron right" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
 function TrangDatLichChuyenKhoa({
   catalog = fallbackCatalog,
   initialSpecialty,
+  initialPlaceType = 'all',
   onBookDoctor,
   onBookHospital,
   onBookClinic,
 }) {
   const { clinics = [], doctors = [], hospitals = [], specialties = [] } = catalog;
   const [keyword, setKeyword] = useState('');
-  const [placeType, setPlaceType] = useState('all');
+  const [placeType, setPlaceType] = useState(initialPlaceType);
   const [selectedSpecialty, setSelectedSpecialty] = useState(lay_ten_chuyen_khoa(initialSpecialty));
   const [selectedProvince, setSelectedProvince] = useState('');
   const [selectedDistrict, setSelectedDistrict] = useState('');
   const [nearestActive, setNearestActive] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const [userLocation, setUserLocation] = useState(null);
   const [locationStatus, setLocationStatus] = useState('');
   const [activeModal, setActiveModal] = useState('');
@@ -218,12 +263,13 @@ function TrangDatLichChuyenKhoa({
 
   useEffect(() => {
     setSelectedSpecialty(lay_ten_chuyen_khoa(initialSpecialty));
+    setPlaceType(initialPlaceType);
     setKeyword('');
     setSelectedProvince('');
     setSelectedDistrict('');
     setNearestActive(false);
     setLocationStatus('');
-  }, [initialSpecialty]);
+  }, [initialPlaceType, initialSpecialty]);
 
   const results = useMemo(() => {
     const filteredResults = allResults.filter((item) => {
@@ -261,6 +307,11 @@ function TrangDatLichChuyenKhoa({
       return secondScore - firstScore;
     });
   }, [allResults, keyword, nearestActive, placeType, selectedSpecialty, selectedProvince, selectedDistrict, userLocation]);
+  const totalPages = Math.max(1, Math.ceil(results.length / SO_KET_QUA_MOI_TRANG));
+  const paginatedResults = useMemo(() => {
+    const startIndex = (currentPage - 1) * SO_KET_QUA_MOI_TRANG;
+    return results.slice(startIndex, startIndex + SO_KET_QUA_MOI_TRANG);
+  }, [currentPage, results]);
 
   const filteredSpecialties = specialties.filter((specialty) => hien_thi_chuyen_khoa(specialty) && khop_tu_khoa(specialty.name, specialtySearch));
   const hasGeoResults = allResults.some(co_toa_do);
@@ -276,6 +327,14 @@ function TrangDatLichChuyenKhoa({
     }
     onBookClinic?.(item);
   };
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [keyword, nearestActive, placeType, selectedSpecialty, selectedDistrict, selectedProvince]);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
 
   const clearRegionFilters = () => {
     setSelectedProvince('');
@@ -375,7 +434,7 @@ function TrangDatLichChuyenKhoa({
         </div>
         {results.length ? (
           <div className="specialty-result-list">
-            {results.map((item) => {
+              {paginatedResults.map((item) => {
               const distance = nearestActive ? khoang_cach_km(userLocation, item) : null;
               return (
                 <article className="specialty-result-item" key={`${item.resultType}-${item.id || item.name}`}>
@@ -399,6 +458,7 @@ function TrangDatLichChuyenKhoa({
                 </article>
               );
             })}
+            <Pagination page={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
           </div>
         ) : (
           <div className="specialty-empty">

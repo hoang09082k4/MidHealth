@@ -6,6 +6,7 @@ Thu muc nay dung de thiet lap va dong bo database Supabase cho do an.
 
 - `schema.sql`: dinh nghia cau truc database hien tai, gom bang, view, function, trigger, index va RLS policy.
 - `seed.sql`: du lieu khoi tao/mau cho chuyen khoa, benh vien, phong kham, bac si, dich vu va slot kham.
+- `chatbot_optimization.sql`: bang rule trieu chung -> chuyen khoa va log tuong tac chatbot AI.
 - `config.toml`: cau hinh Supabase CLI cho project local/remote.
 
 ## Cach quan ly database trong do an
@@ -42,7 +43,8 @@ Neu chay bang Supabase SQL Editor:
 
 1. Chay `schema.sql`
 2. Chay `seed.sql`
-3. Vao thu muc `backend`, chay cac script seed bo sung neu can:
+3. Chay `chatbot_optimization.sql` neu muon chatbot AI doc rule tu database va luu log hoi thoai.
+4. Vao thu muc `backend`, chay cac script seed bo sung neu can:
 
 ```bash
 npm run seed:reference
@@ -61,6 +63,8 @@ Trong `config.toml`, `db reset` duoc cau hinh de chay `schema.sql` + `seed.sql`.
 npm run seed:reference
 npm run seed:health-news
 ```
+
+Neu muon ap dung rieng phan toi uu chatbot len database remote, chay SQL trong `chatbot_optimization.sql` bang Supabase SQL Editor hoac lenh CLI phu hop voi project da link.
 
 ## Ghi chu
 

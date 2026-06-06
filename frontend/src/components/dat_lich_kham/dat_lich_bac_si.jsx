@@ -9,7 +9,7 @@ import {
 import { createAppointment, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
 import { doctorImageName, doctorImagePath } from '../../lib/doctor_images';
 import { useReferenceData } from '../../lib/reference_data';
-import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './phieu_kham-dien-tu';
+import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from '../phieu_kham/phieu_kham_dien_tu';
 
 const DAY_LABELS = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
 const DEFAULT_ADDRESS = '250 Đ. Nguyễn Xí, Bình Lợi Trung, Hồ Chí Minh';

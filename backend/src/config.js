@@ -36,6 +36,10 @@ export const config = {
   gmailAppPassword: process.env.GMAIL_APP_PASSWORD,
   otpExpiresMinutes: Number(process.env.OTP_EXPIRES_MINUTES || 5),
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  allowedOrigins: (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,https://midhealth.vercel.app')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
   paypalMode: process.env.PAYPAL_MODE || 'sandbox',
   paypalClientId: process.env.PAYPAL_CLIENT_ID,
   paypalClientSecret: process.env.PAYPAL_CLIENT_SECRET,
@@ -44,4 +48,6 @@ export const config = {
   paypalVndToUsdRate: Number(process.env.PAYPAL_VND_TO_USD_RATE || 25000),
   paypalReturnUrl: process.env.PAYPAL_RETURN_URL || 'http://localhost:4000/api/payments/paypal/return',
   paypalCancelUrl: process.env.PAYPAL_CANCEL_URL || 'http://localhost:4000/api/payments/paypal/cancel',
+  geminiApiKey: process.env.GEMINI_API_KEY,
+  geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
 };

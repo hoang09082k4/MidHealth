@@ -79,7 +79,7 @@ function buildHeroSearchResults({ doctors = [], hospitals = [], clinics = [], sp
   return results.slice(0, 8);
 }
 
-function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onBookClinic, onSelectSpecialty, onOpenHealthNews }) {
+function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onBookClinic, onSelectSpecialty, onOpenHealthNews, onOpenBookingOverview }) {
   const { doctors, hospitals, clinics, specialties } = catalog;
   const [heroSearchTerm, setHeroSearchTerm] = useState('');
   const heroSearchKeyword = useMemo(() => normalizeSearchText(heroSearchTerm.trim()), [heroSearchTerm]);
@@ -165,21 +165,21 @@ function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onB
       </section>
 
       <section className="content-section" id="doctor">
-        <TieuDeMuc title="Đặt khám bác sĩ" subtitle="Phiếu khám điện tử kèm số thứ tự và thời gian của bạn được xác nhận." />
+        <TieuDeMuc title="Đặt khám bác sĩ" subtitle="Phiếu khám điện tử kèm số thứ tự và thời gian của bạn được xác nhận." onAction={() => onOpenBookingOverview?.('doctor')} />
         <div className="horizontal-list doctor-list">
           {doctors.map((doctor) => <TheBacSi doctor={doctor} key={doctor.name} onBook={onBookDoctor} />)}
         </div>
       </section>
 
-      <section className="content-section">
-        <TieuDeMuc title="Đặt khám bệnh viện" subtitle="Đặt khám và thanh toán để có phiếu khám điện tử trước khi đi khám các bệnh viện kết nối chính thức với MidHealth." />
+      <section className="content-section" id="hospital">
+        <TieuDeMuc title="Đặt khám bệnh viện" subtitle="Đặt khám và thanh toán để có phiếu khám điện tử trước khi đi khám các bệnh viện kết nối chính thức với MidHealth." onAction={() => onOpenBookingOverview?.('hospital')} />
         <div className="horizontal-list hospital-list">
           {hospitals.map((hospital) => <TheBenhVien hospital={hospital} key={hospital.name} onBook={onBookHospital} />)}
         </div>
       </section>
 
-      <section className="content-section">
-        <TieuDeMuc title="Đặt khám phòng khám" subtitle="Đa dạng phòng khám với nhiều chuyên khoa khác nhau như Sản - Nhi, Tai Mũi Họng, Da Liễu, Tiêu Hoá..." />
+      <section className="content-section" id="clinic">
+        <TieuDeMuc title="Đặt khám phòng khám" subtitle="Đa dạng phòng khám với nhiều chuyên khoa khác nhau như Sản - Nhi, Tai Mũi Họng, Da Liễu, Tiêu Hoá..." onAction={() => onOpenBookingOverview?.('clinic')} />
         <div className="horizontal-list clinic-list">
           {clinics.map((clinic) => <ThePhongKham clinic={clinic} key={clinic.name} onBook={onBookClinic} />)}
         </div>

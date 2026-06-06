@@ -31,6 +31,7 @@ import {
   listHealthExperts,
   searchHealthArticles,
 } from './health_news_service.js';
+import { askGeminiChat, hasGeminiConfig } from './gemini_chat_service.js';
 import {
   capturePayPalOrder,
   createPayPalOrder,
@@ -49,6 +50,37 @@ import { hasSupabaseConfig } from './supabase.js';
 import { queueTickets } from './tickets.js';
 
 let tickets = [...queueTickets];
+const chatbotRateLimits = new Map();
+
+function getRequestIp(request) {
+  const forwardedFor = request.headers['x-forwarded-for'];
+  return String(Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor || request.socket.remoteAddress || 'unknown')
+    .split(',')[0]
+    .trim();
+}
+
+function isChatbotRateLimited(request) {
+  const now = Date.now();
+  const windowMs = 60 * 1000;
+  const limit = 20;
+  const key = getRequestIp(request);
+  const current = chatbotRateLimits.get(key) || { count: 0, resetAt: now + windowMs };
+
+  if (now > current.resetAt) {
+    chatbotRateLimits.set(key, { count: 1, resetAt: now + windowMs });
+    return false;
+  }
+
+  current.count += 1;
+  chatbotRateLimits.set(key, current);
+  return current.count > limit;
+}
+
+function getCorsOrigin(request) {
+  const origin = request.headers.origin;
+  if (origin && config.allowedOrigins.includes(origin)) return origin;
+  return config.allowedOrigins[0] || '*';
+}
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
@@ -130,7 +162,25 @@ const server = http.createServer(async (request, response) => {
       emailOtp: hasOtpConfig ? 'connected' : 'missing-config',
       supabase: hasSupabaseConfig ? 'connected' : 'missing-config',
       paypal: config.paypalClientId && config.paypalClientSecret ? 'connected' : 'missing-config',
+      gemini: hasGeminiConfig ? 'connected' : 'missing-config',
     });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/chatbot') {
+    if (isChatbotRateLimited(request)) {
+      sendJson(response, 429, { message: 'Bạn đang gửi quá nhiều câu hỏi. Vui lòng thử lại sau ít phút.' });
+      return;
+    }
+
+    try {
+      const payload = await readBody(request);
+      const user = await getUserFromRequest(request);
+      const result = await askGeminiChat(payload, { user });
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Dữ liệu chatbot không hợp lệ.' });
+    }
     return;
   }
 

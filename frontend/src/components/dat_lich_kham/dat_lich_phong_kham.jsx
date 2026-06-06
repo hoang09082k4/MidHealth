@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
-import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from './phieu_kham-dien-tu';
+import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from '../phieu_kham/phieu_kham_dien_tu';
 import { createAppointment, listAppointments, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
 import { useReferenceData } from '../../lib/reference_data';
 import {
