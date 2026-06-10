@@ -58,13 +58,43 @@ async function selectTable(table, query = '*') {
   return data || [];
 }
 
-async function selectDoctors() {
-  try {
-    return await selectTable('doctors', 'id, initials, full_name, specialty_id, facility_id, workplace_text, avatar_url, unavailable_note, notice, is_active, homepage_featured, homepage_order');
-  } catch (error) {
-    if (!String(error.message || '').includes('unavailable_note') && !String(error.message || '').includes('notice')) throw error;
-    return selectTable('doctors', 'id, initials, full_name, specialty_id, facility_id, workplace_text, avatar_url, is_active, homepage_featured, homepage_order');
+function isMissingColumnError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return error?.code === '42703'
+    || error?.code === 'PGRST204'
+    || message.includes('does not exist')
+    || message.includes('schema cache');
+}
+
+async function selectTableWithFallback(table, queries) {
+  let lastError;
+
+  for (const query of queries) {
+    try {
+      return await selectTable(table, query);
+    } catch (error) {
+      lastError = error;
+      if (!isMissingColumnError(error)) throw error;
+    }
   }
+
+  throw lastError;
+}
+
+async function selectDoctors() {
+  return selectTableWithFallback('doctors', [
+    'id, initials, full_name, specialty_id, facility_id, workplace_text, avatar_url, unavailable_note, notice, is_active, homepage_featured, homepage_order',
+    'id, initials, full_name, specialty_id, facility_id, workplace_text, avatar_url, is_active, homepage_featured, homepage_order',
+    'id, initials, full_name, specialty_id, facility_id, workplace_text, avatar_url, unavailable_note, notice, is_active',
+    'id, initials, full_name, specialty_id, facility_id, workplace_text, avatar_url, is_active',
+  ]);
+}
+
+async function selectFacilities() {
+  return selectTableWithFallback('medical_facilities', [
+    'id, type, name, subtitle, intro, address, province, district, latitude, longitude, avatar_url, background_url, phone, hotline, is_active, homepage_featured, homepage_order',
+    'id, type, name, subtitle, intro, address, province, district, latitude, longitude, avatar_url, background_url, phone, hotline, is_active',
+  ]);
 }
 
 function compareHomepageOrder(a, b) {
@@ -93,7 +123,7 @@ export async function getCatalog() {
       doctors,
     ] = await Promise.all([
       selectTable('clinic_specialties', 'id, name, image_url, is_active'),
-      selectTable('medical_facilities', 'id, type, name, subtitle, intro, address, province, district, latitude, longitude, avatar_url, background_url, phone, hotline, is_active, homepage_featured, homepage_order'),
+      selectFacilities(),
       selectTable('facility_hours', 'facility_id, label, time_text, sort_order'),
       selectTable('facility_notes', 'facility_id, title, lines, sort_order'),
       selectTable('facility_specialties', 'facility_id, specialty_id, sort_order'),
