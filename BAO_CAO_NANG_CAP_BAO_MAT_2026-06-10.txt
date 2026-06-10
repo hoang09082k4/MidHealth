@@ -1,0 +1,204 @@
+BAO CAO NANG CAP BAO MAT MIDHEALTH
+Ngay: 10/06/2026
+Pham vi: Dang nhap va phan quyen Admin / Bac si-Phong kham / Benh nhan
+
+======================================================================
+1. DANH GIA BAN DAU
+======================================================================
+
+Muc do ban dau: NGHIEM TRONG - Broken Access Control / Role Confusion.
+
+Ba nguyen nhan chinh da duoc xac dinh:
+
+1) Tai khoan duoc tim bang Firebase UID HOAC email.
+   Cach tim nay co the noi nham hai danh tinh neu email trung khop.
+
+2) Nhieu API chi kiem tra "da dang nhap" ma khong bat buoc dung role.
+   Vi du: provider, patient, queue va mot so luong dat lich/thanh toan.
+
+3) Admin frontend luu Firebase ID token trong localStorage va co fallback
+   sang Firebase session dung chung. Dieu nay lam tang nguy co session bi
+   dung nham giua cac cong dang nhap va tang tac dong neu co XSS.
+
+======================================================================
+2. CAC NANG CAP DA TRIEN KHAI
+======================================================================
+
+A. Phan quyen server-side deny-by-default
+
+- Tao backend/src/authorization_service.js lam diem kiem soat tap trung.
+- Moi request nhay cam doc role va status tu Supabase bang Firebase UID.
+- Khong tin role do frontend gui len.
+- Khong dung email lam bang chung thay the Firebase UID.
+- Tai khoan disabled/pending bi tu choi tai lop phan quyen.
+
+Ma tran cong dang nhap:
+
+- /admin: chi role admin, status active.
+- Cong doi tac: chi role doctor hoac clinic, status active.
+- Cong nguoi dung: chi role patient, status active.
+- Role khong khop tra ve 403 va khong mo dashboard.
+
+B. Khoa truy cap cheo API
+
+- Admin API: tiep tuc kiem tra admin tai tung service, nay dung UID chinh xac.
+- Provider API: bat buoc doctor/clinic cho ho so, van hanh, lich hen va slot.
+- Patient API: bat buoc patient cho ho so y te, lich hen, huy lich, thanh toan.
+- Queue POST: chi patient.
+- Queue PATCH: chi doctor/clinic.
+- Tao lich va tao don thanh toan khong con chap nhan phien vo danh.
+
+C. Chong nham/chiem tai khoan qua email
+
+- app_users chi lookup va update bang firebase_uid.
+- Neu email da thuoc Firebase UID khac, backend fail closed voi HTTP 409.
+- patient_profiles chi lookup/update bang firebase_uid.
+- Admin lookup khong con dieu kien "UID hoac email".
+
+D. Tach session theo cong
+
+- Admin dang nhap qua backend voi portal=admin.
+- Token admin chi giu trong React memory, khong con localStorage.
+- Firebase session nguoi dung/bac si khong tu dong mo trang admin.
+- Bac si dang nhap phai goi /api/auth/me?portal=provider.
+- Benh nhan dang nhap phai goi /api/auth/me?portal=patient.
+- App chinh chi nhan Firebase session la user khi backend xac nhan role patient.
+- Workspace chi khoi tao account sau khi backend xac nhan role provider.
+
+E. Tang cuong lop HTTP va chong brute force co ban
+
+- Them login rate limit: 12 lan / 15 phut / IP.
+- Them X-Content-Type-Options: nosniff.
+- Them X-Frame-Options: DENY.
+- Them Referrer-Policy: strict-origin-when-cross-origin.
+- Them Permissions-Policy han che camera, microphone, geolocation.
+- Them Cache-Control: no-store cho API response.
+- Ghi log JSON authorization_denied khi role/status khong hop le.
+
+F. Supabase RLS
+
+- current_app_role() khong con mac dinh role patient khi khong tim thay account.
+- Bo quyen doc moi provider_workspace da approved cho moi authenticated user.
+- Tich hop truc tiep role isolation, RLS policy va unique index vao supabase/schema.sql.
+- Them unique index lower(email) va firebase_uid de database fail closed khi
+  co danh tinh trung lap.
+
+Luu y bat buoc:
+Chay supabase/schema.sql trong Supabase SQL Editor truoc
+khi deploy. Sua file trong repo khong tu dong thay doi database dang chay.
+
+======================================================================
+3. KIEM THU VA XAC MINH
+======================================================================
+
+- Backend authorization tests: 4/4 PASS.
+  + Admin portal tu choi doctor va patient.
+  + Provider portal tu choi admin va patient.
+  + Patient portal tu choi admin va doctor.
+  + Portal khong hop le deny tat ca role.
+
+- Frontend production build: PASS, 79 modules transformed.
+- Node syntax check cac service bao mat: PASS.
+- git diff --check: PASS, khong co loi whitespace.
+- npm audit backend production dependencies: 0 vulnerabilities.
+- npm audit frontend production dependencies: 0 vulnerabilities.
+
+File test:
+backend/tests/authorization_policy.test.js
+
+Lenh kiem tra:
+cd backend && npm test
+cd frontend && npm run build
+
+======================================================================
+4. CAC FILE BAO MAT CHINH DA THAY DOI
+======================================================================
+
+- backend/src/authorization_service.js
+- backend/src/account_service.js
+- backend/src/admin_service.js
+- backend/src/provider_workspace_service.js
+- backend/src/profile_service.js
+- backend/src/appointment_service.js
+- backend/src/server.js
+- backend/tests/authorization_policy.test.js
+- frontend/src/App.jsx
+- frontend/src/components/admin/admin_dashboard.jsx
+- frontend/src/components/danh_cho_bac_si/dang_nhap_dang_ki_workspace.jsx
+- frontend/src/components/danh_cho_bac_si/midhealth_workspace.jsx
+- frontend/src/components/xac_thuc/dang_nhap_dang_ky.jsx
+- supabase/schema.sql
+
+======================================================================
+5. MUC DO BAO MAT SAU NANG CAP
+======================================================================
+
+Da xu ly:
+
+- Vertical privilege escalation co ban giua patient/provider/admin.
+- Session confusion giua ba man dang nhap.
+- Identity linking bang email.
+- API role check bi thieu o cac luong chinh.
+- Admin token ton tai lau trong localStorage.
+- RLS mac dinh patient khi khong co account.
+
+Danh gia hien tai:
+Da dat muc co the tiep tuc hardening va staging security test.
+Chua nen tuyen bo "an toan tuyet doi" hoac deploy production ma khong thuc
+hien cac muc con lai ben duoi.
+
+======================================================================
+6. CAC VIEC BAT BUOC TRUOC PRODUCTION
+======================================================================
+
+P0 - Bat buoc:
+
+1) Ap dung supabase/schema.sql len database production.
+2) Restart backend de nap authorization middleware moi.
+3) Buoc tat ca nguoi dung dang xuat/dang nhap lai sau khi deploy.
+4) Kiem tra va xu ly cac dong app_users trung email/UID truoc khi tao unique index.
+5) Dat ALLOWED_ORIGINS chi gom domain production chinh xac, khong dung wildcard.
+6) Dat backend sau HTTPS/TLS va reverse proxy tin cay.
+
+P1 - Rat nen lam:
+
+1) Bat MFA cho admin; uu tien TOTP/WebAuthn/passkey.
+2) Chuyen verify Firebase ID token sang Firebase Admin SDK va kiem tra token
+   revocation khi admin bi khoa hoặc doi mat khau.
+3) Them session timeout/re-authentication cho thao tac nguy hiem:
+   cap role admin, khoa tai khoan, xoa noi dung, duyet provider.
+4) Chuyen rate limit tu RAM sang Redis/managed store neu chay nhieu instance.
+5) Gui authorization_denied va admin audit log den he thong SIEM/monitoring.
+6) Them integration test voi Supabase staging va Firebase test accounts.
+7) Thuc hien penetration test truoc production.
+
+======================================================================
+7. NGUYEN TAC/TAI LIEU THAM CHIEU
+======================================================================
+
+Thiet ke dua tren cac nguyen tac:
+
+- Least privilege.
+- Deny by default.
+- Validate permissions on every request.
+- Server-side authorization, khong dua vao frontend.
+- Object/identity ownership check bang UID.
+- Logging va authorization regression tests.
+
+OWASP Authorization Cheat Sheet:
+https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html
+
+OWASP Authentication Cheat Sheet:
+https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html
+
+NIST SP 800-63B:
+https://pages.nist.gov/800-63-4/sp800-63b.html
+
+======================================================================
+KET LUAN
+======================================================================
+
+Loi "bac si vao admin" va "bac si vao user" da duoc khoa tai server, khong
+chi an giao dien. Moi cong dang nhap va moi nhom API chinh hien phai duoc
+Supabase xac nhan dung role theo Firebase UID. Cac request sai role bi tu
+choi 403, du co Firebase token hop le.

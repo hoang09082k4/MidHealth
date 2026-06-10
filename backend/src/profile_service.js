@@ -40,6 +40,7 @@ export async function savePatientProfile(firebaseUser, payload = {}) {
     email,
     emailVerified: true,
     markLogin: true,
+    allowPatientIdentityRelink: true,
   });
   if (!accountResult.ok) return accountResult;
 
@@ -69,8 +70,7 @@ export async function savePatientProfile(firebaseUser, payload = {}) {
   const { data: existingProfile, error: lookupError } = await supabase
     .from('patient_profiles')
     .select('id')
-    .or(`firebase_uid.eq.${firebaseUser.localId},email.eq.${email}`)
-    .limit(1)
+    .eq('firebase_uid', firebaseUser.localId)
     .maybeSingle();
 
   if (lookupError) {

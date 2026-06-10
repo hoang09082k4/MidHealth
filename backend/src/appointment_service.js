@@ -82,6 +82,10 @@ function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value || '');
 }
 
+function isDuplicateKeyError(error) {
+  return error?.code === '23505' || /duplicate key value/i.test(error?.message || '');
+}
+
 async function requireSupabase() {
   if (!hasSupabaseConfig) {
     return {
@@ -95,16 +99,10 @@ async function requireSupabase() {
 
 export async function findOwnerProfile(firebaseUser) {
   if (!firebaseUser?.localId) return null;
-  const email = normalizeEmail(firebaseUser.email);
-
-  let query = supabase
+  const query = supabase
     .from('patient_profiles')
     .select('*')
-    .limit(1);
-
-  query = email
-    ? query.or(`firebase_uid.eq.${firebaseUser.localId},email.eq.${email}`)
-    : query.eq('firebase_uid', firebaseUser.localId);
+    .eq('firebase_uid', firebaseUser.localId);
 
   const { data, error } = await query
     .maybeSingle();
@@ -127,6 +125,7 @@ async function ensureOwnerProfile(firebaseUser, profile = {}) {
     email,
     emailVerified: Boolean(firebaseUser.email || profile.email),
     markLogin: true,
+    allowPatientIdentityRelink: true,
   });
   if (!accountResult.ok) throw new Error(accountResult.data?.message || 'Khong the luu tai khoan.');
 
@@ -155,8 +154,7 @@ async function ensureOwnerProfile(firebaseUser, profile = {}) {
   const { data: existingOwner, error: lookupError } = await supabase
     .from('patient_profiles')
     .select('id')
-    .or(`firebase_uid.eq.${firebaseUser.localId},email.eq.${email}`)
-    .limit(1)
+    .eq('firebase_uid', firebaseUser.localId)
     .maybeSingle();
 
   if (lookupError) throw lookupError;
@@ -412,7 +410,7 @@ async function ensureFutureDoctorSlots(doctorId, fromDate, days) {
 
   if (!rows.length) return;
   const { error } = await supabase.from('appointment_slots').insert(rows);
-  if (error) throw error;
+  if (error && !isDuplicateKeyError(error)) throw error;
 }
 
 async function ensureFutureHospitalSlots(facilityId, options = {}) {
@@ -459,7 +457,7 @@ async function ensureFutureHospitalSlots(facilityId, options = {}) {
 
   if (!rows.length) return;
   const { error } = await supabase.from('appointment_slots').insert(rows);
-  if (error) throw error;
+  if (error && !isDuplicateKeyError(error)) throw error;
 }
 
 async function ensureFutureClinicSlots(facilityId, options = {}) {
@@ -506,7 +504,7 @@ async function ensureFutureClinicSlots(facilityId, options = {}) {
 
   if (!rows.length) return;
   const { error } = await supabase.from('appointment_slots').insert(rows);
-  if (error) throw error;
+  if (error && !isDuplicateKeyError(error)) throw error;
 }
 
 async function fetchHospitalSlotRows(facilityId, fromDate, toDate, columns) {
@@ -1135,24 +1133,63 @@ export async function listAppointments(firebaseUser) {
 export async function cancelAppointment(firebaseUser, appointmentId) {
   const ready = await requireSupabase();
   if (!ready.ok) return ready;
+  if (!isUuid(appointmentId)) {
+    return { ok: false, status: 400, data: { message: 'Ma lich kham khong hop le.' } };
+  }
 
   try {
     const owner = await findOwnerProfile(firebaseUser);
     if (!owner) return { ok: false, status: 401, data: { message: 'Bạn cần đăng nhập để hủy lịch.' } };
+
+    const { data: existing, error: lookupError } = await supabase
+      .from('appointments')
+      .select('id, status, appointment_slot_id')
+      .eq('id', appointmentId)
+      .eq('owner_profile_id', owner.id)
+      .maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!existing) {
+      return { ok: false, status: 404, data: { message: 'Khong tim thay lich kham.' } };
+    }
+    if (existing.status === 'cancelled') {
+      return { ok: true, status: 200, data: existing };
+    }
+    if (existing.status === 'completed') {
+      return { ok: false, status: 409, data: { message: 'Lich kham da hoan tat nen khong the huy.' } };
+    }
 
     const { data, error } = await supabase
       .from('appointments')
       .update({ status: 'cancelled' })
       .eq('id', appointmentId)
       .eq('owner_profile_id', owner.id)
+      .eq('status', existing.status)
       .select()
-      .single();
+      .maybeSingle();
     if (error) throw error;
+    if (!data) {
+      const { data: current, error: currentError } = await supabase
+        .from('appointments')
+        .select('id, status, appointment_slot_id')
+        .eq('id', appointmentId)
+        .eq('owner_profile_id', owner.id)
+        .maybeSingle();
+      if (currentError) throw currentError;
+      if (current?.status === 'cancelled') {
+        return { ok: true, status: 200, data: current };
+      }
+      return { ok: false, status: 409, data: { message: 'Trang thai lich kham da thay doi. Vui long tai lai.' } };
+    }
 
-    await supabase
+    const { error: ticketError } = await supabase
       .from('queue_tickets')
       .update({ status: 'cancelled' })
       .eq('appointment_id', appointmentId);
+    if (ticketError) throw ticketError;
+
+    if (data.appointment_slot_id) {
+      await releaseAppointmentSlot(data.appointment_slot_id);
+    }
 
     return { ok: true, status: 200, data };
   } catch (error) {

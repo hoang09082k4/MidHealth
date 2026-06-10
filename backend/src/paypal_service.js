@@ -227,8 +227,6 @@ export async function capturePayPalOrder(orderId) {
 }
 
 async function verifyPayPalWebhook(headers = {}, payload = {}) {
-  if (!config.paypalWebhookId) return true;
-
   const accessToken = await getAccessToken();
   const verification = await paypalFetch('/v1/notifications/verify-webhook-signature', {
     method: 'POST',
@@ -253,6 +251,13 @@ async function verifyPayPalWebhook(headers = {}, payload = {}) {
 export async function handlePayPalWebhook(payload = {}, headers = {}) {
   const ready = requirePaymentConfig();
   if (!ready.ok) return ready;
+  if (!config.paypalWebhookId) {
+    return {
+      ok: false,
+      status: 503,
+      data: { message: 'Backend chua cau hinh PAYPAL_WEBHOOK_ID de xac minh webhook.' },
+    };
+  }
 
   try {
     const verified = await verifyPayPalWebhook(headers, payload);
