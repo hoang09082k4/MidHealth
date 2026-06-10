@@ -11,6 +11,7 @@ const BOOKING_TABS = [
 ];
 
 const PAGE_SIZE = 8;
+const DOCTOR_PAGE_SIZE = 12;
 
 const TAB_CONTENT = {
   doctor: {
@@ -53,20 +54,6 @@ function duong_dan_anh_bac_si(path = '') {
   if (!path) return '';
   if (/^(https?:)?\/\//.test(path) || path.startsWith('/')) return path;
   return `/image_doctor/${path}`;
-}
-
-function TieuDeTrangDatKham({ title, onAction }) {
-  return (
-    <div className="section-head booking-overview-head">
-      <div>
-        <h2>{title}</h2>
-      </div>
-      <button className="pill-button" type="button" onClick={onAction}>
-        Xem tất cả
-        <i className="ui-chevron right" aria-hidden="true" />
-      </button>
-    </div>
-  );
 }
 
 function BookingTabIcon({ name }) {
@@ -112,13 +99,16 @@ function TrangDatKhamTongQuan({
   onBookClinic,
   onSelectSpecialty,
   onChangeTab,
-  onOpenSearch,
   user,
 }) {
   const { doctors = [], hospitals = [], clinics = [], specialties = [] } = catalog;
   const [recentDoctorAppointment, setRecentDoctorAppointment] = useState(null);
   const [hospitalPage, setHospitalPage] = useState(1);
   const [clinicPage, setClinicPage] = useState(1);
+  const [doctorPage, setDoctorPage] = useState(1);
+  const [doctorKeyword, setDoctorKeyword] = useState('');
+  const [doctorSpecialty, setDoctorSpecialty] = useState('all');
+  const [doctorWorkplace, setDoctorWorkplace] = useState('all');
   const currentContent = TAB_CONTENT[activeTab] || TAB_CONTENT.doctor;
   const activeHospitalItems = useMemo(() => paginate(hospitals, hospitalPage), [hospitalPage, hospitals]);
   const activeClinicItems = useMemo(() => paginate(clinics, clinicPage), [clinicPage, clinics]);
@@ -129,6 +119,27 @@ function TrangDatKhamTongQuan({
       || doctors.find((doctor) => bo_dau(doctor.name).includes(appointmentDoctorName) || appointmentDoctorName.includes(bo_dau(doctor.name)))
       || null;
   }, [doctors, recentDoctorAppointment]);
+  const doctorSpecialties = useMemo(
+    () => [...new Set(doctors.map((doctor) => doctor.specialty).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'vi')),
+    [doctors],
+  );
+  const doctorWorkplaces = useMemo(
+    () => [...new Set(doctors.map((doctor) => doctor.workplace).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'vi')),
+    [doctors],
+  );
+  const filteredDoctors = useMemo(() => {
+    const keyword = bo_dau(doctorKeyword);
+    return doctors.filter((doctor) => (
+      (!keyword || bo_dau([doctor.name, doctor.specialty, doctor.workplace, doctor.address].filter(Boolean).join(' ')).includes(keyword))
+      && (doctorSpecialty === 'all' || doctor.specialty === doctorSpecialty)
+      && (doctorWorkplace === 'all' || doctor.workplace === doctorWorkplace)
+    ));
+  }, [doctorKeyword, doctorSpecialty, doctorWorkplace, doctors]);
+  const doctorTotalPages = Math.ceil(filteredDoctors.length / DOCTOR_PAGE_SIZE);
+  const visibleDoctors = useMemo(
+    () => paginate(filteredDoctors, doctorPage, DOCTOR_PAGE_SIZE),
+    [doctorPage, filteredDoctors],
+  );
 
   const changeTab = (tabKey) => {
     onChangeTab?.(tabKey);
@@ -162,6 +173,16 @@ function TrangDatKhamTongQuan({
       isMounted = false;
     };
   }, [user]);
+
+  useEffect(() => {
+    setDoctorPage(1);
+  }, [doctorKeyword, doctorSpecialty, doctorWorkplace]);
+
+  useEffect(() => {
+    if (doctorTotalPages > 0 && doctorPage > doctorTotalPages) {
+      setDoctorPage(doctorTotalPages);
+    }
+  }, [doctorPage, doctorTotalPages]);
 
   return (
     <section className="booking-overview-page">
@@ -228,10 +249,64 @@ function TrangDatKhamTongQuan({
         />
       ) : (
         <>
-          <section className="content-section" id="overview-doctor">
-            <TieuDeTrangDatKham title="Đặt khám bác sĩ" onAction={() => onOpenSearch?.('doctor')} />
-            <div className="horizontal-list doctor-list">
-              {doctors.map((doctor) => <TheBacSi doctor={doctor} key={doctor.name} onBook={onBookDoctor} />)}
+          <section className="doctor-directory" id="overview-doctor">
+            <div className="doctor-directory-heading">
+              <div>
+                <span className="doctor-directory-eyebrow">Danh sách bác sĩ</span>
+                <h2>Chọn bác sĩ phù hợp</h2>
+                <p>Tìm nhanh theo tên, chuyên khoa hoặc cơ sở đang công tác.</p>
+              </div>
+              <strong>{filteredDoctors.length} bác sĩ</strong>
+            </div>
+
+            <div className="doctor-directory-filters">
+              <label className="doctor-directory-search">
+                <span aria-hidden="true">⌕</span>
+                <input
+                  type="search"
+                  value={doctorKeyword}
+                  onChange={(event) => setDoctorKeyword(event.target.value)}
+                  placeholder="Tìm tên bác sĩ, chuyên khoa..."
+                  aria-label="Tìm bác sĩ"
+                />
+              </label>
+              <select value={doctorSpecialty} onChange={(event) => setDoctorSpecialty(event.target.value)} aria-label="Lọc theo chuyên khoa">
+                <option value="all">Tất cả chuyên khoa</option>
+                {doctorSpecialties.map((specialty) => <option value={specialty} key={specialty}>{specialty}</option>)}
+              </select>
+              <select value={doctorWorkplace} onChange={(event) => setDoctorWorkplace(event.target.value)} aria-label="Lọc theo cơ sở">
+                <option value="all">Tất cả cơ sở</option>
+                {doctorWorkplaces.map((workplace) => <option value={workplace} key={workplace}>{workplace}</option>)}
+              </select>
+              {(doctorKeyword || doctorSpecialty !== 'all' || doctorWorkplace !== 'all') ? (
+                <button
+                  className="doctor-directory-reset"
+                  type="button"
+                  onClick={() => {
+                    setDoctorKeyword('');
+                    setDoctorSpecialty('all');
+                    setDoctorWorkplace('all');
+                  }}
+                >
+                  Xóa bộ lọc
+                </button>
+              ) : null}
+            </div>
+
+            {visibleDoctors.length ? (
+              <div className="doctor-directory-grid">
+                {visibleDoctors.map((doctor) => <TheBacSi doctor={doctor} key={doctor.id || doctor.name} onBook={onBookDoctor} />)}
+              </div>
+            ) : (
+              <div className="doctor-directory-empty">
+                <strong>Không tìm thấy bác sĩ phù hợp</strong>
+                <p>Hãy thử đổi từ khóa hoặc bỏ bớt bộ lọc.</p>
+              </div>
+            )}
+
+            <div className="doctor-directory-footer">
+              <span>Trang {doctorTotalPages ? doctorPage : 0}/{doctorTotalPages}</span>
+              <Pagination page={doctorPage} totalPages={doctorTotalPages} onPageChange={setDoctorPage} />
             </div>
           </section>
 
@@ -242,9 +317,9 @@ function TrangDatKhamTongQuan({
   );
 }
 
-function paginate(items, page) {
-  const start = (page - 1) * PAGE_SIZE;
-  return items.slice(start, start + PAGE_SIZE);
+function paginate(items, page, pageSize = PAGE_SIZE) {
+  const start = (page - 1) * pageSize;
+  return items.slice(start, start + pageSize);
 }
 
 function tao_moc_phan_trang(page, totalPages) {

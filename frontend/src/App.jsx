@@ -673,7 +673,6 @@ function App() {
             onBookClinic={showClinicBooking}
             onSelectSpecialty={showSpecialtyBooking}
             onChangeTab={showBookingOverview}
-            onOpenSearch={showBookingSearch}
             user={user}
           />
         ) : appRoute.page === 'patient-account' ? (
