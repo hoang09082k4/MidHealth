@@ -6,7 +6,7 @@ begin
   new.updated_at = now();
   return new;
 end;
-$$ language plpgsql;
+$$ language plpgsql set search_path = public;
 
 do $$
 begin
@@ -14,6 +14,8 @@ begin
 exception
   when duplicate_object then null;
 end $$;
+
+alter type public.app_user_role add value if not exists 'clinic';
 
 do $$
 begin
@@ -96,6 +98,62 @@ create table if not exists public.patient_guardians (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create table if not exists public.provider_workspaces (
+  id uuid primary key default gen_random_uuid(),
+  firebase_uid text not null unique,
+  app_user_id uuid references public.app_users(id) on delete cascade,
+  email text not null,
+  owner_name text not null,
+  owner_phone text,
+  mode text not null check (mode in ('doctor', 'clinic')),
+  provider_role public.app_user_role not null default 'doctor',
+  linked_doctor_id uuid,
+  linked_facility_id uuid,
+  status text not null default 'pending_review' check (status in ('draft', 'pending_review', 'approved', 'rejected')),
+  clinic_name text,
+  clinic_address text,
+  tax_code text,
+  doctor_title text,
+  specialty text,
+  image_url text,
+  review_note text,
+  submitted_at timestamptz,
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint provider_workspace_clinic_required check (
+    mode <> 'clinic'
+    or (nullif(trim(coalesce(clinic_name, '')), '') is not null and nullif(trim(coalesce(clinic_address, '')), '') is not null)
+  ),
+  constraint provider_workspace_doctor_required check (
+    mode <> 'doctor'
+    or nullif(trim(coalesce(specialty, '')), '') is not null
+  )
+);
+
+create table if not exists public.provider_workspace_events (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid references public.provider_workspaces(id) on delete set null,
+  actor_firebase_uid text,
+  actor_email text,
+  actor_role text,
+  event_type text not null,
+  entity_type text not null,
+  entity_id uuid,
+  message text not null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+alter table public.provider_workspaces
+add column if not exists provider_role public.app_user_role not null default 'doctor';
+
+alter table public.provider_workspaces
+add column if not exists linked_doctor_id uuid;
+
+alter table public.provider_workspaces
+add column if not exists linked_facility_id uuid;
 
 create table if not exists public.clinic_specialties (
   id uuid primary key default gen_random_uuid(),
@@ -197,11 +255,28 @@ create table if not exists public.doctors (
   updated_at timestamptz not null default now()
 );
 
-create table if not exists public.doctor_specialties (
-  doctor_id uuid not null references public.doctors(id) on delete cascade,
-  specialty_id uuid not null references public.clinic_specialties(id) on delete cascade,
-  primary key (doctor_id, specialty_id)
-);
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'provider_workspaces_linked_doctor_id_fkey'
+  ) then
+    alter table public.provider_workspaces
+    add constraint provider_workspaces_linked_doctor_id_fkey
+    foreign key (linked_doctor_id) references public.doctors(id) on delete set null;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'provider_workspaces_linked_facility_id_fkey'
+  ) then
+    alter table public.provider_workspaces
+    add constraint provider_workspaces_linked_facility_id_fkey
+    foreign key (linked_facility_id) references public.medical_facilities(id) on delete set null;
+  end if;
+end $$;
 
 create table if not exists public.appointment_slots (
   id uuid primary key default gen_random_uuid(),
@@ -213,7 +288,7 @@ create table if not exists public.appointment_slots (
   start_time time not null,
   end_time time,
   capacity integer not null default 1 check (capacity > 0),
-  booked_count integer not null default 0 check (booked_count >= 0),
+  booked_count integer not null default 0 check (booked_count >= 0 and booked_count <= capacity),
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -364,6 +439,42 @@ create table if not exists public.health_articles (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.symptom_specialty_rules (
+  id uuid primary key default gen_random_uuid(),
+  symptom_keywords text[] not null,
+  specialty_keywords text[] not null,
+  severity text not null default 'normal' check (severity in ('normal', 'urgent')),
+  advice_text text,
+  priority integer not null default 100,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.chatbot_knowledge_base (
+  id uuid primary key default gen_random_uuid(),
+  keywords text[] not null,
+  intent text not null default 'knowledge',
+  reply text not null,
+  actions jsonb not null default '[]'::jsonb,
+  suggested_prompts text[] not null default array[]::text[],
+  priority integer not null default 100,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.chatbot_interactions (
+  id uuid primary key default gen_random_uuid(),
+  firebase_uid text,
+  user_message text not null,
+  assistant_reply text,
+  intent text,
+  model text,
+  actions jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+
 alter table public.patient_profiles add column if not exists updated_at timestamptz not null default now();
 alter table public.patient_profiles add column if not exists app_user_id uuid references public.app_users(id) on delete cascade;
 alter table public.patient_profiles add column if not exists role public.app_user_role not null default 'patient';
@@ -442,8 +553,20 @@ set full_name = coalesce(full_name, name),
     avatar_url = coalesce(avatar_url, avatar);
 
 update public.health_articles
-set thumbnail_url = coalesce(thumbnail_url, thumbnail),
+set thumbnail_url = coalesce(thumbnail_url, thumbnail, ''),
     published_at = coalesce(published_at, published_date);
+
+alter table public.health_articles alter column thumbnail_url set default '';
+alter table public.health_articles alter column thumbnail_url set not null;
+alter table public.health_articles alter column published_at set default now();
+alter table public.health_articles alter column published_at set not null;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('health-articles', 'health-articles', true, 4194304, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
 
 create unique index if not exists payments_paypal_order_id_unique_idx
 on public.payments(paypal_order_id)
@@ -453,7 +576,8 @@ create unique index if not exists payments_receipt_number_unique_idx
 on public.payments(receipt_number)
 where receipt_number is not null;
 
-create or replace view public.v_doctor_cards as
+create or replace view public.v_doctor_cards
+with (security_invoker = true) as
 select
   d.id,
   d.slug,
@@ -468,7 +592,8 @@ from public.doctors d
 left join public.clinic_specialties s on s.id = d.specialty_id
 left join public.medical_facilities f on f.id = d.facility_id;
 
-create or replace view public.v_facility_cards as
+create or replace view public.v_facility_cards
+with (security_invoker = true) as
 select
   f.id,
   f.slug,
@@ -485,7 +610,8 @@ left join public.facility_specialties fs on fs.facility_id = f.id
 left join public.clinic_specialties s on s.id = fs.specialty_id
 group by f.id;
 
-create or replace view public.v_specialty_search_results as
+create or replace view public.v_specialty_search_results
+with (security_invoker = true) as
 select
   f.id,
   f.type,
@@ -516,8 +642,7 @@ select
   f.id as facility_id
 from public.doctors d
 left join public.medical_facilities f on f.id = d.facility_id
-left join public.doctor_specialties ds on ds.doctor_id = d.id
-left join public.clinic_specialties s on s.id = coalesce(ds.specialty_id, d.specialty_id)
+left join public.clinic_specialties s on s.id = d.specialty_id
 where d.is_active = true
 group by d.id, f.id;
 
@@ -534,6 +659,11 @@ for each row execute function public.set_updated_at();
 drop trigger if exists set_patient_medical_profiles_updated_at on public.patient_medical_profiles;
 create trigger set_patient_medical_profiles_updated_at
 before update on public.patient_medical_profiles
+for each row execute function public.set_updated_at();
+
+drop trigger if exists set_provider_workspaces_updated_at on public.provider_workspaces;
+create trigger set_provider_workspaces_updated_at
+before update on public.provider_workspaces
 for each row execute function public.set_updated_at();
 
 drop trigger if exists set_patient_guardians_updated_at on public.patient_guardians;
@@ -608,6 +738,8 @@ $$;
 
 alter table public.app_users enable row level security;
 alter table public.patient_profiles enable row level security;
+alter table public.provider_workspaces enable row level security;
+alter table public.provider_workspace_events enable row level security;
 alter table public.patient_medical_profiles enable row level security;
 alter table public.patient_guardians enable row level security;
 alter table public.clinic_specialties enable row level security;
@@ -618,7 +750,6 @@ alter table public.facility_notes enable row level security;
 alter table public.facility_specialties enable row level security;
 alter table public.facility_services enable row level security;
 alter table public.doctors enable row level security;
-alter table public.doctor_specialties enable row level security;
 alter table public.appointment_slots enable row level security;
 alter table public.appointments enable row level security;
 alter table public.appointment_attachments enable row level security;
@@ -629,11 +760,15 @@ alter table public.health_categories enable row level security;
 alter table public.health_authors enable row level security;
 alter table public.health_experts enable row level security;
 alter table public.health_articles enable row level security;
+alter table public.symptom_specialty_rules enable row level security;
+alter table public.chatbot_knowledge_base enable row level security;
+alter table public.chatbot_interactions enable row level security;
 
 create or replace function public.current_firebase_uid()
 returns text
 language sql
 stable
+set search_path = public
 as $$
   with claims as (
     select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb as value
@@ -653,16 +788,11 @@ stable
 security definer
 set search_path = public
 as $$
-  select coalesce(
-    (
-      select role
-      from public.app_users
-      where firebase_uid = public.current_firebase_uid()
-        and status = 'active'
-      limit 1
-    ),
-    'patient'::public.app_user_role
-  );
+  select role
+  from public.app_users
+  where firebase_uid = public.current_firebase_uid()
+    and status = 'active'
+  limit 1;
 $$;
 
 drop policy if exists "service role can manage app users" on public.app_users;
@@ -713,6 +843,35 @@ drop policy if exists "service role can insert patient profiles" on public.patie
 create policy "service role can insert patient profiles"
 on public.patient_profiles for insert
 with check (auth.role() = 'service_role' or public.current_app_role() in ('staff', 'admin'));
+
+drop policy if exists "service role can manage provider workspaces" on public.provider_workspaces;
+create policy "service role can manage provider workspaces"
+on public.provider_workspaces for all
+using (auth.role() = 'service_role' or public.current_app_role() in ('staff', 'admin'))
+with check (auth.role() = 'service_role' or public.current_app_role() in ('staff', 'admin'));
+
+drop policy if exists "users can read own provider workspace" on public.provider_workspaces;
+create policy "users can read own provider workspace"
+on public.provider_workspaces for select
+using (
+  firebase_uid = public.current_firebase_uid()
+  or public.current_app_role() in ('staff', 'admin')
+);
+
+drop policy if exists "users can update own provider workspace" on public.provider_workspaces;
+create policy "users can update own provider workspace"
+on public.provider_workspaces for update
+using (
+  firebase_uid = public.current_firebase_uid()
+  and status in ('draft', 'pending_review', 'rejected')
+)
+with check (firebase_uid = public.current_firebase_uid());
+
+drop policy if exists provider_workspace_events_service_manage on public.provider_workspace_events;
+create policy provider_workspace_events_service_manage
+on public.provider_workspace_events for all
+using (auth.role() = 'service_role')
+with check (auth.role() = 'service_role');
 
 drop policy if exists "users can read own medical profiles" on public.patient_medical_profiles;
 create policy "users can read own medical profiles"
@@ -818,10 +977,6 @@ create policy "public can read active doctors"
 on public.doctors for select
 using (is_active = true);
 
-drop policy if exists "public can read doctor specialties" on public.doctor_specialties;
-create policy "public can read doctor specialties"
-on public.doctor_specialties for select
-using (true);
 
 drop policy if exists "public can read active slots" on public.appointment_slots;
 create policy "public can read active slots"
@@ -848,9 +1003,38 @@ create policy "public can read published health articles"
 on public.health_articles for select
 using (status = 'published');
 
+drop policy if exists chatbot_public_read_active_symptom_rules on public.symptom_specialty_rules;
+create policy chatbot_public_read_active_symptom_rules
+on public.symptom_specialty_rules for select
+using (is_active = true);
+
+drop policy if exists chatbot_service_manage_symptom_rules on public.symptom_specialty_rules;
+create policy chatbot_service_manage_symptom_rules
+on public.symptom_specialty_rules for all
+using (auth.role() = 'service_role')
+with check (auth.role() = 'service_role');
+
+drop policy if exists chatbot_public_read_active_knowledge on public.chatbot_knowledge_base;
+create policy chatbot_public_read_active_knowledge
+on public.chatbot_knowledge_base for select
+using (is_active = true);
+
+drop policy if exists chatbot_service_manage_knowledge on public.chatbot_knowledge_base;
+create policy chatbot_service_manage_knowledge
+on public.chatbot_knowledge_base for all
+using (auth.role() = 'service_role')
+with check (auth.role() = 'service_role');
+
+drop policy if exists chatbot_service_manage_interactions on public.chatbot_interactions;
+create policy chatbot_service_manage_interactions
+on public.chatbot_interactions for all
+using (auth.role() = 'service_role')
+with check (auth.role() = 'service_role');
+
 grant usage on schema public to anon, authenticated;
 grant select on
   public.app_users,
+  public.provider_workspaces,
   public.clinic_specialties,
   public.medical_facilities,
   public.facility_images,
@@ -859,7 +1043,6 @@ grant select on
   public.facility_specialties,
   public.facility_services,
   public.doctors,
-  public.doctor_specialties,
   public.appointment_slots,
   public.v_doctor_cards,
   public.v_facility_cards,
@@ -868,11 +1051,15 @@ grant select on
   public.health_categories,
   public.health_authors,
   public.health_experts,
-  public.health_articles
+  public.health_articles,
+  public.symptom_specialty_rules,
+  public.chatbot_knowledge_base
 to anon, authenticated;
 
 grant select on public.app_users to authenticated;
 grant select, update on public.patient_profiles to authenticated;
+grant select, insert, update on public.provider_workspaces to authenticated;
+grant select, insert on public.provider_workspace_events to authenticated;
 grant select, insert, update, delete on public.patient_medical_profiles to authenticated;
 grant select, insert, update, delete on public.patient_guardians to authenticated;
 grant execute on function public.current_firebase_uid() to anon, authenticated;
@@ -908,14 +1095,46 @@ create trigger set_health_articles_updated_at
 before update on public.health_articles
 for each row execute function public.set_updated_at();
 
-grant execute on function public.claim_appointment_slot(uuid) to anon, authenticated;
-grant execute on function public.release_appointment_slot(uuid) to anon, authenticated;
+drop trigger if exists set_symptom_specialty_rules_updated_at on public.symptom_specialty_rules;
+create trigger set_symptom_specialty_rules_updated_at
+before update on public.symptom_specialty_rules
+for each row execute function public.set_updated_at();
 
-create index if not exists patient_profiles_firebase_uid_idx on public.patient_profiles(firebase_uid);
-create index if not exists patient_profiles_email_idx on public.patient_profiles(email);
+drop trigger if exists set_chatbot_knowledge_base_updated_at on public.chatbot_knowledge_base;
+create trigger set_chatbot_knowledge_base_updated_at
+before update on public.chatbot_knowledge_base
+for each row execute function public.set_updated_at();
+
+revoke execute on function public.claim_appointment_slot(uuid) from public;
+revoke execute on function public.release_appointment_slot(uuid) from public;
+grant execute on function public.claim_appointment_slot(uuid) to service_role;
+grant execute on function public.release_appointment_slot(uuid) to service_role;
+
+drop index if exists public.patient_profiles_firebase_uid_idx;
+drop index if exists public.patient_profiles_email_idx;
+create unique index if not exists patient_profiles_email_lower_unique_idx
+on public.patient_profiles(lower(email));
 create unique index if not exists patient_profiles_app_user_id_idx on public.patient_profiles(app_user_id) where app_user_id is not null;
-create index if not exists app_users_firebase_uid_idx on public.app_users(firebase_uid);
-create index if not exists app_users_email_idx on public.app_users(email);
+create index if not exists provider_workspaces_firebase_uid_idx on public.provider_workspaces(firebase_uid);
+create index if not exists provider_workspaces_email_idx on public.provider_workspaces(email);
+create index if not exists provider_workspaces_status_idx on public.provider_workspaces(status);
+create index if not exists provider_workspaces_mode_idx on public.provider_workspaces(mode);
+drop index if exists public.provider_workspaces_linked_doctor_idx;
+drop index if exists public.provider_workspaces_linked_facility_idx;
+create unique index if not exists provider_workspaces_linked_doctor_unique_idx
+on public.provider_workspaces(linked_doctor_id) where linked_doctor_id is not null;
+create unique index if not exists provider_workspaces_linked_facility_unique_idx
+on public.provider_workspaces(linked_facility_id) where linked_facility_id is not null;
+create index if not exists provider_workspace_events_workspace_idx
+on public.provider_workspace_events(workspace_id, created_at desc);
+create index if not exists provider_workspace_events_type_idx
+on public.provider_workspace_events(event_type, created_at desc);
+create index if not exists provider_workspace_events_actor_idx
+on public.provider_workspace_events(actor_email, created_at desc);
+drop index if exists public.app_users_firebase_uid_idx;
+drop index if exists public.app_users_email_idx;
+create unique index if not exists app_users_email_lower_unique_idx
+on public.app_users(lower(email));
 create index if not exists app_users_role_idx on public.app_users(role);
 create index if not exists app_users_status_idx on public.app_users(status);
 create index if not exists patient_medical_profiles_owner_idx on public.patient_medical_profiles(owner_profile_id);
@@ -925,7 +1144,25 @@ create index if not exists medical_facilities_location_idx on public.medical_fac
 create index if not exists facility_services_facility_idx on public.facility_services(facility_id);
 create index if not exists doctors_specialty_idx on public.doctors(specialty_id);
 create index if not exists doctors_facility_idx on public.doctors(facility_id);
+create index if not exists doctors_full_name_lower_idx
+on public.doctors(lower(full_name));
+create index if not exists medical_facilities_type_name_lower_idx
+on public.medical_facilities(type, lower(name));
 create index if not exists appointment_slots_lookup_idx on public.appointment_slots(slot_date, facility_id, doctor_id, specialty_id);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'appointment_slots_booked_count_capacity_check'
+  ) then
+    alter table public.appointment_slots
+    add constraint appointment_slots_booked_count_capacity_check
+    check (booked_count >= 0 and booked_count <= capacity);
+  end if;
+end $$;
+
 with duplicate_slots as (
   select
     id,
@@ -945,9 +1182,40 @@ where s.id = d.id
 create unique index if not exists appointment_slots_doctor_date_time_unique_idx
 on public.appointment_slots(doctor_id, slot_date, start_time)
 where doctor_id is not null;
+
+with duplicate_facility_slots as (
+  select
+    id,
+    row_number() over (
+      partition by facility_id, slot_date, start_time, specialty_id, service_id
+      order by booked_count desc, created_at asc
+    ) as row_number
+  from public.appointment_slots
+  where doctor_id is null
+    and facility_id is not null
+    and booked_count = 0
+)
+delete from public.appointment_slots s
+using duplicate_facility_slots d
+where s.id = d.id
+  and d.row_number > 1;
+
+create unique index if not exists appointment_slots_facility_date_time_service_unique_idx
+on public.appointment_slots(
+  facility_id,
+  slot_date,
+  start_time,
+  coalesce(specialty_id, '00000000-0000-0000-0000-000000000000'::uuid),
+  coalesce(service_id, '00000000-0000-0000-0000-000000000000'::uuid)
+)
+where doctor_id is null and facility_id is not null;
 create index if not exists appointments_owner_profile_id_idx on public.appointments(owner_profile_id);
 create index if not exists appointments_patient_medical_profile_id_idx on public.appointments(patient_medical_profile_id);
 create index if not exists appointments_date_status_idx on public.appointments(appointment_date, status);
+create index if not exists appointments_doctor_date_idx on public.appointments(doctor_id, appointment_date desc)
+where doctor_id is not null;
+create index if not exists appointments_facility_date_idx on public.appointments(facility_id, appointment_date desc)
+where facility_id is not null;
 create index if not exists appointment_attachments_appointment_idx on public.appointment_attachments(appointment_id);
 create index if not exists queue_tickets_owner_profile_id_idx on public.queue_tickets(owner_profile_id);
 create index if not exists queue_tickets_appointment_id_idx on public.queue_tickets(appointment_id);
@@ -963,3 +1231,11 @@ where status = 'published';
 create index if not exists health_articles_search_idx on public.health_articles using gin (
   to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(content, ''))
 );
+create index if not exists symptom_specialty_rules_active_idx
+on public.symptom_specialty_rules(is_active, priority);
+create index if not exists chatbot_knowledge_base_active_idx
+on public.chatbot_knowledge_base(is_active, priority);
+create index if not exists chatbot_interactions_firebase_uid_idx
+on public.chatbot_interactions(firebase_uid, created_at desc);
+create index if not exists chatbot_interactions_created_at_idx
+on public.chatbot_interactions(created_at desc);

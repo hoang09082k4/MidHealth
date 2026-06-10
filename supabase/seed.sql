@@ -211,12 +211,6 @@ update public.doctors
 set unavailable_note = 'Bác sĩ Lâm Việt Trung nghỉ ngày 20/10 đến 26/10, 27/10 làm lại bình thường. Nếu bệnh nhân bận việc không đến khám được vui lòng hủy lịch khám đã đặt và đặt lại ngày khác.'
 where slug = 'pgs-ts-bs-lam-viet-trung';
 
-insert into public.doctor_specialties (doctor_id, specialty_id)
-select d.id, d.specialty_id
-from public.doctors d
-where d.specialty_id is not null
-on conflict do nothing;
-
 insert into public.appointment_slots (facility_id, doctor_id, specialty_id, service_id, slot_date, start_time, end_time, capacity)
 select
   coalesce(d.facility_id, f.id),
@@ -276,3 +270,139 @@ where slot.facility_id = facility.id
   and slot.slot_date = (current_date + interval '2 days')::date
   and slot.start_time = '09:00'::time
   and slot.booked_count = 0;
+
+insert into public.symptom_specialty_rules (symptom_keywords, specialty_keywords, severity, advice_text, priority)
+values
+  (array['dau bung', 'tieu chay', 'tao bon', 'day hoi', 'buon non', 'da day'], array['tieu hoa', 'noi tong quat'], 'normal', 'Neu dau bung du doi, sot cao, non lien tuc, di ngoai ra mau hoac ngat, ban nen di cap cuu ngay.', 10),
+  (array['dau dau', 'mat ngu', 'chong mat'], array['noi than kinh', 'noi tong quat'], 'normal', 'Neu dau dau du doi dot ngot, yeu liet, noi kho hoac mat y thuc, ban nen di cap cuu ngay.', 20),
+  (array['kho tho', 'dau nguc', 'ngat'], array['ho hap', 'tim mach', 'noi tong quat'], 'urgent', 'Day co the la dau hieu can cap cuu. Neu trieu chung dang xay ra, hay goi 115 hoac den co so y te gan nhat.', 5),
+  (array['ho', 'viem hong', 'hen', 'kho tho'], array['ho hap', 'tai mui hong', 'noi tong quat'], 'normal', 'Neu kho tho, tim tai, dau nguc hoac sot cao keo dai, ban nen di kham som hoac cap cuu.', 30),
+  (array['mun', 'ngua', 'phat ban', 'di ung', 'da lieu'], array['da lieu'], 'normal', 'Neu phat ban lan nhanh, kho tho hoac sung moi/mat, ban nen di cap cuu ngay.', 40),
+  (array['tre em', 'em be', 'nhi khoa', 'be sot'], array['nhi khoa'], 'normal', 'Neu tre li bi, kho tho, co giat hoac sot cao khong ha, ban nen dua tre di cap cuu.', 60),
+  (array['mang thai', 'thai', 'phu khoa', 'kinh nguyet'], array['san phu khoa'], 'normal', 'Neu dau bung du doi khi mang thai, ra mau am dao hoac choang, ban nen di cap cuu san khoa ngay.', 70)
+on conflict do nothing;
+
+insert into public.chatbot_knowledge_base (keywords, intent, reply, actions, suggested_prompts, priority)
+values
+  (array['midhealth la gi', 'website nay la gi', 'ban la ai'], 'knowledge_about_midhealth', 'MidHealth la website ho tro dat lich kham truc tuyen. Ban co the tim bac si, chuyen khoa, benh vien hoac phong kham phu hop, chon khung gio kham va theo doi phieu kham dien tu.', '[]'::jsonb, array['Huong dan dat lich kham', 'Toi nen dat kham chuyen khoa nao?'], 10),
+  (array['co can dang nhap', 'dang nhap de lam gi', 'tai khoan de lam gi'], 'knowledge_account', 'Ban nen dang nhap de luu ho so benh nhan, dat lich nhanh hon, xem lich da dat va theo doi phieu kham dien tu.', '[{"label":"Dang nhap","url":"/dang-nhap"},{"label":"Dang ky tai khoan","url":"/dang-ky"}]'::jsonb, array['Huong dan dat lich kham', 'Xem phieu kham dien tu'], 20),
+  (array['phieu kham dien tu la gi', 'phieu kham', 'lich kham cua toi', 'xem lich hen'], 'knowledge_ticket', 'Phieu kham dien tu giup ban xem thong tin lich hen, nguoi di kham, co so kham, thoi gian kham va trang thai lich da dat.', '[{"label":"Xem phieu kham dien tu","url":"/phieu-kham-dien-tu"}]'::jsonb, array['Toi muon dat lich kham moi', 'Toi can dang nhap khong?'], 30),
+  (array['cach dat lich', 'huong dan dat lich', 'dat lich nhu the nao', 'dat kham nhu the nao'], 'knowledge_booking_guide', 'De dat lich tren MidHealth, ban chon bac si, chuyen khoa, benh vien hoac phong kham, sau do chon khung gio con trong, nhap ho so benh nhan va xac nhan lich hen.', '[{"label":"Ve trang dat kham","url":"/dat-kham/bac-si"}]'::jsonb, array['Toi nen dat kham chuyen khoa nao?', 'Goi y bac si phu hop'], 40),
+  (array['huy lich', 'doi lich', 'sua lich', 'huy hen'], 'knowledge_appointment_change', 'Ban co the vao phieu kham dien tu de xem trang thai lich hen. Neu lich con cho phep thao tac, ban co the huy lich truc tiep roi dat lai khung gio moi.', '[{"label":"Xem phieu kham dien tu","url":"/phieu-kham-dien-tu"}]'::jsonb, array['Huong dan dat lich kham'], 50),
+  (array['thanh toan', 'phi kham', 'gia kham', 'bao hiem', 'bhyt'], 'knowledge_payment', 'Chi phi kham co the khac nhau theo bac si, chuyen khoa, co so kham va dich vu di kem. Neu co bao hiem hoac uu dai, MidHealth se hien thi de ban kiem tra truoc khi xac nhan.', '[{"label":"Ve trang dat kham","url":"/dat-kham/bac-si"}]'::jsonb, array['Goi y bac si phu hop', 'Huong dan dat lich kham'], 60)
+on conflict do nothing;
+
+-- Catalog records are manageable in Admin even when they do not have a Firebase login.
+with ranked_doctors as (
+  select d.*,
+    row_number() over (partition by lower(trim(d.full_name)) order by d.created_at, d.id) as name_rank
+  from public.doctors d
+)
+insert into public.app_users (
+  firebase_uid, email, full_name, avatar_url, role, status, auth_provider, email_verified
+)
+select
+  'catalog:doctor:' || d.id,
+  'doctor+' || regexp_replace(lower(coalesce(nullif(d.slug, ''), d.id::text)), '[^a-z0-9._-]+', '-', 'g') || '@catalog.midhealth.local',
+  d.full_name,
+  d.avatar_url,
+  'doctor'::public.app_user_role,
+  'pending'::public.app_user_status,
+  'catalog',
+  false
+from ranked_doctors d
+where d.name_rank = 1
+on conflict (firebase_uid) do update set
+  full_name = excluded.full_name,
+  avatar_url = excluded.avatar_url,
+  updated_at = now();
+
+insert into public.app_users (
+  firebase_uid, email, full_name, avatar_url, role, status, auth_provider, email_verified
+)
+select
+  'catalog:clinic:' || f.id,
+  'clinic+' || regexp_replace(lower(coalesce(nullif(f.slug, ''), f.id::text)), '[^a-z0-9._-]+', '-', 'g') || '@catalog.midhealth.local',
+  f.name,
+  f.avatar_url,
+  'clinic'::public.app_user_role,
+  'pending'::public.app_user_status,
+  'catalog',
+  false
+from public.medical_facilities f
+where f.type = 'clinic'
+on conflict (firebase_uid) do update set
+  full_name = excluded.full_name,
+  avatar_url = excluded.avatar_url,
+  updated_at = now();
+
+with ranked_doctors as (
+  select d.*,
+    row_number() over (partition by lower(trim(d.full_name)) order by d.created_at, d.id) as name_rank
+  from public.doctors d
+)
+insert into public.provider_workspaces (
+  firebase_uid, app_user_id, email, owner_name, mode, provider_role,
+  linked_doctor_id, status, clinic_name, clinic_address, doctor_title,
+  specialty, image_url, review_note, submitted_at, reviewed_at
+)
+select
+  u.firebase_uid,
+  u.id,
+  u.email,
+  d.full_name,
+  'doctor',
+  'doctor'::public.app_user_role,
+  d.id,
+  'approved',
+  coalesce(f.name, d.workplace_text),
+  f.address,
+  d.title,
+  coalesce(s.name, 'Khám tổng quát'),
+  d.avatar_url,
+  'Hồ sơ catalog nội bộ được hệ thống đồng bộ.',
+  now(),
+  now()
+from ranked_doctors d
+join public.app_users u on u.firebase_uid = 'catalog:doctor:' || d.id
+left join public.clinic_specialties s on s.id = d.specialty_id
+left join public.medical_facilities f on f.id = d.facility_id
+where d.name_rank = 1
+on conflict (firebase_uid) do update set
+  app_user_id = excluded.app_user_id,
+  linked_doctor_id = excluded.linked_doctor_id,
+  owner_name = excluded.owner_name,
+  specialty = excluded.specialty,
+  updated_at = now();
+
+insert into public.provider_workspaces (
+  firebase_uid, app_user_id, email, owner_name, owner_phone, mode, provider_role,
+  linked_facility_id, status, clinic_name, clinic_address, image_url,
+  review_note, submitted_at, reviewed_at
+)
+select
+  u.firebase_uid,
+  u.id,
+  u.email,
+  f.name,
+  coalesce(f.phone, f.hotline),
+  'clinic',
+  'clinic'::public.app_user_role,
+  f.id,
+  'approved',
+  f.name,
+  coalesce(nullif(trim(f.address), ''), 'Chưa cập nhật địa chỉ'),
+  f.avatar_url,
+  'Hồ sơ catalog nội bộ được hệ thống đồng bộ.',
+  now(),
+  now()
+from public.medical_facilities f
+join public.app_users u on u.firebase_uid = 'catalog:clinic:' || f.id
+where f.type = 'clinic'
+on conflict (firebase_uid) do update set
+  app_user_id = excluded.app_user_id,
+  linked_facility_id = excluded.linked_facility_id,
+  owner_name = excluded.owner_name,
+  clinic_name = excluded.clinic_name,
+  clinic_address = excluded.clinic_address,
+  updated_at = now();

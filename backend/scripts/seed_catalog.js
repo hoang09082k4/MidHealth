@@ -269,14 +269,6 @@ async function main() {
       unavailable_note: 'Bác sĩ Lâm Việt Trung nghỉ ngày 20/10 đến 26/10, 27/10 làm lại bình thường. Nếu bệnh nhân bận việc không đến khám được vui lòng hủy lịch khám đã đặt và đặt lại ngày khác.',
     })
     .eq('slug', 'pgs-ts-bs-lam-viet-trung');
-  const doctorSpecialties = upsertedDoctors
-    .filter((doctor) => doctor.specialty_id)
-    .map((doctor) => ({
-      doctor_id: doctor.id,
-      specialty_id: doctor.specialty_id,
-    }));
-  await upsert('doctor_specialties', doctorSpecialties, 'doctor_id,specialty_id');
-
   const defaultFacility = upsertedFacilities.find((facility) => facility.slug === 'benh-vien-nhi-dong-2') || null;
   const doctorSlotTimes = buildDoctorSlotTimes();
   const doctorSlots = [];
