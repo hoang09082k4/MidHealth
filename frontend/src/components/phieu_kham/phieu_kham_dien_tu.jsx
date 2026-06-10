@@ -38,11 +38,15 @@ function tao_ho_so_mac_dinh(appointment, user) {
 }
 
 function chuyen_ho_so_tu_api(profile) {
+  const rawBirthDate = profile.birthDate || profile.birth_date || profile.date_of_birth || profile.dateOfBirth || '';
+  const birthDate = /^\d{4}-\d{2}-\d{2}$/.test(rawBirthDate)
+    ? rawBirthDate.split('-').reverse().join('/')
+    : rawBirthDate;
   return {
     id: profile.id || `profile_${Date.now()}`,
     fullName: profile.full_name || profile.fullName || profile.name || '',
     phone: profile.phone || '',
-    birthDate: profile.birthDate || profile.birth_date || profile.dateOfBirth || '',
+    birthDate,
     gender: profile.gender === 'female' ? 'Nữ' : profile.gender === 'male' ? 'Nam' : profile.gender || '',
     province: profile.province || '',
     district: profile.district || '',
@@ -328,8 +332,8 @@ function PhieuKhamChiTiet({ appointment, compact = false }) {
   );
 }
 
-function TrangPhieuKhamDienTu({ appointment, user, onLogout }) {
-  const [activeTab, setActiveTab] = useState('lich_kham');
+function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onTabChange, onLogout }) {
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [selectedAppointment, setSelectedAppointment] = useState(appointment);
   const [appointments, setAppointments] = useState(() => gop_lich_kham([appointment, ...doc_lich_kham_luu_cuc_bo()].filter(Boolean)));
   const [searchTerm, setSearchTerm] = useState('');
@@ -355,6 +359,8 @@ function TrangPhieuKhamDienTu({ appointment, user, onLogout }) {
   const [isPasswordSaving, setIsPasswordSaving] = useState(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isProfileSaving, setIsProfileSaving] = useState(false);
+  const [profileMessage, setProfileMessage] = useState('');
 
   const profile = profiles.find((item) => item.id === selectedProfileId) || profiles[0];
   const selectedProvince = useMemo(
@@ -446,6 +452,15 @@ function TrangPhieuKhamDienTu({ appointment, user, onLogout }) {
   };
 
   useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
+
+  const changeTab = (nextTab) => {
+    setActiveTab(nextTab);
+    onTabChange?.(nextTab);
+  };
+
+  useEffect(() => {
     let isMounted = true;
 
     if (!user) return () => {
@@ -482,7 +497,7 @@ function TrangPhieuKhamDienTu({ appointment, user, onLogout }) {
       .then((items) => {
         if (!isMounted) return;
         const apiProfiles = items.map(chuyen_ho_so_tu_api);
-        const nextProfiles = gop_ho_so([...apiProfiles, defaultProfile]);
+        const nextProfiles = gop_ho_so(apiProfiles.length ? apiProfiles : [defaultProfile]);
         setProfiles(nextProfiles);
         setSelectedProfileId((current) => (
           nextProfiles.some((item) => item.id === current) ? current : nextProfiles[0]?.id || defaultProfile.id
@@ -547,6 +562,7 @@ function TrangPhieuKhamDienTu({ appointment, user, onLogout }) {
     setProfileDraft(profile);
     setProfileError('');
     setProfileFieldErrors({});
+    setProfileMessage('');
     setIsAddingProfile(false);
     setIsEditingProfile(true);
   };
@@ -555,6 +571,7 @@ function TrangPhieuKhamDienTu({ appointment, user, onLogout }) {
     setProfileDraft(tao_ho_so_moi());
     setProfileError('');
     setProfileFieldErrors({});
+    setProfileMessage('');
     setIsEditingProfile(false);
     setIsAddingProfile(true);
   };
@@ -594,25 +611,34 @@ function TrangPhieuKhamDienTu({ appointment, user, onLogout }) {
     }
 
     let savedProfile = null;
+    setIsProfileSaving(true);
+    setProfileMessage('');
     try {
       if (user) {
         savedProfile = await savePatientProfile(user, profileDraft);
       }
     } catch (error) {
       setProfileError(error.message || 'Không thể lưu hồ sơ khám điện tử.');
+      setIsProfileSaving(false);
       return;
     }
 
+    const normalizedSavedProfile = savedProfile
+      ? { ...profileDraft, ...chuyen_ho_so_tu_api(savedProfile) }
+      : profileDraft;
+
     if (isAddingProfile) {
-      const newProfile = { ...profileDraft, id: savedProfile?.id || `profile_${Date.now()}` };
+      const newProfile = { ...normalizedSavedProfile, id: savedProfile?.id || `profile_${Date.now()}` };
       setProfiles((current) => [...current, newProfile]);
       setSelectedProfileId(newProfile.id);
       setIsAddingProfile(false);
+      setIsProfileSaving(false);
+      setProfileMessage('Đã thêm hồ sơ bệnh nhân.');
       return;
     }
 
     setProfiles((current) => current.map((item) => (
-      item.id === selectedProfileId ? { ...item, ...profileDraft, id: savedProfile?.id || item.id } : item
+      item.id === selectedProfileId ? { ...item, ...normalizedSavedProfile, id: savedProfile?.id || item.id } : item
     )));
     setSelectedAppointment((current) => ({
       ...(current || activeAppointment || {}),
@@ -641,6 +667,8 @@ function TrangPhieuKhamDienTu({ appointment, user, onLogout }) {
       return nextAppointments;
     });
     setIsEditingProfile(false);
+    setIsProfileSaving(false);
+    setProfileMessage('Đã cập nhật hồ sơ bệnh nhân.');
   };
 
   const updatePaymentFilterDraft = (event) => {
@@ -723,7 +751,7 @@ function TrangPhieuKhamDienTu({ appointment, user, onLogout }) {
       <section className="account-page">
         <aside className="account-sidebar">
           {menu.map(([key, label]) => (
-            <button className={activeTab === key ? 'active' : ''} key={key} type="button" onClick={() => setActiveTab(key)}>
+            <button className={activeTab === key ? 'active' : ''} key={key} type="button" onClick={() => changeTab(key)}>
               {label}
             </button>
           ))}
@@ -868,6 +896,7 @@ function TrangPhieuKhamDienTu({ appointment, user, onLogout }) {
         {activeTab === 'ho_so' && (
           <>
             <h2>Hồ sơ khám điện tử</h2>
+            {profileMessage ? <p className="profile-save-message" role="status">{profileMessage}</p> : null}
             <div className={(isEditingProfile || isAddingProfile) ? 'profile-account-layout editing' : 'profile-account-layout'}>
               <div>
                 <input
@@ -958,7 +987,9 @@ function TrangPhieuKhamDienTu({ appointment, user, onLogout }) {
                   {profileError && <p className="profile-form-error">{profileError}</p>}
                   <div className="profile-edit-actions">
                     <button type="button" onClick={cancelEditProfile}>{isAddingProfile ? 'Thoát' : 'Hủy'}</button>
-                    <button type="submit">{isAddingProfile ? 'Thêm hồ sơ khám điện tử mới' : 'Cập nhật'}</button>
+                    <button type="submit" disabled={isProfileSaving}>
+                      {isProfileSaving ? 'Đang lưu...' : isAddingProfile ? 'Thêm hồ sơ khám điện tử mới' : 'Cập nhật'}
+                    </button>
                   </div>
                 </form>
               ) : (
@@ -1002,7 +1033,7 @@ function TrangPhieuKhamDienTu({ appointment, user, onLogout }) {
                 <HangThongTin label="CMND/CCCD" value={profile.citizenId || '---'} />
                 <HangThongTin label="Mã BHYT" value={profile.insuranceCode || '---'} />
                 <HangThongTin label="Quốc tịch" value={profile.nationality || 'Việt Nam'} />
-                <button type="button" onClick={() => { setActiveTab('ho_so'); openEditProfile(); }}>Thay đổi thông tin</button>
+                <button type="button" onClick={() => { changeTab('ho_so'); openEditProfile(); }}>Thay đổi thông tin</button>
               </div>
               <form className="profile-detail-card" onSubmit={submitPasswordChange}>
                 <h3>Thay đổi mật khẩu</h3>

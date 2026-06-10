@@ -112,6 +112,12 @@ function ChatbotAI({ user }) {
   const [isSending, setIsSending] = useState(false);
   const inputRef = useRef(null);
 
+  useEffect(() => {
+    const openFromNavigation = () => setIsOpen(true);
+    window.addEventListener('midhealth:open-chatbot', openFromNavigation);
+    return () => window.removeEventListener('midhealth:open-chatbot', openFromNavigation);
+  }, []);
+
   const visibleHistory = useMemo(
     () => messages.map((message) => ({ role: message.role, content: message.content })),
     [messages],

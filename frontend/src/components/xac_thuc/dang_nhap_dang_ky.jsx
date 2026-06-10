@@ -2,6 +2,7 @@ import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
+  signOut,
   updatePassword,
   updateProfile,
 } from 'firebase/auth';
@@ -39,6 +40,16 @@ async function goi_api(path, payload) {
     throw new Error(data.message || 'Không thể xử lý yêu cầu.');
   }
 
+  return data.data;
+}
+
+async function xac_minh_cong_benh_nhan(user) {
+  const token = await user.getIdToken(true);
+  const response = await fetch(`${apiBaseUrl}/api/auth/me?portal=patient`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || 'Tài khoản không thuộc cổng bệnh nhân.');
   return data.data;
 }
 
@@ -264,7 +275,7 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
     try {
       const credential = await signInWithGoogle();
       const idToken = await credential.user.getIdToken();
-      await goi_api('/api/auth/google', { idToken });
+      await goi_api('/api/auth/google', { idToken, portal: 'patient' });
 
       if (mode === 'signup-entry') {
         const googleUser = credential.user;
@@ -289,6 +300,7 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
         return;
       }
 
+      await xac_minh_cong_benh_nhan(credential.user);
       onAuthSuccess(credential.user);
       onBack();
     } catch (error) {
@@ -327,6 +339,12 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
     try {
       if (mode === 'signin') {
         const authUser = await dang_nhap_email();
+        try {
+          await xac_minh_cong_benh_nhan(authUser);
+        } catch (error) {
+          await signOut(firebaseAuth);
+          throw error;
+        }
         onAuthSuccess(authUser);
         onBack();
         return;
