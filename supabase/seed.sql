@@ -211,6 +211,43 @@ update public.doctors
 set unavailable_note = 'Bác sĩ Lâm Việt Trung nghỉ ngày 20/10 đến 26/10, 27/10 làm lại bình thường. Nếu bệnh nhân bận việc không đến khám được vui lòng hủy lịch khám đã đặt và đặt lại ngày khác.'
 where slug = 'pgs-ts-bs-lam-viet-trung';
 
+update public.doctors
+set
+  homepage_featured = slug = any(array[
+    'pgs-ts-bs-tran-quoc-nhan',
+    'bs-ck2-nguyen-thi-thu-ha',
+    'bs-ck2-le-thi-minh-hong',
+    'bs-ck2-vo-duc-hieu',
+    'pgs-ts-bs-lam-viet-trung',
+    'bs-nguyen-thi-thu-lan',
+    'bs-nguyen-minh-my',
+    'bs-tran-quoc-tai'
+  ]),
+  homepage_order = coalesce(array_position(array[
+    'pgs-ts-bs-tran-quoc-nhan',
+    'bs-ck2-nguyen-thi-thu-ha',
+    'bs-ck2-le-thi-minh-hong',
+    'bs-ck2-vo-duc-hieu',
+    'pgs-ts-bs-lam-viet-trung',
+    'bs-nguyen-thi-thu-lan',
+    'bs-nguyen-minh-my',
+    'bs-tran-quoc-tai'
+  ], slug), 100);
+
+update public.medical_facilities
+set homepage_order = coalesce(array_position(array[
+  'benh-vien-nhi-dong-2',
+  'benh-vien-da-khoa-thu-duc',
+  'benh-vien-quan-y-175',
+  'benh-vien-ung-buou-tphcm',
+  'benh-vien-rang-ham-mat-tphcm',
+  'benh-vien-y-hoc-co-truyen-tphcm',
+  'phong-kham-da-lieu-shine-clinic',
+  'phong-kham-san-phu-khoa-13-cao-thang',
+  'phong-kham-nhi-my-my',
+  'trung-tam-chac'
+], slug), 100);
+
 insert into public.appointment_slots (facility_id, doctor_id, specialty_id, service_id, slot_date, start_time, end_time, capacity)
 select
   coalesce(d.facility_id, f.id),

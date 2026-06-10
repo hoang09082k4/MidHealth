@@ -1,13 +1,51 @@
 import { trustItems } from '../../data';
 import { useMemo, useState } from 'react';
 import { fallbackCatalog } from '../../lib/catalog';
-import MucTinTuong from './tin_tuong';
 import { MucTinYTeTrangChu } from '../tin_y_te/tin_y_te';
 import TheBacSi from '../the_hien_thi/the_bac_si';
 import TheBenhVien from '../the_hien_thi/the_benh_vien';
 import TheChuyenKhoa from '../the_hien_thi/the_chuyen_khoa';
 import ThePhongKham from '../the_hien_thi/the_phong_kham';
-import TieuDeMuc from './tieu_de_muc';
+
+function TieuDeMuc({ title, subtitle, action = 'Xem thêm', onAction }) {
+  return (
+    <div className="section-head">
+      <div>
+        <h2>{title}</h2>
+        <p>{subtitle}</p>
+      </div>
+      <button className="pill-button" type="button" onClick={onAction}>
+        {action}
+        <i className="ui-chevron right" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+function MucTinTuong({ items }) {
+  return (
+    <section className="trust-section">
+      <article className="video-card">
+        <div className="video-thumb">
+          <span>▶</span>
+        </div>
+        <h2>Hướng dẫn đặt lịch và theo dõi số khám MidHealth</h2>
+      </article>
+      <div className="trust-news">
+        <h2>Tin tưởng ở MidHealth</h2>
+        <div className="trust-grid">
+          {items.map((item) => (
+            <article key={item.title}>
+              <strong>{item.source}</strong>
+              <p>{item.title}</p>
+              <div className="trust-image">MH</div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function normalizeSearchText(value = '') {
   return String(value)
@@ -77,6 +115,9 @@ function buildHeroSearchResults({ doctors = [], hospitals = [], clinics = [], sp
 
 function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onBookClinic, onSelectSpecialty, onOpenHealthNews, onOpenBookingOverview }) {
   const { doctors, hospitals, clinics, specialties } = catalog;
+  const featuredDoctors = doctors.filter((item) => item.homepageFeatured !== false).slice(0, 8);
+  const featuredHospitals = hospitals.filter((item) => item.homepageFeatured !== false).slice(0, 8);
+  const featuredClinics = clinics.filter((item) => item.homepageFeatured !== false).slice(0, 8);
   const [heroSearchTerm, setHeroSearchTerm] = useState('');
   const heroSearchKeyword = useMemo(() => normalizeSearchText(heroSearchTerm.trim()), [heroSearchTerm]);
   const heroSearchResults = useMemo(
@@ -163,27 +204,27 @@ function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onB
       <section className="content-section" id="doctor">
         <TieuDeMuc title="Đặt khám bác sĩ" subtitle="Phiếu khám điện tử kèm số thứ tự và thời gian của bạn được xác nhận." onAction={() => onOpenBookingOverview?.('doctor')} />
         <div className="horizontal-list doctor-list">
-          {doctors.map((doctor) => <TheBacSi doctor={doctor} key={doctor.name} onBook={onBookDoctor} />)}
+          {featuredDoctors.map((doctor) => <TheBacSi doctor={doctor} key={doctor.name} onBook={onBookDoctor} />)}
         </div>
       </section>
 
       <section className="content-section" id="hospital">
         <TieuDeMuc title="Đặt khám bệnh viện" subtitle="Đặt khám và thanh toán để có phiếu khám điện tử trước khi đi khám các bệnh viện kết nối chính thức với MidHealth." onAction={() => onOpenBookingOverview?.('hospital')} />
         <div className="horizontal-list hospital-list">
-          {hospitals.map((hospital) => <TheBenhVien hospital={hospital} key={hospital.name} onBook={onBookHospital} />)}
+          {featuredHospitals.map((hospital) => <TheBenhVien hospital={hospital} key={hospital.name} onBook={onBookHospital} />)}
         </div>
       </section>
 
       <section className="content-section" id="clinic">
         <TieuDeMuc title="Đặt khám phòng khám" subtitle="Đa dạng phòng khám với nhiều chuyên khoa khác nhau như Sản - Nhi, Tai Mũi Họng, Da Liễu, Tiêu Hoá..." onAction={() => onOpenBookingOverview?.('clinic')} />
         <div className="horizontal-list clinic-list">
-          {clinics.map((clinic) => <ThePhongKham clinic={clinic} key={clinic.name} onBook={onBookClinic} />)}
+          {featuredClinics.map((clinic) => <ThePhongKham clinic={clinic} key={clinic.name} onBook={onBookClinic} />)}
         </div>
       </section>
 
       <TheChuyenKhoa specialties={specialties} onSelectSpecialty={onSelectSpecialty} />
       <MucTinYTeTrangChu onNavigate={onOpenHealthNews} onSelectSpecialty={onSelectSpecialty} />
-      <MucTinTuong trustItems={trustItems} />
+      <MucTinTuong items={trustItems} />
 
     </>
   );

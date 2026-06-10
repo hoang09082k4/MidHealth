@@ -152,6 +152,7 @@ export default function AdminDashboard({ onBackHome }) {
   const [accountKeyword, setAccountKeyword] = useState('');
   const [catalogKindFilter, setCatalogKindFilter] = useState('all');
   const [catalogKeyword, setCatalogKeyword] = useState('');
+  const [catalogHomepageDrafts, setCatalogHomepageDrafts] = useState({});
   const [loading, setLoading] = useState(false);
   const [actionId, setActionId] = useState('');
   const [message, setMessage] = useState('');
@@ -206,7 +207,10 @@ export default function AdminDashboard({ onBackHome }) {
         item.workplace,
         item.address,
         item.sourceLabel,
-      ].filter(Boolean).join(' ')).includes(keyword));
+      ].filter(Boolean).join(' ')).includes(keyword))
+      .sort((a, b) => String(a.kind).localeCompare(String(b.kind))
+        || Number(a.homepageOrder ?? 100) - Number(b.homepageOrder ?? 100)
+        || String(a.displayName || '').localeCompare(String(b.displayName || ''), 'vi'));
   }, [catalogItems, catalogKeyword, catalogKindFilter]);
 
   async function loadDashboard() {
@@ -290,7 +294,7 @@ export default function AdminDashboard({ onBackHome }) {
     }
   }
 
-  async function updateCatalogEntity(item, active) {
+  async function updateCatalogEntity(item, patch) {
     const entityType = item.doctorId ? 'doctor' : item.facilityId ? 'facility' : '';
     const entityId = item.doctorId || item.facilityId || '';
     if (!entityType || !entityId) return;
@@ -300,7 +304,12 @@ export default function AdminDashboard({ onBackHome }) {
     try {
       await adminRequest('/api/admin/catalog-entities', backendToken, {
         method: 'PATCH',
-        body: JSON.stringify({ entityType, entityId, active }),
+        body: JSON.stringify({ entityType, entityId, ...patch }),
+      });
+      setCatalogHomepageDrafts((current) => {
+        const next = { ...current };
+        delete next[item.id];
+        return next;
       });
       await loadDashboard();
     } catch (error) {
@@ -308,6 +317,25 @@ export default function AdminDashboard({ onBackHome }) {
     } finally {
       setActionId('');
     }
+  }
+
+  function homepageDraftFor(item) {
+    return catalogHomepageDrafts[item.id] || {
+      homepageFeatured: item.homepageFeatured !== false,
+      homepageOrder: Number(item.homepageOrder ?? 100),
+    };
+  }
+
+  function updateHomepageDraft(item, patch) {
+    setCatalogHomepageDrafts((current) => ({
+      ...current,
+      [item.id]: {
+        homepageFeatured: item.homepageFeatured !== false,
+        homepageOrder: Number(item.homepageOrder ?? 100),
+        ...(current[item.id] || {}),
+        ...patch,
+      },
+    }));
   }
 
   async function syncCatalogAccounts() {
@@ -577,9 +605,11 @@ export default function AdminDashboard({ onBackHome }) {
             </div>
             <div className="admin-table-wrap">
               <table className="admin-table">
-                <thead><tr><th>Hồ sơ catalog</th><th>Loại</th><th>Chuyên khoa / nơi làm việc</th><th>Nguồn liên kết</th><th>Hiển thị</th><th>Thao tác</th></tr></thead>
+                <thead><tr><th>Hồ sơ catalog</th><th>Loại</th><th>Chuyên khoa / nơi làm việc</th><th>Nguồn liên kết</th><th>Ưu tiên trang chủ</th><th>Hiển thị</th><th>Thao tác</th></tr></thead>
                 <tbody>
-                  {filteredCatalogItems.map((item) => (
+                  {filteredCatalogItems.map((item) => {
+                    const homepageDraft = homepageDraftFor(item);
+                    return (
                     <tr key={`catalog-${item.id}`}>
                       <td>
                         <strong>{item.displayName}</strong>
@@ -600,14 +630,45 @@ export default function AdminDashboard({ onBackHome }) {
                               : 'Đã liên kết quản lý'}
                         </small>
                       </td>
+                      <td>
+                        <div className="admin-homepage-priority">
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={homepageDraft.homepageFeatured}
+                              onChange={(event) => updateHomepageDraft(item, { homepageFeatured: event.target.checked })}
+                            />
+                            <span>Trang chủ</span>
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            aria-label={`Thứ tự trang chủ của ${item.displayName}`}
+                            value={homepageDraft.homepageOrder}
+                            onChange={(event) => updateHomepageDraft(item, { homepageOrder: event.target.value })}
+                          />
+                          <button
+                            type="button"
+                            disabled={actionId === item.id}
+                            onClick={() => updateCatalogEntity(item, {
+                              homepageFeatured: Boolean(homepageDraft.homepageFeatured),
+                              homepageOrder: Number(homepageDraft.homepageOrder),
+                            })}
+                          >
+                            Lưu
+                          </button>
+                        </div>
+                      </td>
                       <td><StatusPill value={item.catalogStatus} /></td>
                       <td className="admin-actions">
                         {item.catalogStatus === 'active'
-                          ? <button type="button" disabled={actionId === item.id} onClick={() => updateCatalogEntity(item, false)}>Ẩn</button>
-                          : <button type="button" disabled={actionId === item.id} onClick={() => updateCatalogEntity(item, true)}>Hiện</button>}
+                          ? <button type="button" disabled={actionId === item.id} onClick={() => updateCatalogEntity(item, { active: false })}>Ẩn</button>
+                          : <button type="button" disabled={actionId === item.id} onClick={() => updateCatalogEntity(item, { active: true })}>Hiện</button>}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

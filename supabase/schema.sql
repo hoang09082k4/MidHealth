@@ -184,6 +184,8 @@ create table if not exists public.medical_facilities (
   phone text,
   hotline text,
   is_active boolean not null default true,
+  homepage_featured boolean not null default true,
+  homepage_order integer not null default 100 check (homepage_order >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -251,6 +253,8 @@ create table if not exists public.doctors (
   consultation_fee numeric(12, 2),
   intro text,
   is_active boolean not null default true,
+  homepage_featured boolean not null default true,
+  homepage_order integer not null default 100 check (homepage_order >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -483,6 +487,8 @@ alter table public.patient_profiles add column if not exists last_login_at times
 alter table public.clinic_specialties add column if not exists slug text;
 alter table public.clinic_specialties add column if not exists updated_at timestamptz not null default now();
 alter table public.medical_facilities add column if not exists updated_at timestamptz not null default now();
+alter table public.medical_facilities add column if not exists homepage_featured boolean not null default true;
+alter table public.medical_facilities add column if not exists homepage_order integer not null default 100;
 alter table public.facility_services add column if not exists updated_at timestamptz not null default now();
 alter table public.doctors add column if not exists slug text;
 alter table public.doctors add column if not exists initials text;
@@ -493,6 +499,8 @@ alter table public.doctors add column if not exists intro text;
 alter table public.doctors add column if not exists notice text;
 alter table public.doctors add column if not exists unavailable_note text;
 alter table public.doctors add column if not exists updated_at timestamptz not null default now();
+alter table public.doctors add column if not exists homepage_featured boolean not null default true;
+alter table public.doctors add column if not exists homepage_order integer not null default 100;
 alter table public.appointments add column if not exists owner_profile_id uuid references public.patient_profiles(id) on delete cascade;
 alter table public.appointments add column if not exists patient_medical_profile_id uuid references public.patient_medical_profiles(id) on delete set null;
 alter table public.appointments add column if not exists appointment_slot_id uuid references public.appointment_slots(id) on delete set null;
@@ -1144,10 +1152,14 @@ create index if not exists medical_facilities_location_idx on public.medical_fac
 create index if not exists facility_services_facility_idx on public.facility_services(facility_id);
 create index if not exists doctors_specialty_idx on public.doctors(specialty_id);
 create index if not exists doctors_facility_idx on public.doctors(facility_id);
+create index if not exists doctors_homepage_featured_order_idx
+on public.doctors(homepage_featured, homepage_order, full_name);
 create index if not exists doctors_full_name_lower_idx
 on public.doctors(lower(full_name));
 create index if not exists medical_facilities_type_name_lower_idx
 on public.medical_facilities(type, lower(name));
+create index if not exists medical_facilities_homepage_featured_order_idx
+on public.medical_facilities(type, homepage_featured, homepage_order, name);
 create index if not exists appointment_slots_lookup_idx on public.appointment_slots(slot_date, facility_id, doctor_id, specialty_id);
 
 do $$

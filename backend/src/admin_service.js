@@ -80,6 +80,8 @@ function mergeAccountRow(base = {}, incoming = {}) {
     accountStatus: base.accountStatus || incoming.accountStatus || '',
     workspaceStatus: base.workspaceStatus || incoming.workspaceStatus || '',
     catalogStatus: base.catalogStatus || incoming.catalogStatus || '',
+    homepageFeatured: incoming.homepageFeatured ?? base.homepageFeatured ?? false,
+    homepageOrder: incoming.homepageOrder ?? base.homepageOrder ?? 100,
     specialty: base.specialty || incoming.specialty || '',
     workplace: base.workplace || incoming.workplace || '',
     address: base.address || incoming.address || '',
@@ -174,6 +176,8 @@ function buildAccountDirectory({ users = [], providers = [], doctors = [], facil
       role: 'doctor',
       kind: 'doctor',
       catalogStatus: doctor.is_active ? 'active' : 'disabled',
+      homepageFeatured: doctor.homepage_featured !== false,
+      homepageOrder: Number(doctor.homepage_order ?? 100),
       specialty: doctor.clinic_specialties?.name || '',
       workplace: doctor.medical_facilities?.name || doctor.workplace_text || '',
       address: doctor.medical_facilities?.address || '',
@@ -195,6 +199,8 @@ function buildAccountDirectory({ users = [], providers = [], doctors = [], facil
       role: facility.type === 'clinic' ? 'clinic' : 'staff',
       kind: facility.type,
       catalogStatus: facility.is_active ? 'active' : 'disabled',
+      homepageFeatured: facility.homepage_featured !== false,
+      homepageOrder: Number(facility.homepage_order ?? 100),
       workplace: facility.subtitle || '',
       address: facility.address || '',
       phone: facility.phone || facility.hotline || '',
@@ -306,14 +312,14 @@ export async function getAdminDashboard(firebaseUser) {
 
     const { data: doctorRows, error: doctorError } = await supabase
       .from('doctors')
-      .select('id, full_name, specialty_id, facility_id, workplace_text, is_active, created_at, updated_at, clinic_specialties(name), medical_facilities(name, address)')
+      .select('id, full_name, specialty_id, facility_id, workplace_text, is_active, homepage_featured, homepage_order, created_at, updated_at, clinic_specialties(name), medical_facilities(name, address)')
       .order('updated_at', { ascending: false })
       .limit(300);
     if (doctorError) throw doctorError;
 
     const { data: facilityRows, error: facilityError } = await supabase
       .from('medical_facilities')
-      .select('id, type, name, subtitle, address, phone, hotline, is_active, created_at, updated_at')
+      .select('id, type, name, subtitle, address, phone, hotline, is_active, homepage_featured, homepage_order, created_at, updated_at')
       .order('updated_at', { ascending: false })
       .limit(300);
     if (facilityError) throw facilityError;
@@ -492,14 +498,29 @@ export async function updateCatalogEntityAsAdmin(firebaseUser, payload = {}) {
   const entityType = clean(payload.entityType);
   const entityId = clean(payload.entityId);
   const active = payload.active;
-  if (!['doctor', 'facility'].includes(entityType) || !entityId || typeof active !== 'boolean') {
+  const hasActive = typeof active === 'boolean';
+  const hasHomepageFeatured = typeof payload.homepageFeatured === 'boolean';
+  const homepageOrder = Number(payload.homepageOrder);
+  const hasHomepageOrder = payload.homepageOrder !== undefined
+    && Number.isInteger(homepageOrder)
+    && homepageOrder >= 0;
+  if (
+    !['doctor', 'facility'].includes(entityType)
+    || !entityId
+    || (!hasActive && !hasHomepageFeatured && !hasHomepageOrder)
+    || (payload.homepageOrder !== undefined && !hasHomepageOrder)
+  ) {
     return { ok: false, status: 400, data: { message: 'Dữ liệu cập nhật catalog không hợp lệ.' } };
   }
 
   const table = entityType === 'doctor' ? 'doctors' : 'medical_facilities';
+  const patch = {};
+  if (hasActive) patch.is_active = active;
+  if (hasHomepageFeatured) patch.homepage_featured = payload.homepageFeatured;
+  if (hasHomepageOrder) patch.homepage_order = homepageOrder;
   const { data, error } = await supabase
     .from(table)
-    .update({ is_active: active })
+    .update(patch)
     .eq('id', entityId)
     .select()
     .single();
@@ -508,11 +529,15 @@ export async function updateCatalogEntityAsAdmin(firebaseUser, payload = {}) {
   await logProviderWorkspaceEvent({
     actor: firebaseUser,
     actorRole: 'admin',
-    eventType: active ? 'catalog_entity_enabled' : 'catalog_entity_disabled',
+    eventType: hasActive
+      ? (active ? 'catalog_entity_enabled' : 'catalog_entity_disabled')
+      : 'catalog_homepage_priority_updated',
     entityType,
     entityId,
-    message: active ? 'Admin enabled catalog entity.' : 'Admin disabled catalog entity.',
-    metadata: { table },
+    message: hasActive
+      ? (active ? 'Admin enabled catalog entity.' : 'Admin disabled catalog entity.')
+      : 'Admin updated homepage catalog priority.',
+    metadata: { table, ...patch },
   });
 
   return { ok: true, status: 200, data };

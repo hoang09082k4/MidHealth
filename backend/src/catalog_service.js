@@ -60,11 +60,16 @@ async function selectTable(table, query = '*') {
 
 async function selectDoctors() {
   try {
-    return await selectTable('doctors', 'id, initials, full_name, specialty_id, facility_id, workplace_text, avatar_url, unavailable_note, notice, is_active');
+    return await selectTable('doctors', 'id, initials, full_name, specialty_id, facility_id, workplace_text, avatar_url, unavailable_note, notice, is_active, homepage_featured, homepage_order');
   } catch (error) {
     if (!String(error.message || '').includes('unavailable_note') && !String(error.message || '').includes('notice')) throw error;
-    return selectTable('doctors', 'id, initials, full_name, specialty_id, facility_id, workplace_text, avatar_url, is_active');
+    return selectTable('doctors', 'id, initials, full_name, specialty_id, facility_id, workplace_text, avatar_url, is_active, homepage_featured, homepage_order');
   }
+}
+
+function compareHomepageOrder(a, b) {
+  return Number(a.homepageOrder ?? 100) - Number(b.homepageOrder ?? 100)
+    || String(a.name || '').localeCompare(String(b.name || ''), 'vi');
 }
 
 export async function getCatalog() {
@@ -88,7 +93,7 @@ export async function getCatalog() {
       doctors,
     ] = await Promise.all([
       selectTable('clinic_specialties', 'id, name, image_url, is_active'),
-      selectTable('medical_facilities', 'id, type, name, subtitle, intro, address, province, district, latitude, longitude, avatar_url, background_url, is_active'),
+      selectTable('medical_facilities', 'id, type, name, subtitle, intro, address, province, district, latitude, longitude, avatar_url, background_url, phone, hotline, is_active, homepage_featured, homepage_order'),
       selectTable('facility_hours', 'facility_id, label, time_text, sort_order'),
       selectTable('facility_notes', 'facility_id, title, lines, sort_order'),
       selectTable('facility_specialties', 'facility_id, specialty_id, sort_order'),
@@ -188,8 +193,11 @@ export async function getCatalog() {
           latitude: facility?.latitude || null,
           longitude: facility?.longitude || null,
           notice: doctor.unavailable_note || doctor.notice || inferDoctorNotice(doctor.full_name),
+          homepageFeatured: doctor.homepage_featured !== false,
+          homepageOrder: Number(doctor.homepage_order ?? 100),
         };
-      });
+      })
+      .sort(compareHomepageOrder);
 
     const mappedHospitals = facilities
       .filter((facility) => facility.is_active && facility.type === 'hospital')
@@ -210,7 +218,10 @@ export async function getCatalog() {
         specialties: specialtiesByFacility.get(facility.id) || [],
         notes: notesByFacility.get(facility.id) || [],
         hours: hoursByFacility.get(facility.id) || [],
-      }));
+        homepageFeatured: facility.homepage_featured !== false,
+        homepageOrder: Number(facility.homepage_order ?? 100),
+      }))
+      .sort(compareHomepageOrder);
 
     const mappedClinics = facilities
       .filter((facility) => facility.is_active && facility.type === 'clinic')
@@ -234,8 +245,11 @@ export async function getCatalog() {
           specialties: specialtiesByFacility.get(facility.id) || [],
           doctors: doctorNamesByFacility.get(facility.id) || [],
           hours: hoursByFacility.get(facility.id) || [],
+          homepageFeatured: facility.homepage_featured !== false,
+          homepageOrder: Number(facility.homepage_order ?? 100),
         };
-      });
+      })
+      .sort(compareHomepageOrder);
 
     return {
       ok: true,
