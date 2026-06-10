@@ -1,6 +1,16 @@
 import http from 'node:http';
 import { URL } from 'node:url';
 import { upsertAppUser } from './account_service.js';
+import { requirePortal, requireRoles, APP_ROLES } from './authorization_service.js';
+import {
+  deleteHealthArticleAsAdmin,
+  getAdminDashboard,
+  reviewProviderAsAdmin,
+  saveHealthArticleAsAdmin,
+  syncCatalogAccountsAsAdmin,
+  updateCatalogEntityAsAdmin,
+  updateUserAsAdmin,
+} from './admin_service.js';
 import { config } from './config.js';
 import {
   cancelAppointment,
@@ -16,10 +26,9 @@ import { getCatalog } from './catalog_service.js';
 import { getReferenceData } from './reference_service.js';
 import {
   hasFirebaseConfig,
-  getUserFromIdToken,
   loginWithEmail,
-  lookupAccount,
   registerWithEmail,
+  verifyIdToken,
 } from './firebase_auth.js';
 import {
   getHealthArticle,
@@ -46,11 +55,20 @@ import {
   verifyOtpToken,
 } from './otp_service.js';
 import { ensureProfileTableReady, savePatientProfile } from './profile_service.js';
+import {
+  getProviderWorkspace,
+  getProviderWorkspaceOperations,
+  saveProviderWorkspace,
+  saveProviderSlot,
+  updateProviderAppointmentStatus,
+  updateProviderSlot,
+} from './provider_workspace_service.js';
 import { hasSupabaseConfig } from './supabase.js';
 import { queueTickets } from './tickets.js';
 
 let tickets = [...queueTickets];
 const chatbotRateLimits = new Map();
+const authRateLimits = new Map();
 
 function getRequestIp(request) {
   const forwardedFor = request.headers['x-forwarded-for'];
@@ -76,6 +94,21 @@ function isChatbotRateLimited(request) {
   return current.count > limit;
 }
 
+function isAuthRateLimited(request) {
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000;
+  const limit = 12;
+  const key = getRequestIp(request);
+  const current = authRateLimits.get(key) || { count: 0, resetAt: now + windowMs };
+  if (now > current.resetAt) {
+    authRateLimits.set(key, { count: 1, resetAt: now + windowMs });
+    return false;
+  }
+  current.count += 1;
+  authRateLimits.set(key, current);
+  return current.count > limit;
+}
+
 function getCorsOrigin(request) {
   const origin = request.headers.origin;
   if (origin && config.allowedOrigins.includes(origin)) return origin;
@@ -85,9 +118,6 @@ function getCorsOrigin(request) {
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   });
   response.end(JSON.stringify(payload));
 }
@@ -97,6 +127,10 @@ function readBody(request) {
     let body = '';
     request.on('data', (chunk) => {
       body += chunk;
+      if (body.length > 7 * 1024 * 1024) {
+        reject(new Error('Request body too large.'));
+        request.destroy();
+      }
     });
     request.on('end', () => {
       try {
@@ -117,13 +151,7 @@ async function getUserFromRequest(request) {
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
 
   if (!token) return null;
-
-  const tokenUser = getUserFromIdToken(token);
-  if (tokenUser) return tokenUser;
-
-  const result = await lookupAccount(token);
-  if (!result.ok) return null;
-  return result.data.users?.[0] || null;
+  return verifyIdToken(token);
 }
 
 function createTicket(payload) {
@@ -148,6 +176,15 @@ function createTicket(payload) {
 
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
+  response.setHeader('Access-Control-Allow-Origin', getCorsOrigin(request));
+  response.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  response.setHeader('Vary', 'Origin');
+  response.setHeader('X-Content-Type-Options', 'nosniff');
+  response.setHeader('X-Frame-Options', 'DENY');
+  response.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  response.setHeader('Cache-Control', 'no-store');
 
   if (request.method === 'OPTIONS') {
     sendJson(response, 200, { ok: true });
@@ -190,7 +227,7 @@ const server = http.createServer(async (request, response) => {
       const otpPayload = getUsableOtpToken(payload.otpToken, payload.email);
 
       if (!otpPayload || otpPayload.email !== payload.email?.trim().toLowerCase()) {
-        sendJson(response, 401, { message: 'Vui lòng xác minh OTP email trước khi đăng ký' });
+        sendJson(response, 401, { message: 'Vui lòng xác minh OTP email trước khi đăng ký.' });
         return;
       }
 
@@ -198,6 +235,26 @@ const server = http.createServer(async (request, response) => {
         const result = await registerWithEmail(payload);
         if (!result.ok) {
           sendJson(response, result.status, result.data);
+          return;
+        }
+
+        const providerRole = ['doctor', 'clinic'].includes(payload.accountRole) ? payload.accountRole : null;
+        if (providerRole || payload.providerRegistration) {
+          const accountResult = await upsertAppUser(result.data, {
+            role: providerRole || 'doctor',
+            status: 'active',
+            fullName: payload.fullName,
+            email: payload.email,
+            emailVerified: true,
+            authProvider: 'password',
+          });
+          if (!accountResult.ok) {
+            sendJson(response, accountResult.status, accountResult.data);
+            return;
+          }
+
+          consumeOtpToken(payload.otpToken, payload.email);
+          sendJson(response, 201, { data: { ...result.data, appUser: accountResult.data } });
           return;
         }
 
@@ -239,14 +296,37 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.method === 'POST' && url.pathname === '/api/auth/login') {
+    if (isAuthRateLimited(request)) {
+      sendJson(response, 429, { message: 'Quá nhiều lần đăng nhập. Vui lòng thử lại sau.' });
+      return;
+    }
     try {
       const payload = await readBody(request);
+      if (!['admin', 'provider', 'patient'].includes(payload.portal)) {
+        sendJson(response, 400, { message: 'Thiếu cổng đăng nhập hợp lệ.' });
+        return;
+      }
       const result = await loginWithEmail(payload);
       if (result.ok) {
+        let access = await requirePortal(result.data, payload.portal);
+        if (!access.ok && payload.portal === 'patient' && access.status === 404) {
+          access = await upsertAppUser(result.data, {
+            authProvider: 'password',
+            email: payload.email,
+            role: APP_ROLES.PATIENT,
+            markLogin: true,
+            allowPatientIdentityRelink: true,
+          });
+        }
+        if (!access.ok) {
+          sendJson(response, access.status, access.data);
+          return;
+        }
         const accountResult = await upsertAppUser(result.data, {
           authProvider: 'password',
           email: payload.email,
           markLogin: true,
+          allowPatientIdentityRelink: payload.portal === 'patient',
         });
         if (!accountResult.ok) {
           sendJson(response, accountResult.status, accountResult.data);
@@ -267,16 +347,22 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'POST' && url.pathname === '/api/auth/google') {
     try {
       const payload = await readBody(request);
-      const firebaseUser = getUserFromIdToken(payload.idToken);
+      const firebaseUser = await verifyIdToken(payload.idToken);
       if (!firebaseUser) {
         sendJson(response, 401, { message: 'Token Google khong hop le hoac da het han.' });
         return;
       }
 
-      const accountResult = await upsertAppUser(firebaseUser, {
-        authProvider: 'google',
-        markLogin: true,
-      });
+      const portal = payload.portal || 'patient';
+      let accountResult = await requirePortal(firebaseUser, portal);
+      if (!accountResult.ok && portal === 'patient' && accountResult.status === 404) {
+        accountResult = await upsertAppUser(firebaseUser, {
+          authProvider: 'google',
+          role: APP_ROLES.PATIENT,
+          markLogin: true,
+          allowPatientIdentityRelink: true,
+        });
+      }
       if (!accountResult.ok) {
         sendJson(response, accountResult.status, accountResult.data);
         return;
@@ -334,13 +420,281 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    const firebaseUser = getUserFromIdToken(idToken);
+    const firebaseUser = await verifyIdToken(idToken);
     if (!firebaseUser) {
       sendJson(response, 401, { message: 'Phien dang nhap khong hop le hoac da het han.' });
       return;
     }
 
-    sendJson(response, 200, { data: firebaseUser });
+    const portal = url.searchParams.get('portal');
+    if (!portal) {
+      sendJson(response, 400, { message: 'Thiếu cổng truy cập cần xác minh.' });
+      return;
+    }
+    let access = await requirePortal(firebaseUser, portal);
+    if (!access.ok && portal === 'patient' && access.status === 404) {
+      access = await upsertAppUser(firebaseUser, {
+        authProvider: firebaseUser.providerUserInfo?.[0]?.providerId?.includes('google') ? 'google' : 'password',
+        role: APP_ROLES.PATIENT,
+        markLogin: true,
+        allowPatientIdentityRelink: true,
+      });
+    }
+    if (!access.ok) {
+      sendJson(response, access.status, access.data);
+      return;
+    }
+
+    sendJson(response, 200, {
+      data: {
+        uid: firebaseUser.localId,
+        email: firebaseUser.email,
+        displayName: firebaseUser.displayName || access.data.full_name,
+        role: access.data.role,
+        status: access.data.status,
+      },
+    });
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/admin/dashboard') {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Vui lòng đăng nhập bằng tài khoản admin.' });
+      return;
+    }
+
+    const result = await getAdminDashboard(user);
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'PATCH' && url.pathname.match(/^\/api\/admin\/provider-workspaces\/[^/]+$/)) {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Vui lòng đăng nhập bằng tài khoản admin.' });
+      return;
+    }
+
+    try {
+      const workspaceId = decodeURIComponent(url.pathname.replace('/api/admin/provider-workspaces/', ''));
+      const payload = await readBody(request);
+      const result = await reviewProviderAsAdmin(user, workspaceId, payload);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Dữ liệu duyệt hồ sơ không hợp lệ.' });
+    }
+    return;
+  }
+
+  if (request.method === 'PATCH' && url.pathname.match(/^\/api\/admin\/users\/[^/]+$/)) {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Vui lòng đăng nhập bằng tài khoản admin.' });
+      return;
+    }
+
+    try {
+      const userId = decodeURIComponent(url.pathname.replace('/api/admin/users/', ''));
+      const payload = await readBody(request);
+      const result = await updateUserAsAdmin(user, userId, payload);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Dữ liệu cập nhật tài khoản không hợp lệ.' });
+    }
+    return;
+  }
+
+  if (request.method === 'PATCH' && url.pathname === '/api/admin/catalog-entities') {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Vui lòng đăng nhập bằng tài khoản admin.' });
+      return;
+    }
+
+    try {
+      const payload = await readBody(request);
+      const result = await updateCatalogEntityAsAdmin(user, payload);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Dữ liệu cập nhật catalog không hợp lệ.' });
+    }
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/admin/catalog-accounts/sync') {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Vui lòng đăng nhập bằng tài khoản admin.' });
+      return;
+    }
+
+    const result = await syncCatalogAccountsAsAdmin(user);
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/admin/health-articles') {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Vui lòng đăng nhập bằng tài khoản admin.' });
+      return;
+    }
+    try {
+      const payload = await readBody(request);
+      const result = await saveHealthArticleAsAdmin(user, '', payload);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch (error) {
+      sendJson(response, 400, { message: error.message || 'Dữ liệu bài viết không hợp lệ.' });
+    }
+    return;
+  }
+
+  if (url.pathname.match(/^\/api\/admin\/health-articles\/[^/]+$/)) {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Vui lòng đăng nhập bằng tài khoản admin.' });
+      return;
+    }
+    const articleId = decodeURIComponent(url.pathname.replace('/api/admin/health-articles/', ''));
+    if (request.method === 'PATCH') {
+      try {
+        const payload = await readBody(request);
+        const result = await saveHealthArticleAsAdmin(user, articleId, payload);
+        sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+      } catch (error) {
+        sendJson(response, 400, { message: error.message || 'Dữ liệu bài viết không hợp lệ.' });
+      }
+      return;
+    }
+    if (request.method === 'DELETE') {
+      const result = await deleteHealthArticleAsAdmin(user, articleId);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+      return;
+    }
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/provider/workspace') {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Vui lòng đăng nhập để xem hồ sơ đối tác.' });
+      return;
+    }
+
+    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC]);
+    if (!access.ok) {
+      sendJson(response, access.status, access.data);
+      return;
+    }
+    const result = await getProviderWorkspace(user);
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/provider/workspace') {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Vui lòng đăng nhập để gửi hồ sơ đối tác.' });
+      return;
+    }
+
+    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC]);
+    if (!access.ok) {
+      sendJson(response, access.status, access.data);
+      return;
+    }
+    try {
+      const payload = await readBody(request);
+      const result = await saveProviderWorkspace(user, payload);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Dữ liệu hồ sơ đối tác không hợp lệ.' });
+    }
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/provider/workspace/operations') {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Vui lòng đăng nhập để xem dữ liệu vận hành.' });
+      return;
+    }
+
+    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC]);
+    if (!access.ok) {
+      sendJson(response, access.status, access.data);
+      return;
+    }
+    const result = await getProviderWorkspaceOperations(user);
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'PATCH' && url.pathname.match(/^\/api\/provider\/workspace\/appointments\/[^/]+$/)) {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Vui lòng đăng nhập để cập nhật lịch hẹn.' });
+      return;
+    }
+
+    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC]);
+    if (!access.ok) {
+      sendJson(response, access.status, access.data);
+      return;
+    }
+    try {
+      const appointmentId = decodeURIComponent(url.pathname.replace('/api/provider/workspace/appointments/', ''));
+      const payload = await readBody(request);
+      const result = await updateProviderAppointmentStatus(user, appointmentId, payload.status);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Dữ liệu cập nhật lịch hẹn không hợp lệ.' });
+    }
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/provider/workspace/slots') {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Vui lòng đăng nhập để cấu hình khung giờ.' });
+      return;
+    }
+
+    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC]);
+    if (!access.ok) {
+      sendJson(response, access.status, access.data);
+      return;
+    }
+    try {
+      const payload = await readBody(request);
+      const result = await saveProviderSlot(user, payload);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Dữ liệu khung giờ không hợp lệ.' });
+    }
+    return;
+  }
+
+  if (request.method === 'PATCH' && url.pathname.match(/^\/api\/provider\/workspace\/slots\/[^/]+$/)) {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Vui lòng đăng nhập để cập nhật khung giờ.' });
+      return;
+    }
+
+    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC]);
+    if (!access.ok) {
+      sendJson(response, access.status, access.data);
+      return;
+    }
+    try {
+      const slotId = decodeURIComponent(url.pathname.replace('/api/provider/workspace/slots/', ''));
+      const payload = await readBody(request);
+      const result = await updateProviderSlot(user, slotId, payload);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Dữ liệu cập nhật khung giờ không hợp lệ.' });
+    }
     return;
   }
 
@@ -531,6 +885,11 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    const access = await requireRoles(user, APP_ROLES.PATIENT);
+    if (!access.ok) {
+      sendJson(response, access.status, access.data);
+      return;
+    }
     const result = await listPatientProfiles(user);
     sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     return;
@@ -544,6 +903,11 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
+      const access = await requireRoles(user, APP_ROLES.PATIENT);
+      if (!access.ok) {
+        sendJson(response, access.status, access.data);
+        return;
+      }
       const payload = await readBody(request);
       const result = await saveMedicalProfile(user, payload);
       sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
@@ -561,6 +925,11 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
+      const access = await requireRoles(user, APP_ROLES.PATIENT);
+      if (!access.ok) {
+        sendJson(response, access.status, access.data);
+        return;
+      }
       const profileId = decodeURIComponent(url.pathname.replace('/api/patient/profiles/', '')).trim();
       const payload = await readBody(request);
       const result = await saveMedicalProfile(user, {
@@ -584,6 +953,11 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    const access = await requireRoles(user, APP_ROLES.PATIENT);
+    if (!access.ok) {
+      sendJson(response, access.status, access.data);
+      return;
+    }
     const result = await listAppointments(user);
     sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     return;
@@ -593,6 +967,15 @@ const server = http.createServer(async (request, response) => {
     try {
       const payload = await readBody(request);
       const user = await getUserFromRequest(request);
+      if (!user) {
+        sendJson(response, 401, { message: 'Bạn cần đăng nhập bằng tài khoản bệnh nhân để đặt lịch.' });
+        return;
+      }
+      const access = await requireRoles(user, APP_ROLES.PATIENT);
+      if (!access.ok) {
+        sendJson(response, access.status, access.data);
+        return;
+      }
       const result = await createAppointment(user, payload);
       sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     } catch {
@@ -605,6 +988,15 @@ const server = http.createServer(async (request, response) => {
     try {
       const payload = await readBody(request);
       const user = await getUserFromRequest(request);
+      if (!user) {
+        sendJson(response, 401, { message: 'Bạn cần đăng nhập bằng tài khoản bệnh nhân để thanh toán.' });
+        return;
+      }
+      const access = await requireRoles(user, APP_ROLES.PATIENT);
+      if (!access.ok) {
+        sendJson(response, access.status, access.data);
+        return;
+      }
       const result = await createPayPalOrder(user, payload.appointmentId);
       sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     } catch {
@@ -648,6 +1040,11 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    const access = await requireRoles(user, APP_ROLES.PATIENT);
+    if (!access.ok) {
+      sendJson(response, access.status, access.data);
+      return;
+    }
     const appointmentId = decodeURIComponent(url.pathname.replace('/api/appointments/', '').replace('/cancel', '')).trim();
     const result = await cancelAppointment(user, appointmentId);
     sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
@@ -669,8 +1066,17 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'POST' && url.pathname === '/api/queue') {
     try {
       const payload = await readBody(request);
-    const user = await getUserFromRequest(request);
-    const ticket = createTicket({ ...payload, ownerId: user?.localId });
+      const user = await getUserFromRequest(request);
+      if (!user) {
+        sendJson(response, 401, { message: 'Bạn cần đăng nhập bằng tài khoản bệnh nhân.' });
+        return;
+      }
+      const access = await requireRoles(user, APP_ROLES.PATIENT);
+      if (!access.ok) {
+        sendJson(response, access.status, access.data);
+        return;
+      }
+      const ticket = createTicket({ ...payload, ownerId: user.localId });
       sendJson(response, 201, { data: ticket });
     } catch {
       sendJson(response, 400, { message: 'Dữ liệu gửi lên không hợp lệ' });
@@ -680,6 +1086,16 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === 'PATCH' && url.pathname.startsWith('/api/queue/')) {
     try {
+      const user = await getUserFromRequest(request);
+      if (!user) {
+        sendJson(response, 401, { message: 'Bạn cần đăng nhập bằng tài khoản đối tác y tế.' });
+        return;
+      }
+      const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC]);
+      if (!access.ok) {
+        sendJson(response, access.status, access.data);
+        return;
+      }
       const ticketCode = normalizeTicket(url.pathname.replace('/api/queue/', ''));
       const payload = await readBody(request);
       const ticketIndex = tickets.findIndex((item) => item.ticket === ticketCode);

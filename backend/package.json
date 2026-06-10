@@ -4,9 +4,13 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "test": "node --test",
     "dev": "node src/server.js",
     "start": "node src/server.js",
+    "seed:admin": "node scripts/seed_admin_account.js",
+    "seed:provider-test": "node scripts/seed_provider_test_account.js",
     "seed:catalog": "node scripts/seed_catalog.js",
+    "sync:catalog-accounts": "node scripts/sync_catalog_accounts.js",
     "seed:health-news": "node scripts/seed_health_news_content.js",
     "seed:reference": "node scripts/seed_reference_data.js"
   },
