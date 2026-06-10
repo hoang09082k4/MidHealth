@@ -1,23 +1,50 @@
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { useEffect, useState } from 'react';
-import BieuTuongLogo from './components/dung_chung/bieu_tuong_logo';
-import ChatbotAI from './components/dung_chung/chatbot_ai';
-import DangNhapDangKy from './components/xac_thuc/dang_nhap_dang_ky';
-import TrangDatLichBacSi from './components/dat_lich_kham/dat_lich_bac_si';
-import TrangDatLichBenhVien from './components/dat_lich_kham/dat_lich_benh_vien';
-import TrangDatLichChuyenKhoa from './components/dat_lich_kham/dat_lich_chuyen_khoa';
-import TrangDatLichPhongKham from './components/dat_lich_kham/dat_lich_phong_kham';
-import TrangDatKhamTongQuan from './components/dat_lich_kham/dat_kham_tong_quan';
-import TrangPhieuKhamDienTu from './components/phieu_kham/phieu_kham_dien_tu';
-import TrangChu from './components/trang_chu/trang_chu';
-import MucTinYTe from './components/tin_y_te/tin_y_te';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { firebaseAuth } from './lib/firebase';
 import { fallbackCatalog, fetchCatalog } from './lib/catalog';
 import { ReferenceDataProvider } from './lib/reference_data';
+import MucBaoMatFooter from './components/trang_chu/bao_mat_footer';
+import ThanhDieuHuong from './components/dung_chung/thanh_dieu_huong';
+
+const ChatbotAI = lazy(() => import('./components/dung_chung/chatbot_ai'));
+const DangNhapDangKy = lazy(() => import('./components/xac_thuc/dang_nhap_dang_ky'));
+const TrangDatLichBacSi = lazy(() => import('./components/dat_lich_kham/dat_lich_bac_si'));
+const TrangDatLichBenhVien = lazy(() => import('./components/dat_lich_kham/dat_lich_benh_vien'));
+const TrangDatLichChuyenKhoa = lazy(() => import('./components/dat_lich_kham/dat_lich_chuyen_khoa'));
+const TrangDatLichPhongKham = lazy(() => import('./components/dat_lich_kham/dat_lich_phong_kham'));
+const TrangDatKhamTongQuan = lazy(() => import('./components/dat_lich_kham/dat_kham_tong_quan'));
+const TrangChuLamViec = lazy(() => import('./components/danh_cho_bac_si/trang_chu_lam_viec'));
+const AdminDashboard = lazy(() => import('./components/admin/admin_dashboard'));
+const TrangPhieuKhamDienTu = lazy(() => import('./components/phieu_kham/phieu_kham_dien_tu'));
+const TrangChu = lazy(() => import('./components/trang_chu/trang_chu'));
+const TrangThongTin = lazy(() => import('./components/trang_chu/trang_thong_tin'));
+const MucTinYTe = lazy(() => import('./components/tin_y_te/tin_y_te'));
 
 const HEALTH_BASE_PATH = '/tin-tuc';
 const HEALTH_PATH_ALIASES = ['/tin-tuc', '/tin-y-te', '/tin-tu'];
 const DEFAULT_HEALTH_CATEGORY = 'suc-khoe-tong-quat';
+const PUBLIC_INFO_SLUGS = new Set([
+  'gioi-thieu',
+  'huong-dan-dat-kham',
+  'cau-hoi-thuong-gap',
+  'lien-he',
+  'dieu-khoan-su-dung',
+  'chinh-sach-bao-mat',
+  'chinh-sach-cookie',
+  'thanh-toan-va-hoan-tien',
+  'giai-quyet-khieu-nai',
+  'mien-tru-trach-nhiem-y-khoa',
+]);
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
+
+async function isPatientSession(user) {
+  if (!user) return false;
+  const token = await user.getIdToken();
+  const response = await fetch(`${apiBaseUrl}/api/auth/me?portal=patient`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return response.ok;
+}
 
 function healthPathMatch(path) {
   return HEALTH_PATH_ALIASES.find((basePath) => path === basePath || path.startsWith(`${basePath}/`)) || '';
@@ -42,6 +69,21 @@ const BOOKING_SCREEN_PATHS = {
   success: 'thanh-cong',
   ticket: 'phieu-kham-dien-tu',
   account: 'phieu-kham-dien-tu',
+};
+
+const WORKSPACE_SCREEN_PATHS = {
+  'dang-nhap': 'login',
+  login: 'login',
+  'dang-ky': 'register',
+  register: 'register',
+  'xac-thuc-otp': 'otp',
+  otp: 'otp',
+  'thiet-lap': 'setup',
+  setup: 'setup',
+  'ho-so': 'profile',
+  profile: 'profile',
+  'chinh-sua-ho-so': 'edit',
+  edit: 'edit',
 };
 
 function slugify(value = '') {
@@ -77,12 +119,21 @@ function findBookingItem(items, slug) {
   return (items || []).find((item) => bookingItemKeys(item).includes(normalizedSlug)) || null;
 }
 
+function PageLoading() {
+  return <div className="page-loading" role="status">Đang tải...</div>;
+}
+
 function routeFromLocation() {
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
   const params = new URLSearchParams(window.location.search);
   const bookingMatch = path.match(/^\/dat-kham\/([^/]+)\/([^/]+)(?:\/([^/]+))?$/);
   const bookingOverviewMatch = path.match(/^\/dat-kham\/([^/]+)$/);
+  const publicInfoMatch = path.match(/^\/thong-tin\/([^/]+)$/);
   const placeTypeParam = params.get('noi-kham') || params.get('placeType') || '';
+
+  if (path === '/admin' || path.startsWith('/admin/')) {
+    return { page: 'admin' };
+  }
 
   if (path === '/dat-kham/tim-kiem') {
     const placeType = {
@@ -106,7 +157,50 @@ function routeFromLocation() {
   }
 
   if (path === '/phieu-kham-dien-tu' || path === '/phieu-kham') {
-    return { page: 'ticket' };
+    return { page: 'patient-account', accountTab: 'lich_kham' };
+  }
+
+  const patientAccountMatch = path.match(/^\/tai-khoan(?:\/([^/]+))?$/);
+  if (patientAccountMatch) {
+    const accountTab = {
+      'lich-kham': 'lich_kham',
+      'thanh-toan': 'lich_su_thanh_toan',
+      'ho-so': 'ho_so',
+      'bao-mat': 'tai_khoan',
+    }[patientAccountMatch[1]] || 'lich_kham';
+    return { page: 'patient-account', accountTab };
+  }
+
+  if (publicInfoMatch && PUBLIC_INFO_SLUGS.has(publicInfoMatch[1])) {
+    return { page: 'public-info', infoSlug: publicInfoMatch[1] };
+  }
+
+  const doctorWorkspaceMatch = path.match(/^\/bacsi(?:\/([^/]+))?$/);
+  if (doctorWorkspaceMatch) {
+    const routePart = doctorWorkspaceMatch[1] || '';
+    return {
+      page: 'doctor-workspace',
+      workspace: {
+        basePath: '/bacsi',
+        requireAuth: true,
+        screen: WORKSPACE_SCREEN_PATHS[routePart] || 'work',
+        section: WORKSPACE_SCREEN_PATHS[routePart] ? 'tong-quan' : routePart || 'tong-quan',
+      },
+    };
+  }
+
+  const workspaceMatch = path.match(/^\/(?:danh-cho-bac-si|doi-tac-y-te)(?:\/([^/]+))?$/);
+  if (workspaceMatch) {
+    const routePart = workspaceMatch[1] || '';
+    return {
+      page: 'doctor-workspace',
+      workspace: {
+        basePath: '/danh-cho-bac-si',
+        requireAuth: false,
+        screen: WORKSPACE_SCREEN_PATHS[routePart] || (routePart ? 'work' : 'landing'),
+        section: WORKSPACE_SCREEN_PATHS[routePart] ? 'tong-quan' : routePart || 'tong-quan',
+      },
+    };
   }
 
   if (bookingMatch) {
@@ -140,6 +234,13 @@ function routeFromLocation() {
         category: params.get('category') || DEFAULT_HEALTH_CATEGORY,
       },
     };
+  }
+
+  if (bookingOverviewMatch) {
+    const kind = Object.entries(BOOKING_KIND_PATHS).find(([, pathPart]) => pathPart === bookingOverviewMatch[1])?.[0];
+    if (kind) {
+      return { page: 'booking-overview', bookingOverview: { kind } };
+    }
   }
 
   if (healthBasePath && path.startsWith(`${healthBasePath}/doi-ngu-chuyen-gia/`)) {
@@ -225,6 +326,7 @@ function App() {
   const [selectedClinic, setSelectedClinic] = useState(null);
   const [selectedSpecialty, setSelectedSpecialty] = useState(null);
   const [user, setUser] = useState(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [catalog, setCatalog] = useState(fallbackCatalog);
   const [appRoute, setAppRoute] = useState(routeFromLocation);
 
@@ -246,11 +348,29 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(firebaseAuth, (currentUser) => {
-      setUser(currentUser);
+    let active = true;
+    const unsubscribe = onAuthStateChanged(firebaseAuth, async (currentUser) => {
+      if (!currentUser) {
+        if (active) {
+          setUser(null);
+          setIsAuthReady(true);
+        }
+        return;
+      }
+      try {
+        const allowed = await isPatientSession(currentUser);
+        if (active) setUser(allowed ? currentUser : null);
+      } catch {
+        if (active) setUser(null);
+      } finally {
+        if (active) setIsAuthReady(true);
+      }
     });
 
-    return unsubscribe;
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -356,7 +476,7 @@ function App() {
 
   const showBookingOverview = (kind = 'doctor') => {
     const kindPath = BOOKING_KIND_PATHS[kind] || BOOKING_KIND_PATHS.doctor;
-    pushUrl(/dat-kham/);
+    pushUrl(`/dat-kham/${kindPath}`);
     setAppRoute({ page: 'booking-overview', bookingOverview: { kind } });
     setIsAuthPage(false);
     setSelectedDoctor(null);
@@ -366,14 +486,54 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const showPublicInfo = (slug = 'gioi-thieu') => {
+    const infoSlug = PUBLIC_INFO_SLUGS.has(slug) ? slug : 'gioi-thieu';
+    pushUrl(`/thong-tin/${infoSlug}`);
+    setAppRoute({ page: 'public-info', infoSlug });
+    setIsAuthPage(false);
+    setSelectedDoctor(null);
+    setSelectedHospital(null);
+    setSelectedClinic(null);
+    setSelectedSpecialty(null);
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  };
+
   const showBookingSearch = (placeType = 'doctor') => {
     const placePath = {
       doctor: 'bac-si',
       hospital: 'benh-vien',
       clinic: 'phong-kham',
     }[placeType] || 'tat-ca';
-    pushUrl(/dat-kham/tim-kiem?noi-kham=);
+    pushUrl(`/dat-kham/tim-kiem?noi-kham=${placePath}`);
     setAppRoute({ page: 'booking-search', bookingSearch: { placeType } });
+    setIsAuthPage(false);
+    setSelectedDoctor(null);
+    setSelectedHospital(null);
+    setSelectedClinic(null);
+    setSelectedSpecialty(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const showDoctorWorkspace = () => {
+    pushUrl('/danh-cho-bac-si');
+    setAppRoute({ page: 'doctor-workspace', workspace: { basePath: '/danh-cho-bac-si', requireAuth: false, screen: 'landing', section: 'tong-quan' } });
+    setIsAuthPage(false);
+    setSelectedDoctor(null);
+    setSelectedHospital(null);
+    setSelectedClinic(null);
+    setSelectedSpecialty(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const showPatientAccount = (accountTab = 'lich_kham') => {
+    const accountPath = {
+      lich_kham: 'lich-kham',
+      lich_su_thanh_toan: 'thanh-toan',
+      ho_so: 'ho-so',
+      tai_khoan: 'bao-mat',
+    }[accountTab] || 'lich-kham';
+    pushUrl(`/tai-khoan/${accountPath}`);
+    setAppRoute({ page: 'patient-account', accountTab });
     setIsAuthPage(false);
     setSelectedDoctor(null);
     setSelectedHospital(null);
@@ -433,33 +593,27 @@ function App() {
   };
 
   const isHealthPage = appRoute.page === 'health';
+  const isDoctorWorkspacePage = appRoute.page === 'doctor-workspace';
+  const isAdminPage = appRoute.page === 'admin';
 
   return (
     <ReferenceDataProvider>
-    <div className={`site-shell${isHealthPage ? ' health-news-shell' : ''}`} id="home">
-      {!isHealthPage ? (
-        <header className="site-header">
-          <button className="logo-button" type="button" onClick={showHome} aria-label="Về trang chủ MidHealth">
-            <BieuTuongLogo />
-          </button>
-          <nav className="main-nav" aria-label="Điều hướng chính">
-            <a href="/dat-kham/bac-si" onClick={(event) => { event.preventDefault(); showBookingOverview('doctor'); }}>Đặt khám <span aria-hidden="true">▾</span></a>
-            <a href="/tin-tuc" onClick={(event) => { event.preventDefault(); showHealthNews(); }}>Tin Y tế</a>
-          </nav>
-          {user ? (
-            <div className="user-menu">
-              <span>{user.displayName || user.email}</span>
-              <button className="login-button" type="button" onClick={signOutToAuth}>Đăng xuất</button>
-            </div>
-          ) : (
-            <div className="user-menu">
-              <button className="login-button" type="button" onClick={() => openAuth('signin')}>Đăng nhập</button>
-            </div>
-          )}
-        </header>
+    <div className={`site-shell${isHealthPage ? ' health-news-shell' : ''}${isDoctorWorkspacePage ? ' doctor-workspace-shell' : ''}${isAdminPage ? ' admin-site-shell' : ''}`} id="home">
+      {!isHealthPage && !isDoctorWorkspacePage && !isAdminPage ? (
+        <ThanhDieuHuong
+          user={user}
+          onHome={showHome}
+          onBook={showBookingOverview}
+          onHealthNews={showHealthNews}
+          onDoctorWorkspace={showDoctorWorkspace}
+          onOpenAuth={openAuth}
+          onOpenAccount={showPatientAccount}
+          onLogout={signOutToAuth}
+        />
       ) : null}
 
       <main>
+        <Suspense fallback={<PageLoading />}>
         {isAuthPage ? (
           <DangNhapDangKy
             initialMode={authMode}
@@ -522,14 +676,43 @@ function App() {
             onOpenSearch={showBookingSearch}
             user={user}
           />
-        ) : appRoute.page === 'ticket' ? (
-          <TrangPhieuKhamDienTu
-            appointment={null}
-            user={user}
-            onLogout={signOutToAuth}
+        ) : appRoute.page === 'patient-account' ? (
+          !isAuthReady ? <PageLoading /> : user ? (
+            <TrangPhieuKhamDienTu
+              appointment={null}
+              user={user}
+              initialTab={appRoute.accountTab || 'lich_kham'}
+              onTabChange={showPatientAccount}
+              onLogout={signOutToAuth}
+            />
+          ) : (
+            <DangNhapDangKy
+              initialMode="signin"
+              onBack={showHome}
+              onAuthSuccess={(authUser) => {
+                setUser(authUser);
+                showPatientAccount(appRoute.accountTab || 'lich_kham');
+              }}
+            />
+          )
+        ) : appRoute.page === 'doctor-workspace' ? (
+          <TrangChuLamViec
+            initialScreen={appRoute.workspace?.screen || 'landing'}
+            initialSection={appRoute.workspace?.section || 'tong-quan'}
+            basePath={appRoute.workspace?.basePath || '/danh-cho-bac-si'}
+            requireAuth={Boolean(appRoute.workspace?.requireAuth)}
+            onBackHome={showHome}
           />
+        ) : appRoute.page === 'admin' ? (
+          <AdminDashboard onBackHome={showHome} />
         ) : appRoute.page === 'health' ? (
           <MucTinYTe route={appRoute.health} onNavigate={showHealthNews} onHome={showHome} onBookSpecialty={showSpecialtyBooking} />
+        ) : appRoute.page === 'public-info' ? (
+          <TrangThongTin
+            slug={appRoute.infoSlug}
+            onNavigate={showPublicInfo}
+            onBackHome={showHome}
+          />
         ) : (
           <TrangChu
             catalog={catalog}
@@ -538,9 +721,23 @@ function App() {
             onBookClinic={showClinicBooking}
             onSelectSpecialty={showSpecialtyBooking}
             onOpenHealthNews={showHealthNews}
+            onOpenBookingOverview={showBookingOverview}
           />
         )}
+        </Suspense>
       </main>
+      {!isDoctorWorkspacePage && !isAdminPage ? (
+        <MucBaoMatFooter
+          onNavigate={showPublicInfo}
+          onOpenBookingOverview={showBookingOverview}
+          onOpenHealthNews={showHealthNews}
+        />
+      ) : null}
+      {!isDoctorWorkspacePage && !isAdminPage ? (
+        <Suspense fallback={null}>
+          <ChatbotAI user={user} />
+        </Suspense>
+      ) : null}
     </div>
     </ReferenceDataProvider>
   );

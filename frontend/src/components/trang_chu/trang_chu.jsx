@@ -1,10 +1,6 @@
-import {
-  articles,
-  trustItems,
-} from '../../data';
+import { trustItems } from '../../data';
 import { useMemo, useState } from 'react';
 import { fallbackCatalog } from '../../lib/catalog';
-import MucBaoMatFooter from './bao_mat_footer';
 import MucTinTuong from './tin_tuong';
 import { MucTinYTeTrangChu } from '../tin_y_te/tin_y_te';
 import TheBacSi from '../the_hien_thi/the_bac_si';
@@ -189,20 +185,6 @@ function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onB
       <MucTinYTeTrangChu onNavigate={onOpenHealthNews} onSelectSpecialty={onSelectSpecialty} />
       <MucTinTuong trustItems={trustItems} />
 
-      <section className="article-section" id="assistant">
-        <TieuDeMuc title="Cẩm nang sức khỏe" subtitle="Thông tin tham khảo giúp bạn chuẩn bị tốt hơn trước khi khám." />
-        <div className="article-grid">
-          {articles.map((article) => (
-            <article className="article-card" key={article.title}>
-              <span>{article.category}</span>
-              <h3>{article.title}</h3>
-              <p>{article.description}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <MucBaoMatFooter />
     </>
   );
 }

@@ -659,10 +659,6 @@ function HealthDetailPage({ article, relatedArticles, isLoading, onBackToList, o
   );
 }
 
-function HealthFooter() {
-  return <footer className="health-mag-footer compact"><div><strong>{TEXT.footerTitle}</strong><p>{TEXT.footerCopy}</p></div></footer>;
-}
-
 export function MucTinYTeTrangChu({ onNavigate, onSelectSpecialty }) {
   const [activeCategory, setActiveCategory] = useState(DEFAULT_CATEGORY);
   const [articles, setArticles] = useState([]);
@@ -790,7 +786,6 @@ function MucTinYTe({ route = { name: 'list' }, onNavigate, onHome, onBookSpecial
     <div className="health-mag-shell">
       <HealthPortalHeader categories={categories} activeCategory={activeCategory} onSiteHome={onHome || openNewsHome} onNewsHome={openNewsHome} onChangeCategory={changeCategory} onSearch={submitSearch} />
       {route.name === 'detail' ? <HealthDetailPage article={currentArticle} relatedArticles={relatedArticles} isLoading={isLoading} onBackToList={() => navigate({ name: 'list', category: activeCategory })} onOpenArticle={(slug) => navigate({ name: 'detail', slug })} /> : route.name === 'expert-profile' ? <ExpertProfilePage slug={route.slug} onOpenExpert={(slug) => navigate(slug ? { name: 'expert-profile', slug } : { name: 'expert-profile' })} onBookSpecialty={onBookSpecialty} /> : route.name === 'search' ? <HealthSearchPage keyword={route.keyword || ''} category={routeCategory} results={searchResults} isLoading={isLoading} onOpenArticle={(slug) => navigate({ name: 'detail', slug })} /> : <HealthListPage articles={articles} categories={categories} activeCategory={activeCategory} isLoading={isLoading} onOpenArticle={(slug) => navigate({ name: 'detail', slug })} />}
-      <HealthFooter />
     </div>
   );
 }
