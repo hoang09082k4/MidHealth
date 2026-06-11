@@ -113,11 +113,16 @@ function buildHeroSearchResults({ doctors = [], hospitals = [], clinics = [], sp
   return results.slice(0, 8);
 }
 
+function homepageItems(items = []) {
+  const featuredItems = items.filter((item) => item.homepageFeatured !== false);
+  return (featuredItems.length ? featuredItems : items).slice(0, 8);
+}
+
 function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onBookClinic, onSelectSpecialty, onOpenHealthNews, onOpenBookingOverview }) {
   const { doctors, hospitals, clinics, specialties } = catalog;
-  const featuredDoctors = doctors.filter((item) => item.homepageFeatured !== false).slice(0, 8);
-  const featuredHospitals = hospitals.filter((item) => item.homepageFeatured !== false).slice(0, 8);
-  const featuredClinics = clinics.filter((item) => item.homepageFeatured !== false).slice(0, 8);
+  const featuredDoctors = homepageItems(doctors);
+  const featuredHospitals = homepageItems(hospitals);
+  const featuredClinics = homepageItems(clinics);
   const [heroSearchTerm, setHeroSearchTerm] = useState('');
   const heroSearchKeyword = useMemo(() => normalizeSearchText(heroSearchTerm.trim()), [heroSearchTerm]);
   const heroSearchResults = useMemo(
