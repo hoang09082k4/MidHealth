@@ -111,6 +111,27 @@ export async function findOwnerProfile(firebaseUser) {
   return data || null;
 }
 
+async function findExistingOwnerProfile({ firebaseUid, appUserId, email }) {
+  const lookups = [
+    ['firebase_uid', firebaseUid],
+    ['app_user_id', appUserId],
+    ['email', email],
+  ].filter(([, value]) => value);
+
+  for (const [column, value] of lookups) {
+    const { data, error } = await supabase
+      .from('patient_profiles')
+      .select('*')
+      .eq(column, value)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (data?.id) return data;
+  }
+
+  return null;
+}
+
 async function ensureOwnerProfile(firebaseUser, profile = {}) {
   const existing = await findOwnerProfile(firebaseUser);
   if (existing) return existing;
@@ -151,13 +172,11 @@ async function ensureOwnerProfile(firebaseUser, profile = {}) {
     last_login_at: new Date().toISOString(),
   };
 
-  const { data: existingOwner, error: lookupError } = await supabase
-    .from('patient_profiles')
-    .select('id')
-    .eq('firebase_uid', firebaseUser.localId)
-    .maybeSingle();
-
-  if (lookupError) throw lookupError;
+  const existingOwner = await findExistingOwnerProfile({
+    firebaseUid: firebaseUser.localId,
+    appUserId: accountResult.data?.id,
+    email,
+  });
 
   const { data, error } = existingOwner?.id
     ? await supabase

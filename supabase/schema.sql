@@ -43,7 +43,7 @@ create table if not exists public.patient_profiles (
   id uuid primary key default gen_random_uuid(),
   firebase_uid text not null unique,
   app_user_id uuid references public.app_users(id) on delete cascade,
-  email text not null unique,
+  email text not null,
   full_name text not null,
   phone text not null,
   date_of_birth date not null,
@@ -1120,6 +1120,7 @@ grant execute on function public.release_appointment_slot(uuid) to service_role;
 
 drop index if exists public.patient_profiles_firebase_uid_idx;
 drop index if exists public.patient_profiles_email_idx;
+alter table public.patient_profiles drop constraint if exists patient_profiles_email_key;
 create unique index if not exists patient_profiles_email_lower_unique_idx
 on public.patient_profiles(lower(email));
 create unique index if not exists patient_profiles_app_user_id_idx on public.patient_profiles(app_user_id) where app_user_id is not null;

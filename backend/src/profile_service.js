@@ -15,6 +15,27 @@ function mapGender(gender) {
   return 'other';
 }
 
+async function findExistingPatientProfile({ firebaseUid, appUserId, email }) {
+  const lookups = [
+    ['firebase_uid', firebaseUid],
+    ['app_user_id', appUserId],
+    ['email', email],
+  ].filter(([, value]) => value);
+
+  for (const [column, value] of lookups) {
+    const { data, error } = await supabase
+      .from('patient_profiles')
+      .select('id')
+      .eq(column, value)
+      .maybeSingle();
+
+    if (error) return { error };
+    if (data?.id) return { data };
+  }
+
+  return { data: null };
+}
+
 export async function savePatientProfile(firebaseUser, payload = {}) {
   if (!hasSupabaseConfig) {
     return { ok: true, skipped: true, data: null };
@@ -67,11 +88,11 @@ export async function savePatientProfile(firebaseUser, payload = {}) {
     last_login_at: new Date().toISOString(),
   };
 
-  const { data: existingProfile, error: lookupError } = await supabase
-    .from('patient_profiles')
-    .select('id')
-    .eq('firebase_uid', firebaseUser.localId)
-    .maybeSingle();
+  const { data: existingProfile, error: lookupError } = await findExistingPatientProfile({
+    firebaseUid: firebaseUser.localId,
+    appUserId: accountResult.data?.id,
+    email,
+  });
 
   if (lookupError) {
     return { ok: false, status: 500, data: { message: lookupError.message } };

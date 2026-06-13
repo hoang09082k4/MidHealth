@@ -216,13 +216,13 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
       fullName: form.profile.fullName || googleSignupUser.displayName || '',
     };
 
+    await updatePassword(googleSignupUser, form.password);
+    await xac_minh_cong_benh_nhan(googleSignupUser);
     await savePatientProfile(googleSignupUser, profile);
     return googleSignupUser;
   };
 
   const tao_mat_khau_google = async () => {
-    await updatePassword(googleSignupUser, form.password);
-    setSignupAuthUser(googleSignupUser);
     setSignupStep(3);
     setMessage('');
   };
@@ -232,39 +232,44 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
       throw new Error('Vui long xac minh OTP email truoc khi dang ky.');
     }
 
-    let credential;
-    try {
-      credential = await createUserWithEmailAndPassword(
-        firebaseAuth,
-        form.email.trim(),
-        form.password,
-      );
-    } catch (error) {
-      if (!error?.code?.includes('auth/email-already-in-use')) {
-        throw error;
-      }
-
-      credential = await signInWithEmailAndPassword(
-        firebaseAuth,
-        form.email.trim(),
-        form.password,
-      );
-    }
-    setSignupAuthUser(credential.user);
     setSignupStep(3);
     setMessage('');
   };
 
   const hoan_tat_ho_so_email = async () => {
-    const authUser = signupAuthUser || firebaseAuth.currentUser || await dang_nhap_email();
+    let authUser = signupAuthUser;
+    if (!authUser) {
+      try {
+        const credential = await createUserWithEmailAndPassword(
+          firebaseAuth,
+          form.email.trim(),
+          form.password,
+        );
+        authUser = credential.user;
+      } catch (error) {
+        if (!error?.code?.includes('auth/email-already-in-use')) {
+          throw error;
+        }
+
+        const credential = await signInWithEmailAndPassword(
+          firebaseAuth,
+          form.email.trim(),
+          form.password,
+        );
+        authUser = credential.user;
+      }
+      setSignupAuthUser(authUser);
+    }
+
+    if (form.profile.fullName && authUser.displayName !== form.profile.fullName) {
+      await updateProfile(authUser, { displayName: form.profile.fullName });
+    }
+    await xac_minh_cong_benh_nhan(authUser);
     await savePatientProfile(authUser, {
       ...form.profile,
       email: form.email.trim(),
       fullName: form.profile.fullName,
     });
-    if (form.profile.fullName && authUser.displayName !== form.profile.fullName) {
-      await updateProfile(authUser, { displayName: form.profile.fullName });
-    }
     return authUser;
   };
 
@@ -274,8 +279,6 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
 
     try {
       const credential = await signInWithGoogle();
-      const idToken = await credential.user.getIdToken();
-      await goi_api('/api/auth/google', { idToken, portal: 'patient' });
 
       if (mode === 'signup-entry') {
         const googleUser = credential.user;
@@ -300,6 +303,8 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
         return;
       }
 
+      const idToken = await credential.user.getIdToken();
+      await goi_api('/api/auth/google', { idToken, portal: 'patient' });
       await xac_minh_cong_benh_nhan(credential.user);
       onAuthSuccess(credential.user);
       onBack();
