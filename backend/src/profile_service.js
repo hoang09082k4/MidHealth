@@ -120,6 +120,24 @@ export async function savePatientProfile(firebaseUser, payload = {}) {
   return { ok: true, status: 200, data };
 }
 
+export async function hasCompletePatientProfile(firebaseUser = {}) {
+  if (!hasSupabaseConfig || !firebaseUser.localId) return false;
+
+  const { data, error } = await supabase
+    .from('patient_profiles')
+    .select('id, full_name, phone, date_of_birth, status')
+    .eq('firebase_uid', firebaseUser.localId)
+    .maybeSingle();
+
+  if (error || !data) return false;
+  return Boolean(
+    data.status === 'active'
+    && clean(data.full_name)
+    && clean(data.phone)
+    && clean(data.date_of_birth),
+  );
+}
+
 export async function ensureProfileTableReady() {
   if (!hasSupabaseConfig) {
     return { ok: true, skipped: true };

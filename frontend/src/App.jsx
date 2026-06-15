@@ -601,7 +601,7 @@ function App() {
     <div className={`site-shell${isHealthPage ? ' health-news-shell' : ''}${isDoctorWorkspacePage ? ' doctor-workspace-shell' : ''}${isAdminPage ? ' admin-site-shell' : ''}`} id="home">
       {!isHealthPage && !isDoctorWorkspacePage && !isAdminPage ? (
         <ThanhDieuHuong
-          user={user}
+          user={isAuthPage ? null : user}
           onHome={showHome}
           onBook={showBookingOverview}
           onHealthNews={showHealthNews}

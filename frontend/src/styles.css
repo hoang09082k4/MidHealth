@@ -706,7 +706,7 @@ a {
 
 .signup-steps {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: center;
   border-bottom: 1px solid #e5e7eb;
   color: #555;
@@ -830,6 +830,234 @@ a {
 
 .signup-profile-step {
   margin-top: 46px;
+}
+
+.card-upload-tool {
+  margin-bottom: 30px;
+  padding: 18px;
+  border: 1px solid #d7e0ea;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.card-upload-heading {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 16px;
+  color: var(--ink);
+  text-align: center;
+}
+
+.card-upload-heading strong {
+  font-size: 1.05rem;
+}
+
+.card-upload-heading span,
+.card-upload-status span {
+  color: #526174;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.card-upload-actions {
+  display: grid;
+  gap: 12px;
+}
+
+.card-scan-primary-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: min(680px, 100%);
+  margin: 0 auto;
+}
+
+.card-scan-primary-actions button {
+  min-height: 58px;
+  padding: 0 22px;
+  border: 1px solid var(--blue);
+  border-radius: 6px;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.card-upload-secondary-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.card-upload-secondary-actions label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 15px;
+  border: 1px solid var(--blue);
+  border-radius: 5px;
+  background: #ffffff;
+  color: var(--blue);
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.card-scan-primary-actions button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.card-upload-secondary-actions label.disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.card-upload-secondary-actions input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.card-upload-status {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #d7e0ea;
+}
+
+.card-camera-panel {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.1fr) minmax(280px, 0.9fr);
+  gap: 18px;
+  align-items: center;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #d7e0ea;
+}
+
+.card-camera-view {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 16 / 10;
+  border-radius: 6px;
+  background: #111827;
+}
+
+.card-camera-view video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.card-camera-frame {
+  position: absolute;
+  width: 82%;
+  aspect-ratio: 1.586 / 1;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid #ffffff;
+  border-radius: 7px;
+  box-shadow: 0 0 0 999px rgba(15, 23, 42, 0.3);
+  pointer-events: none;
+}
+
+.card-camera-view > span {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 9px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.82);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.card-camera-guide {
+  display: grid;
+  gap: 12px;
+  color: var(--ink);
+}
+
+.card-camera-guide ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 21px;
+  color: #526174;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.card-camera-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+
+.card-camera-controls button {
+  min-height: 44px;
+  border: 1px solid var(--blue);
+  border-radius: 5px;
+  background: var(--blue);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.card-camera-controls button:last-child {
+  background: #ffffff;
+  color: var(--blue);
+}
+
+.card-upload-status img {
+  width: 160px;
+  aspect-ratio: 1.586 / 1;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  object-fit: contain;
+  background: #ffffff;
+}
+
+.card-upload-status > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.profile-form-grid {
+  scroll-margin-top: 24px;
+}
+
+.profile-form-grid .is-autofilled > input,
+.profile-form-grid .is-autofilled > select,
+.profile-form-grid .gender-field.is-autofilled {
+  border-color: #16a34a;
+  background: #f0fdf4;
+  animation: profile-upload-fill 1.05s ease-in-out 2;
+}
+
+@keyframes profile-upload-fill {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+  50% { box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profile-form-grid .is-autofilled > input,
+  .profile-form-grid .is-autofilled > select,
+  .profile-form-grid .gender-field.is-autofilled {
+    animation: none;
+  }
 }
 
 .profile-form-grid {
@@ -1800,11 +2028,11 @@ a {
 }
 
 .section-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 24px;
-  align-items: end;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
   margin-bottom: 38px;
+  text-align: center;
 }
 
 .section-head h2,
@@ -1818,6 +2046,17 @@ a {
   margin: 0;
   color: var(--muted);
   font-size: 1.05rem;
+}
+
+.section-head p {
+  max-width: 920px;
+  line-height: 1.55;
+}
+
+.section-footer-action {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 20px;
 }
 
 .pill-button {
@@ -3866,7 +4105,7 @@ a {
 
 .specialty-actions {
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
 }
 
 .specialty-toggle {
@@ -3876,7 +4115,7 @@ a {
   gap: 10px;
   min-width: 138px;
   height: 42px;
-  margin: 22px auto 0;
+  margin: 22px 0 0;
   padding: 0 20px;
   border: 1px solid var(--blue);
   border-radius: 999px;
@@ -8155,8 +8394,12 @@ a {
   }
 
   .signup-steps {
-    grid-template-columns: 1fr;
-    font-size: 1rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    font-size: 0.82rem;
+  }
+
+  .signup-steps div {
+    padding-inline: 4px;
   }
 
   .otp-boxes {
@@ -8172,6 +8415,28 @@ a {
   .profile-form-grid {
     grid-template-columns: 1fr;
     gap: 10px;
+  }
+
+  .card-upload-status,
+  .card-camera-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .card-scan-primary-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .card-upload-secondary-actions {
+    flex-wrap: wrap;
+  }
+
+  .card-upload-status img {
+    width: 100%;
+    max-width: 360px;
+  }
+
+  .card-camera-controls {
+    grid-template-columns: 1fr;
   }
 
   .finish-profile-button {
@@ -8256,7 +8521,11 @@ a {
   }
 
   .section-head {
-    align-items: flex-start;
+    justify-items: center;
+  }
+
+  .section-footer-action {
+    margin-top: 16px;
   }
 
   .horizontal-list {

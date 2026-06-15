@@ -54,7 +54,8 @@ import {
   verifyEmailOtp,
   verifyOtpToken,
 } from './otp_service.js';
-import { ensureProfileTableReady, savePatientProfile } from './profile_service.js';
+import { ensureProfileTableReady, hasCompletePatientProfile, savePatientProfile } from './profile_service.js';
+import { scanMedicalCard } from './card_scan_service.js';
 import {
   getProviderWorkspace,
   getProviderWorkspaceOperations,
@@ -69,6 +70,7 @@ import { queueTickets } from './tickets.js';
 let tickets = [...queueTickets];
 const chatbotRateLimits = new Map();
 const authRateLimits = new Map();
+const cardScanRateLimits = new Map();
 
 function getRequestIp(request) {
   const forwardedFor = request.headers['x-forwarded-for'];
@@ -106,6 +108,21 @@ function isAuthRateLimited(request) {
   }
   current.count += 1;
   authRateLimits.set(key, current);
+  return current.count > limit;
+}
+
+function isCardScanRateLimited(request) {
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000;
+  const limit = 10;
+  const key = getRequestIp(request);
+  const current = cardScanRateLimits.get(key) || { count: 0, resetAt: now + windowMs };
+  if (now > current.resetAt) {
+    cardScanRateLimits.set(key, { count: 1, resetAt: now + windowMs });
+    return false;
+  }
+  current.count += 1;
+  cardScanRateLimits.set(key, current);
   return current.count > limit;
 }
 
@@ -217,6 +234,21 @@ const server = http.createServer(async (request, response) => {
       sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     } catch {
       sendJson(response, 400, { message: 'Dữ liệu chatbot không hợp lệ.' });
+    }
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/card-scan') {
+    if (isCardScanRateLimited(request)) {
+      sendJson(response, 429, { message: 'Bạn đã nhận diện quá nhiều ảnh. Vui lòng thử lại sau.' });
+      return;
+    }
+    try {
+      const payload = await readBody(request);
+      const result = await scanMedicalCard(payload);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Dữ liệu ảnh không hợp lệ.' });
     }
     return;
   }
@@ -443,6 +475,19 @@ const server = http.createServer(async (request, response) => {
     if (!access.ok) {
       sendJson(response, access.status, access.data);
       return;
+    }
+
+    const allowIncompletePatient = portal === 'patient'
+      && url.searchParams.get('allowIncomplete') === '1';
+    if (portal === 'patient' && !allowIncompletePatient) {
+      const profileComplete = await hasCompletePatientProfile(firebaseUser);
+      if (!profileComplete) {
+        sendJson(response, 403, {
+          message: 'Tài khoản chưa hoàn tất hồ sơ đăng ký.',
+          code: 'PATIENT_PROFILE_INCOMPLETE',
+        });
+        return;
+      }
     }
 
     sendJson(response, 200, {

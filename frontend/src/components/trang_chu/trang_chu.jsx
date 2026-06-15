@@ -7,13 +7,18 @@ import TheBenhVien from '../the_hien_thi/the_benh_vien';
 import TheChuyenKhoa from '../the_hien_thi/the_chuyen_khoa';
 import ThePhongKham from '../the_hien_thi/the_phong_kham';
 
-function TieuDeMuc({ title, subtitle, action = 'Xem thêm', onAction }) {
+function TieuDeMuc({ title, subtitle }) {
   return (
     <div className="section-head">
-      <div>
-        <h2>{title}</h2>
-        <p>{subtitle}</p>
-      </div>
+      <h2>{title}</h2>
+      <p>{subtitle}</p>
+    </div>
+  );
+}
+
+function HanhDongMuc({ action = 'Xem thêm', onAction }) {
+  return (
+    <div className="section-footer-action">
       <button className="pill-button" type="button" onClick={onAction}>
         {action}
         <i className="ui-chevron right" aria-hidden="true" />
@@ -207,24 +212,27 @@ function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onB
       </section>
 
       <section className="content-section" id="doctor">
-        <TieuDeMuc title="Đặt khám bác sĩ" subtitle="Phiếu khám điện tử kèm số thứ tự và thời gian của bạn được xác nhận." onAction={() => onOpenBookingOverview?.('doctor')} />
+        <TieuDeMuc title="Đặt khám bác sĩ" subtitle="Phiếu khám điện tử kèm số thứ tự và thời gian của bạn được xác nhận." />
         <div className="horizontal-list doctor-list">
           {featuredDoctors.map((doctor) => <TheBacSi doctor={doctor} key={doctor.name} onBook={onBookDoctor} />)}
         </div>
+        <HanhDongMuc onAction={() => onOpenBookingOverview?.('doctor')} />
       </section>
 
       <section className="content-section" id="hospital">
-        <TieuDeMuc title="Đặt khám bệnh viện" subtitle="Đặt khám và thanh toán để có phiếu khám điện tử trước khi đi khám các bệnh viện kết nối chính thức với MidHealth." onAction={() => onOpenBookingOverview?.('hospital')} />
+        <TieuDeMuc title="Đặt khám bệnh viện" subtitle="Đặt khám và thanh toán để có phiếu khám điện tử trước khi đi khám các bệnh viện kết nối chính thức với MidHealth." />
         <div className="horizontal-list hospital-list">
           {featuredHospitals.map((hospital) => <TheBenhVien hospital={hospital} key={hospital.name} onBook={onBookHospital} />)}
         </div>
+        <HanhDongMuc onAction={() => onOpenBookingOverview?.('hospital')} />
       </section>
 
       <section className="content-section" id="clinic">
-        <TieuDeMuc title="Đặt khám phòng khám" subtitle="Đa dạng phòng khám với nhiều chuyên khoa khác nhau như Sản - Nhi, Tai Mũi Họng, Da Liễu, Tiêu Hoá..." onAction={() => onOpenBookingOverview?.('clinic')} />
+        <TieuDeMuc title="Đặt khám phòng khám" subtitle="Đa dạng phòng khám với nhiều chuyên khoa khác nhau như Sản - Nhi, Tai Mũi Họng, Da Liễu, Tiêu Hoá..." />
         <div className="horizontal-list clinic-list">
           {featuredClinics.map((clinic) => <ThePhongKham clinic={clinic} key={clinic.name} onBook={onBookClinic} />)}
         </div>
+        <HanhDongMuc onAction={() => onOpenBookingOverview?.('clinic')} />
       </section>
 
       <TheChuyenKhoa specialties={specialties} onSelectSpecialty={onSelectSpecialty} />
