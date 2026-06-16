@@ -52,6 +52,10 @@ const FEATURE_GROUPS = [
     title: 'Hỗ trợ bác sĩ độc lập',
     items: ['Hồ sơ chuyên môn', 'Tư vấn trực tuyến', 'E-check-in', 'Báo cáo hiệu suất'],
   },
+  {
+    title: 'Onboarding bệnh viện',
+    items: ['Giấy phép/mã KCB', 'Người phụ trách vận hành', 'Dịch vụ tiếp nhận', 'Admin duyệt trước khi lên sàn'],
+  },
 ];
 
 const WORKFLOW_STEPS = [
@@ -61,11 +65,11 @@ const WORKFLOW_STEPS = [
   },
   {
     title: 'Chọn mô hình hoạt động',
-    detail: 'Bác sĩ chọn có phòng khám hoặc không có phòng khám. Form thiết lập sẽ đổi theo đúng vai trò.',
+    detail: 'Chọn bác sĩ độc lập, phòng khám hoặc bệnh viện. Form thiết lập đổi theo đúng hồ sơ cần kiểm duyệt.',
   },
   {
     title: 'Gửi hồ sơ kiểm duyệt',
-    detail: 'MidHealth kiểm tra thông tin chuyên môn, phòng khám, mã KCB hoặc dữ liệu liên hệ trước khi mở vận hành.',
+    detail: 'MidHealth kiểm tra thông tin chuyên môn, cơ sở khám chữa bệnh, mã KCB/giấy phép hoạt động và dữ liệu liên hệ trước khi mở vận hành.',
   },
   {
     title: 'Mở công cụ đặt khám',
@@ -78,19 +82,20 @@ const REQUIREMENT_ITEMS = [
   'Số điện thoại có thể liên hệ khi MidHealth cần xác minh hồ sơ.',
   'Bác sĩ độc lập cần chuẩn bị chức danh, chuyên khoa chính và mô tả chuyên môn.',
   'Phòng khám cần chuẩn bị tên, địa chỉ hoạt động và mã số thuế hoặc mã khám chữa bệnh nếu có.',
+  'Bệnh viện cần chuẩn bị tên pháp lý, địa chỉ, giấy phép hoạt động hoặc mã KCB/mã số thuế và người phụ trách vận hành.',
 ];
 
 const SECURITY_ITEMS = [
   'Xác thực email bằng OTP trước khi tạo tài khoản đối tác.',
   'Tài khoản đăng nhập dùng Firebase Authentication chung với MidHealth.',
   'Hồ sơ đối tác được tách khỏi hồ sơ bệnh nhân để tránh nhầm quyền sử dụng.',
-  'Dữ liệu lịch hẹn chỉ mở khi hồ sơ bác sĩ hoặc phòng khám được MidHealth kiểm duyệt.',
+  'Dữ liệu lịch hẹn chỉ mở khi hồ sơ bác sĩ, bệnh viện hoặc phòng khám được MidHealth kiểm duyệt.',
 ];
 
 const TRUST_PILLARS = [
   {
     title: 'Minh bạch hồ sơ chuyên môn',
-    text: 'Bác sĩ và phòng khám có hồ sơ riêng, trạng thái kiểm duyệt rõ ràng, thông tin công khai được chuẩn hóa trước khi hiển thị với bệnh nhân.',
+    text: 'Bác sĩ, phòng khám và bệnh viện có hồ sơ riêng, trạng thái kiểm duyệt rõ ràng, thông tin công khai được chuẩn hóa trước khi hiển thị với bệnh nhân.',
   },
   {
     title: 'Dữ liệu vận hành không dùng mock',
@@ -98,7 +103,7 @@ const TRUST_PILLARS = [
   },
   {
     title: 'Tách biệt quyền bệnh nhân và đối tác',
-    text: 'Tài khoản đối tác được ghi vào bảng app_users với vai trò bác sĩ/phòng khám, không trộn với hồ sơ bệnh nhân cá nhân.',
+    text: 'Tài khoản đối tác được ghi vào bảng app_users với vai trò bác sĩ, bệnh viện hoặc phòng khám, không trộn với hồ sơ bệnh nhân cá nhân.',
   },
 ];
 
@@ -106,7 +111,7 @@ const OPERATING_ITEMS = [
   'Nhận lịch mới và xác nhận trạng thái khám theo từng bệnh nhân.',
   'Tạo, cập nhật, khóa hoặc mở lại khung giờ khám theo ngày.',
   'Theo dõi slot còn trống, số lịch chờ xác nhận, check-in và báo cáo 14 ngày.',
-  'Thiết lập hồ sơ bác sĩ độc lập hoặc phòng khám trước khi mở dữ liệu bệnh nhân.',
+  'Thiết lập hồ sơ bác sĩ độc lập, bệnh viện hoặc phòng khám trước khi mở dữ liệu bệnh nhân.',
 ];
 
 function internalScreen(routeScreen) {
@@ -216,10 +221,10 @@ function GioiThieuDoiTacYTe({ currentAccount, isLoading, message, onContinue, on
 
       <section className="dw-hero" id="dw-home">
         <div>
-          <span className="dw-kicker">Dành cho bác sĩ và phòng khám</span>
-          <h1>Nền tảng đối tác y tế để bác sĩ nhận lịch khám minh bạch và vận hành chuyên nghiệp</h1>
+          <span className="dw-kicker">Dành cho bác sĩ, bệnh viện và phòng khám</span>
+          <h1>Nền tảng đối tác y tế để cơ sở khám chữa bệnh nhận lịch minh bạch và vận hành chuyên nghiệp</h1>
           <p>
-            MidHealth Workspace giúp bác sĩ xây dựng hồ sơ tin cậy, tiếp nhận lịch đặt khám từ bệnh nhân,
+            MidHealth Workspace giúp bác sĩ, bệnh viện và phòng khám xây dựng hồ sơ tin cậy, tiếp nhận lịch đặt khám từ bệnh nhân,
             kiểm soát khung giờ, xử lý trạng thái khám và theo dõi hiệu suất vận hành bằng dữ liệu backend chính thức.
           </p>
           <p className="dw-scope-note">Tài khoản đối tác được xác thực email, ghi nhận trong Supabase và chỉ mở dữ liệu bệnh nhân sau khi hồ sơ được kiểm duyệt.</p>
@@ -236,8 +241,8 @@ function GioiThieuDoiTacYTe({ currentAccount, isLoading, message, onContinue, on
       <section className="dw-section dw-trust-section" id="dw-trust">
         <div className="dw-section-head">
           <span>Niềm tin</span>
-          <h2>MidHealth giúp bác sĩ xuất hiện chuyên nghiệp trước khi bệnh nhân đặt lịch</h2>
-          <p>Trang đối tác không chỉ là form đăng ký. Đây là quy trình xác thực, kiểm duyệt và vận hành để bảo vệ uy tín chuyên môn của bác sĩ.</p>
+          <h2>MidHealth giúp đối tác y tế xuất hiện chuyên nghiệp trước khi bệnh nhân đặt lịch</h2>
+          <p>Trang đối tác không chỉ là form đăng ký. Đây là quy trình xác thực, kiểm duyệt và vận hành để bảo vệ uy tín chuyên môn của bác sĩ và cơ sở y tế.</p>
         </div>
         <div className="dw-trust-metrics">
           {TRUST_METRICS.map((item) => (
@@ -322,7 +327,7 @@ function GioiThieuDoiTacYTe({ currentAccount, isLoading, message, onContinue, on
         <div className="dw-final-cta">
           <span>Sẵn sàng mở workspace?</span>
           <h2>Đăng ký tài khoản đối tác và đăng nhập để gửi hồ sơ kiểm duyệt</h2>
-          <p>Sau khi đăng ký thành công, MidHealth sẽ chuyển bạn về màn đăng nhập. Bạn đăng nhập lại để thiết lập hồ sơ bác sĩ hoặc phòng khám.</p>
+          <p>Sau khi đăng ký thành công, MidHealth sẽ chuyển bạn về màn đăng nhập. Bạn đăng nhập lại để thiết lập hồ sơ bác sĩ, bệnh viện hoặc phòng khám.</p>
           <button type="button" onClick={onRegister}>Đăng ký đối tác</button>
         </div>
       </section>

@@ -14,6 +14,14 @@ const emptyArticleForm = {
   isFeatured: false,
 };
 
+function validateAdminEmail(value = '') {
+  const email = value.trim();
+  if (!email) return 'Vui lòng nhập email admin.';
+  if (!email.includes('@')) return 'Email cần có ký tự @.';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Email admin chưa đúng định dạng.';
+  return '';
+}
+
 const statusLabels = {
   active: 'Đang hoạt động',
   disabled: 'Đã khóa',
@@ -144,6 +152,7 @@ export default function AdminDashboard({ onBackHome }) {
   const [adminChecked, setAdminChecked] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loginErrors, setLoginErrors] = useState({});
   const [dashboard, setDashboard] = useState(null);
   const [activeTab, setActiveTab] = useState('providers');
   const [providerStatusFilter, setProviderStatusFilter] = useState('all');
@@ -236,6 +245,14 @@ export default function AdminDashboard({ onBackHome }) {
 
   async function handleLogin(event) {
     event.preventDefault();
+    const errors = {};
+    const emailMessage = validateAdminEmail(email);
+    if (emailMessage) errors.email = emailMessage;
+    if (!password) errors.password = 'Vui lòng nhập mật khẩu.';
+    if (Object.keys(errors).length) {
+      setLoginErrors(errors);
+      return;
+    }
     setLoading(true);
     setMessage('');
     try {
@@ -251,6 +268,8 @@ export default function AdminDashboard({ onBackHome }) {
       setLoading(false);
     }
   }
+
+  const canLogin = !loading && !validateAdminEmail(email) && Boolean(password);
 
   async function handleLogout() {
     setBackendToken('');
@@ -344,7 +363,7 @@ export default function AdminDashboard({ onBackHome }) {
     try {
       const result = await adminRequest('/api/admin/catalog-accounts/sync', backendToken, { method: 'POST' });
       const summary = result?.data || result || {};
-      setMessage(`Đã tạo ${summary.doctorsCreated || 0} tài khoản bác sĩ và ${summary.clinicsCreated || 0} tài khoản phòng khám.`);
+      setMessage(`Đã tạo ${summary.doctorsCreated || 0} tài khoản bác sĩ, ${summary.hospitalsCreated || 0} tài khoản bệnh viện và ${summary.clinicsCreated || 0} tài khoản phòng khám.`);
       await loadDashboard();
     } catch (error) {
       setMessage(error.message);
@@ -390,6 +409,18 @@ export default function AdminDashboard({ onBackHome }) {
 
   async function saveArticle(event) {
     event.preventDefault();
+    if (!articleForm.title.trim()) {
+      setMessage('Vui lòng nhập tiêu đề bài viết.');
+      return;
+    }
+    if (!articleForm.categoryId) {
+      setMessage('Vui lòng chọn chuyên mục bài viết.');
+      return;
+    }
+    if (!articleForm.content.trim()) {
+      setMessage('Vui lòng nhập nội dung bài viết.');
+      return;
+    }
     setActionId('save-article');
     setMessage('');
     try {
@@ -440,17 +471,39 @@ export default function AdminDashboard({ onBackHome }) {
           <span className="admin-eyebrow">MidHealth Control Center</span>
           <h1>Đăng nhập quản trị bảo mật</h1>
           <p>Chỉ tài khoản có role <strong>admin</strong> và trạng thái <strong>active</strong> trong Supabase mới được mở dashboard.</p>
-          <form onSubmit={handleLogin} className="admin-login-form">
+          <form onSubmit={handleLogin} className="admin-login-form" noValidate>
             <label>
               Email admin
-              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required />
+              <input
+                className={loginErrors.email ? 'has-error' : ''}
+                type="text"
+                inputMode="email"
+                value={email}
+                onChange={(event) => {
+                  const nextEmail = event.target.value;
+                  setEmail(nextEmail);
+                  setLoginErrors((current) => ({ ...current, email: nextEmail ? validateAdminEmail(nextEmail) : '' }));
+                }}
+                autoComplete="username"
+              />
+              {loginErrors.email ? <small className="field-error">{loginErrors.email}</small> : null}
             </label>
             <label>
               Mật khẩu
-              <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required minLength={6} />
+              <input
+                className={loginErrors.password ? 'has-error' : ''}
+                type="password"
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  setLoginErrors((current) => ({ ...current, password: '' }));
+                }}
+                autoComplete="current-password"
+              />
+              {loginErrors.password ? <small className="field-error">{loginErrors.password}</small> : null}
             </label>
             {message ? <div className="admin-alert">{message}</div> : null}
-            <button type="submit" disabled={loading}>{loading ? 'Đang đăng nhập...' : 'Vào trang admin'}</button>
+            <button type="submit" disabled={!canLogin}>{loading ? 'Đang đăng nhập...' : 'Vào trang admin'}</button>
           </form>
         </div>
         <aside className="admin-login-panel admin-security-panel">
@@ -567,7 +620,7 @@ export default function AdminDashboard({ onBackHome }) {
                   {filteredProviders.map((provider) => (
                     <tr key={provider.id}>
                       <td><strong>{provider.clinic_name || provider.owner_name}</strong><small>{provider.clinic_address || provider.doctor_title || 'Chưa có mô tả'}</small></td>
-                      <td>{provider.mode === 'clinic' ? 'Phòng khám' : 'Bác sĩ'}</td>
+                      <td>{provider.mode === 'hospital' ? 'Bệnh viện' : provider.mode === 'clinic' ? 'Phòng khám' : 'Bác sĩ'}</td>
                       <td>{provider.specialty || 'Chưa chọn'}</td>
                       <td><span>{provider.email}</span><small>{provider.owner_phone || 'Chưa có SĐT'}</small></td>
                       <td><StatusPill value={provider.status} /></td>
@@ -626,7 +679,7 @@ export default function AdminDashboard({ onBackHome }) {
                           {item.needsLinking
                             ? 'Chưa có tài khoản/workspace'
                             : item.kind === 'hospital'
-                              ? 'Quản lý trực tiếp theo cơ sở'
+                              ? 'Đã liên kết quản lý'
                               : 'Đã liên kết quản lý'}
                         </small>
                       </td>
@@ -742,7 +795,7 @@ export default function AdminDashboard({ onBackHome }) {
                           {item.needsLinking
                             ? 'Catalog chưa có tài khoản/workspace'
                             : item.kind === 'hospital'
-                              ? 'Catalog cơ sở không yêu cầu tài khoản'
+                              ? 'Đã gộp logic quản lý'
                               : 'Đã gộp logic quản lý'}
                         </small>
                       </td>
@@ -778,7 +831,7 @@ export default function AdminDashboard({ onBackHome }) {
               <button type="button" onClick={() => openArticleEditor()}>Tạo bài viết</button>
             </div>
             {articleEditorOpen ? (
-              <form className="admin-article-editor" onSubmit={saveArticle}>
+              <form className="admin-article-editor" onSubmit={saveArticle} noValidate>
                 <div className="admin-article-editor-head">
                   <div>
                     <strong>{articleForm.id ? 'Chỉnh sửa bài viết' : 'Bài viết mới'}</strong>

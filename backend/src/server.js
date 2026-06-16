@@ -28,6 +28,8 @@ import {
   hasFirebaseConfig,
   loginWithEmail,
   registerWithEmail,
+  resolvePatientEmailByPhone,
+  sendPasswordResetEmail,
   verifyIdToken,
 } from './firebase_auth.js';
 import {
@@ -270,7 +272,7 @@ const server = http.createServer(async (request, response) => {
           return;
         }
 
-        const providerRole = ['doctor', 'clinic'].includes(payload.accountRole) ? payload.accountRole : null;
+        const providerRole = ['doctor', 'clinic', 'hospital'].includes(payload.accountRole) ? payload.accountRole : null;
         if (providerRole || payload.providerRegistration) {
           const accountResult = await upsertAppUser(result.data, {
             role: providerRole || 'doctor',
@@ -338,13 +340,23 @@ const server = http.createServer(async (request, response) => {
         sendJson(response, 400, { message: 'Thiếu cổng đăng nhập hợp lệ.' });
         return;
       }
-      const result = await loginWithEmail(payload);
+      let loginPayload = payload;
+      if (payload.portal === 'patient' && payload.phone && !payload.email) {
+        const resolved = await resolvePatientEmailByPhone(payload.phone);
+        if (!resolved.ok) {
+          sendJson(response, resolved.status, resolved.data);
+          return;
+        }
+        loginPayload = { ...payload, email: resolved.data.email };
+      }
+
+      const result = await loginWithEmail(loginPayload);
       if (result.ok) {
         let access = await requirePortal(result.data, payload.portal);
         if (!access.ok && payload.portal === 'patient' && access.status === 404) {
           access = await upsertAppUser(result.data, {
             authProvider: 'password',
-            email: payload.email,
+            email: loginPayload.email,
             role: APP_ROLES.PATIENT,
             markLogin: true,
             allowPatientIdentityRelink: true,
@@ -356,7 +368,7 @@ const server = http.createServer(async (request, response) => {
         }
         const accountResult = await upsertAppUser(result.data, {
           authProvider: 'password',
-          email: payload.email,
+          email: loginPayload.email,
           markLogin: true,
           allowPatientIdentityRelink: payload.portal === 'patient',
         });
@@ -365,7 +377,7 @@ const server = http.createServer(async (request, response) => {
           return;
         }
 
-        sendJson(response, 200, { data: { ...result.data, appUser: accountResult.data } });
+        sendJson(response, 200, { data: { ...result.data, email: loginPayload.email, appUser: accountResult.data } });
         return;
       }
 
@@ -414,6 +426,24 @@ const server = http.createServer(async (request, response) => {
       sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     } catch {
       sendJson(response, 500, { message: 'Không thể gửi OTP. Vui lòng thử lại sau.' });
+    }
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/auth/password-reset') {
+    try {
+      const payload = await readBody(request);
+      const resolved = payload.phone && !payload.email
+        ? await resolvePatientEmailByPhone(payload.phone)
+        : { ok: true, status: 200, data: { email: payload.email } };
+      if (!resolved.ok) {
+        sendJson(response, resolved.status, resolved.data);
+        return;
+      }
+      const result = await sendPasswordResetEmail(resolved.data.email);
+      sendJson(response, result.status, result.ok ? { data: { email: resolved.data.email } } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Dữ liệu đặt lại mật khẩu không hợp lệ.' });
     }
     return;
   }
@@ -626,7 +656,7 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC]);
+    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL]);
     if (!access.ok) {
       sendJson(response, access.status, access.data);
       return;
@@ -643,7 +673,7 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC]);
+    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL]);
     if (!access.ok) {
       sendJson(response, access.status, access.data);
       return;
@@ -665,7 +695,7 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC]);
+    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL]);
     if (!access.ok) {
       sendJson(response, access.status, access.data);
       return;
@@ -682,7 +712,7 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC]);
+    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL]);
     if (!access.ok) {
       sendJson(response, access.status, access.data);
       return;
@@ -705,7 +735,7 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC]);
+    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL]);
     if (!access.ok) {
       sendJson(response, access.status, access.data);
       return;
@@ -727,7 +757,7 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC]);
+    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL]);
     if (!access.ok) {
       sendJson(response, access.status, access.data);
       return;
@@ -1136,7 +1166,7 @@ const server = http.createServer(async (request, response) => {
         sendJson(response, 401, { message: 'Bạn cần đăng nhập bằng tài khoản đối tác y tế.' });
         return;
       }
-      const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC]);
+      const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL]);
       if (!access.ok) {
         sendJson(response, access.status, access.data);
         return;

@@ -118,8 +118,25 @@ function trimWorkspaceData(formData) {
   };
 }
 
+function isFacilityMode(mode) {
+  return mode === 'clinic' || mode === 'hospital';
+}
+
+function facilityLabel(mode) {
+  return mode === 'hospital' ? 'bệnh viện' : 'phòng khám';
+}
+
 function specialtyName(item) {
   return typeof item === 'string' ? item.trim() : String(item?.name || item?.title || '').trim();
+}
+
+function parseSpecialtyList(value = '') {
+  return Array.from(new Set(
+    String(value || '')
+      .split(/[,;\n]/)
+      .map((item) => item.trim())
+      .filter(Boolean),
+  ));
 }
 
 function fileToDataUrl(file) {
@@ -132,15 +149,47 @@ function fileToDataUrl(file) {
 }
 
 function buildPreviewTitle({ mode, formData, account }) {
-  if (mode === 'clinic') return formData.clinicName || 'Tên phòng khám';
+  if (isFacilityMode(mode)) return formData.clinicName || `Tên ${facilityLabel(mode)}`;
   if (mode === 'doctor') return `${formData.doctorTitle ? `${formData.doctorTitle} ` : ''}${account.name || 'Tên bác sĩ'}`;
   return 'Chọn hình thức hoạt động';
 }
 
 function buildPreviewSubtitle({ mode, formData }) {
-  if (mode === 'clinic') return formData.clinicAddress || 'Địa chỉ phòng khám';
+  if (isFacilityMode(mode)) return formData.clinicAddress || `Địa chỉ ${facilityLabel(mode)}`;
   if (mode === 'doctor') return formData.specialty || 'Chuyên khoa tư vấn';
   return 'Thông tin xem trước sẽ thay đổi theo lựa chọn của bạn.';
+}
+
+function verificationChecklist(mode) {
+  if (mode === 'hospital') {
+    return [
+      'Tên bệnh viện và địa chỉ hoạt động khớp hồ sơ pháp lý.',
+      'Có giấy phép hoạt động, mã KCB hoặc mã số thuế để admin đối chiếu.',
+      'Sau khi duyệt, bệnh viện mới xuất hiện trong danh mục đặt khám.',
+    ];
+  }
+
+  if (mode === 'clinic') {
+    return [
+      'Tên phòng khám và địa chỉ tiếp nhận rõ ràng.',
+      'Có mã số thuế hoặc mã KCB nếu phòng khám sử dụng trong vận hành.',
+      'Sau khi duyệt, phòng khám mới mở lịch hẹn và khung giờ.',
+    ];
+  }
+
+  if (mode === 'doctor') {
+    return [
+      'Danh xưng chuyên môn dùng theo danh sách chuẩn.',
+      'Chuyên khoa chính phải chọn từ danh mục đang hoạt động.',
+      'Sau khi duyệt, hồ sơ bác sĩ mới nhận lịch hẹn.',
+    ];
+  }
+
+  return [
+    'Chọn mô hình hoạt động trước.',
+    'Nhập thông tin tối thiểu để MidHealth kiểm duyệt.',
+    'Gửi hồ sơ để admin mở workspace vận hành.',
+  ];
 }
 
 function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, onLogout, onHome }) {
@@ -164,6 +213,8 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
   const previewTitle = buildPreviewTitle({ mode, formData, account });
   const previewSubtitle = buildPreviewSubtitle({ mode, formData });
   const roleLabel = getRoleLabel(mode);
+  const checklistItems = verificationChecklist(mode);
+  const selectedSpecialties = useMemo(() => parseSpecialtyList(formData.specialty), [formData.specialty]);
   const filteredSpecialties = useMemo(() => {
     const keyword = specialtySearch.trim().toLocaleLowerCase('vi');
     if (!keyword) return specialtyOptions;
@@ -172,10 +223,17 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
 
   const canSubmit = useMemo(() => {
     const clean = trimWorkspaceData(formData);
-    if (mode === 'clinic') return Boolean(clean.clinicName && clean.clinicAddress);
+    const hasFacilitySpecialty = parseSpecialtyList(clean.specialty).length > 0;
+    if (mode === 'clinic') return Boolean(clean.clinicName && clean.clinicAddress && hasFacilitySpecialty);
+    if (mode === 'hospital') return Boolean(clean.clinicName && clean.clinicAddress && clean.taxCode && hasFacilitySpecialty);
     if (mode === 'doctor') return Boolean(clean.doctorTitle && clean.specialty);
     return false;
   }, [formData, mode]);
+  const stepItems = [
+    ['01', 'Chọn mô hình', 'Bác sĩ độc lập, bệnh viện hoặc phòng khám.', Boolean(mode)],
+    ['02', 'Nhập thông tin', 'Thông tin công khai để kiểm duyệt.', Boolean(canSubmit)],
+    ['03', 'Gửi kiểm duyệt', 'Backend tạo liên kết vận hành trong Supabase.', Boolean(isApprovedWorkspace || initialWorkspace?.status === 'pending_review')],
+  ];
 
   useEffect(() => {
     if (!account?.uid) return;
@@ -252,6 +310,13 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
     setSetupMessage('Ảnh đang ở chế độ xem trước. MidHealth sẽ bổ sung bước tải ảnh chính thức sau khi hồ sơ được duyệt.');
   };
 
+  const toggleFacilitySpecialty = (specialty) => {
+    const next = selectedSpecialties.includes(specialty)
+      ? selectedSpecialties.filter((item) => item !== specialty)
+      : [...selectedSpecialties, specialty];
+    setFormData({ ...formData, specialty: next.join(', ') });
+  };
+
   const submit = async (event) => {
     event.preventDefault();
     if (!mode) {
@@ -260,7 +325,7 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
     }
 
     if (!canSubmit) {
-      setSetupMessage(mode === 'clinic' ? 'Vui lòng nhập tên và địa chỉ phòng khám.' : 'Vui lòng nhập chuyên khoa chính của bác sĩ.');
+      setSetupMessage(isFacilityMode(mode) ? `Vui lòng nhập đủ thông tin ${facilityLabel(mode)}.` : 'Vui lòng nhập chuyên khoa chính của bác sĩ.');
       return;
     }
 
@@ -305,8 +370,8 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
       <section className="dw-profile-hero">
         <div>
           <span>Hồ sơ đối tác</span>
-          <h1>{isEditing ? 'Cập nhật hồ sơ vận hành' : 'Thiết lập hồ sơ bác sĩ hoặc phòng khám'}</h1>
-          <p>Đây là trang riêng để xác minh thông tin chuyên môn trước khi mở workspace. Dữ liệu tại đây sẽ được ghi vào Supabase và liên kết với catalog bác sĩ/phòng khám.</p>
+          <h1>{isEditing ? 'Cập nhật hồ sơ vận hành' : 'Thiết lập hồ sơ bác sĩ, bệnh viện hoặc phòng khám'}</h1>
+          <p>Đây là trang riêng để xác minh thông tin chuyên môn trước khi mở workspace. Dữ liệu tại đây sẽ được ghi vào Supabase và liên kết với catalog bác sĩ/bệnh viện/phòng khám.</p>
         </div>
         <aside>
           <strong>{account.email}</strong>
@@ -316,12 +381,8 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
 
       <section className="dw-profile-layout">
         <aside className="dw-profile-steps">
-          {[
-            ['01', 'Chọn mô hình', 'Bác sĩ độc lập hoặc phòng khám.'],
-            ['02', 'Nhập thông tin', 'Thông tin công khai để kiểm duyệt.'],
-            ['03', 'Gửi kiểm duyệt', 'Backend tạo liên kết vận hành trong Supabase.'],
-          ].map(([index, title, text]) => (
-            <article key={index} className={mode ? 'active' : ''}>
+          {stepItems.map(([index, title, text, done]) => (
+            <article key={index} className={done ? 'active' : ''}>
               <span>{index}</span>
               <div>
                 <strong>{title}</strong>
@@ -331,24 +392,28 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
           ))}
         </aside>
 
-        <form className="dw-profile-form" onSubmit={submit}>
+        <form className="dw-profile-form" onSubmit={submit} noValidate>
           <div className="dw-form-title-row">
             <div>
               <h2>{account.name}</h2>
-              <p>Hoàn thiện hồ sơ để MidHealth mở các chức năng lịch hẹn, khung giờ và báo cáo.</p>
+              <p>Hoàn thiện thông tin tối thiểu để MidHealth kiểm duyệt trước khi mở lịch hẹn, khung giờ và báo cáo.</p>
             </div>
           </div>
 
           <fieldset>
             <legend>Hình thức hoạt động</legend>
             <div className="dw-choice-grid">
+              <button type="button" className={mode === 'doctor' ? 'active' : ''} onClick={() => setMode('doctor')}>
+                <b>Bác sĩ độc lập</b>
+                <span>Quản lý hồ sơ chuyên môn, lịch hẹn cá nhân và tư vấn trực tuyến.</span>
+              </button>
               <button type="button" className={mode === 'clinic' ? 'active' : ''} onClick={() => setMode('clinic')}>
                 <b>Có phòng khám</b>
                 <span>Quản lý dịch vụ, lịch hẹn, khung giờ và báo cáo vận hành phòng khám.</span>
               </button>
-              <button type="button" className={mode === 'doctor' ? 'active' : ''} onClick={() => setMode('doctor')}>
-                <b>Bác sĩ độc lập</b>
-                <span>Quản lý hồ sơ chuyên môn, lịch hẹn cá nhân và tư vấn trực tuyến.</span>
+              <button type="button" className={mode === 'hospital' ? 'active' : ''} onClick={() => setMode('hospital')}>
+                <b>Bệnh viện</b>
+                <span>Đăng ký cơ sở khám chữa bệnh, chờ MidHealth duyệt trước khi mở lịch đặt khám.</span>
               </button>
             </div>
           </fieldset>
@@ -365,27 +430,33 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
           </div>
           {setupMessage ? <p className={setupMessage.includes('xem trước') ? 'dw-form-alert neutral' : 'dw-form-alert'}>{setupMessage}</p> : null}
 
+          <section className="dw-verification-note">
+            <strong>Nguyên tắc duyệt hồ sơ</strong>
+            <p>MidHealth chỉ mở workspace khi thông tin chuyên môn hoặc cơ sở y tế có thể đối chiếu. Dữ liệu này chưa hiển thị công khai trước khi admin duyệt.</p>
+          </section>
+
           {!mode ? (
             <div className="dw-setup-empty">Chọn một hình thức hoạt động để hiển thị form phù hợp.</div>
-          ) : mode === 'clinic' ? (
+          ) : isFacilityMode(mode) ? (
             <>
               <label>
-                Tên phòng khám <span>*</span>
-                <input value={formData.clinicName} onChange={(event) => setFormData({ ...formData, clinicName: event.target.value })} placeholder="Nhập tên phòng khám" required />
+                Tên {facilityLabel(mode)}
+                <input value={formData.clinicName} onChange={(event) => setFormData({ ...formData, clinicName: event.target.value })} placeholder={`Nhập tên ${facilityLabel(mode)}`} required />
               </label>
               <label>
-                Địa chỉ phòng khám <span>*</span>
+                Địa chỉ hoạt động
                 <input value={formData.clinicAddress} onChange={(event) => setFormData({ ...formData, clinicAddress: event.target.value })} placeholder="Nhập địa chỉ hoạt động" required />
               </label>
               <label>
-                Mã số thuế / mã KCB
-                <input value={formData.taxCode} onChange={(event) => setFormData({ ...formData, taxCode: event.target.value })} placeholder="Nhập nếu có" />
+                {mode === 'hospital' ? 'Giấy phép hoạt động / mã KCB / mã số thuế' : 'Mã số thuế / mã KCB'}
+                <input value={formData.taxCode} onChange={(event) => setFormData({ ...formData, taxCode: event.target.value })} placeholder={mode === 'hospital' ? 'Nhập mã để MidHealth đối chiếu khi duyệt' : 'Nhập nếu có'} required={mode === 'hospital'} />
+                {mode === 'hospital' ? <small>Dùng để admin kiểm tra trước khi bệnh viện được hiển thị trên sàn đặt khám.</small> : null}
               </label>
             </>
           ) : (
             <div className="dw-doctor-only">
               <label className="dw-doctor-title-field">
-                Danh xưng chuyên môn <span>*</span>
+                Danh xưng chuyên môn
                 <select value={formData.doctorTitle} onChange={(event) => setFormData({ ...formData, doctorTitle: event.target.value })} required>
                   {DOCTOR_TITLE_OPTIONS.map((option) => (
                     <option value={option.value} key={option.value}>{option.label}</option>
@@ -394,21 +465,21 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
                 <small>Thứ tự hiển thị chuẩn: học hàm, học vị/chuyên khoa, sau cùng là bác sĩ.</small>
               </label>
               <div className="dw-selected-specialty">
-                <span>Chuyên khoa chính *</span>
+                <span>Chuyên khoa chính</span>
                 <strong>{formData.specialty || 'Chưa chọn chuyên khoa'}</strong>
                 <small>Chọn một mục trong danh sách bên dưới để tránh sai tên chuyên khoa.</small>
               </div>
             </div>
           )}
 
-          {mode === 'doctor' ? (
+          {mode ? (
             <div className="dw-specialty-section">
               <div className="dw-specialty-heading">
                 <div>
                   <strong>Danh sách chuyên khoa</strong>
                   <p>Chọn một chuyên khoa chính từ danh mục đang hoạt động.</p>
                 </div>
-                <span>{specialtyOptions.length} chuyên khoa</span>
+                <span>{isFacilityMode(mode) ? `${selectedSpecialties.length} đã chọn` : `${specialtyOptions.length} chuyên khoa`}</span>
               </div>
               <input
                 className="dw-specialty-search"
@@ -418,16 +489,16 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
                 placeholder="Tìm chuyên khoa, ví dụ: Tim mạch"
                 aria-label="Tìm chuyên khoa"
               />
-              <div className="dw-specialty-checklist" role="radiogroup" aria-label="Chọn chuyên khoa chính">
+              <div className="dw-specialty-checklist" role={isFacilityMode(mode) ? 'group' : 'radiogroup'} aria-label={isFacilityMode(mode) ? 'Chọn chuyên khoa tiếp nhận' : 'Chọn chuyên khoa chính'}>
                 {isLoadingSpecialties ? <span className="dw-specialty-loading">Đang tải chuyên khoa...</span> : null}
                 {(filteredSpecialties.length ? filteredSpecialties : specialtyOptions.length ? [] : formData.specialty ? [formData.specialty] : []).map((specialty) => (
-                  <label key={specialty} className={formData.specialty === specialty ? 'active' : ''}>
+                  <label key={specialty} className={(isFacilityMode(mode) ? selectedSpecialties.includes(specialty) : formData.specialty === specialty) ? 'active' : ''}>
                     <input
-                      type="radio"
-                      name="provider-specialty-checklist"
+                      type={isFacilityMode(mode) ? 'checkbox' : 'radio'}
+                      name={isFacilityMode(mode) ? `provider-specialty-${specialty}` : 'provider-specialty-checklist'}
                       value={specialty}
-                      checked={formData.specialty === specialty}
-                      onChange={() => setFormData({ ...formData, specialty })}
+                      checked={isFacilityMode(mode) ? selectedSpecialties.includes(specialty) : formData.specialty === specialty}
+                      onChange={() => (isFacilityMode(mode) ? toggleFacilitySpecialty(specialty) : setFormData({ ...formData, specialty }))}
                     />
                     <span>{specialty}</span>
                   </label>
@@ -459,8 +530,7 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
           </article>
           <div className="dw-profile-checklist">
             <strong>Điều kiện mở workspace</strong>
-            <p>Hồ sơ hợp lệ, chuyên khoa rõ ràng, thông tin liên hệ có thể xác minh.</p>
-            <p>Sau khi lưu, backend tạo/cập nhật bản ghi catalog trong Supabase.</p>
+            {checklistItems.map((item) => <p key={item}>{item}</p>)}
           </div>
         </aside>
       </section>

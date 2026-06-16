@@ -5,12 +5,13 @@ export const APP_ROLES = Object.freeze({
   PATIENT: 'patient',
   DOCTOR: 'doctor',
   CLINIC: 'clinic',
+  HOSPITAL: 'hospital',
   STAFF: 'staff',
 });
 
 export const PORTAL_ROLES = Object.freeze({
   admin: [APP_ROLES.ADMIN],
-  provider: [APP_ROLES.DOCTOR, APP_ROLES.CLINIC],
+  provider: [APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL],
   patient: [APP_ROLES.PATIENT],
 });
 

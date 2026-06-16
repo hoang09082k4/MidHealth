@@ -125,7 +125,7 @@ function buildAccountDirectory({ users = [], providers = [], doctors = [], facil
       displayName: user.full_name || user.email,
       email: user.email,
       role: user.role,
-      kind: user.role === 'clinic' ? 'clinic' : user.role === 'doctor' ? 'doctor' : user.role,
+      kind: ['clinic', 'hospital', 'doctor'].includes(user.role) ? user.role : user.role,
       accountStatus: user.status,
       authProvider: user.auth_provider,
       createdAt: user.created_at,
@@ -135,7 +135,7 @@ function buildAccountDirectory({ users = [], providers = [], doctors = [], facil
   });
 
   providers.forEach((provider) => {
-    const isClinic = provider.mode === 'clinic';
+    const isFacility = ['clinic', 'hospital'].includes(provider.mode);
     const keys = [
       `workspace:${provider.id}`,
       provider.app_user_id ? `user:${provider.app_user_id}` : '',
@@ -149,10 +149,10 @@ function buildAccountDirectory({ users = [], providers = [], doctors = [], facil
       userId: provider.app_user_id || '',
       doctorId: provider.linked_doctor_id || '',
       facilityId: provider.linked_facility_id || '',
-      displayName: isClinic ? provider.clinic_name : provider.owner_name,
+      displayName: isFacility ? provider.clinic_name : provider.owner_name,
       email: provider.email,
-      role: provider.provider_role || (isClinic ? 'clinic' : 'doctor'),
-      kind: isClinic ? 'clinic' : 'doctor',
+      role: provider.provider_role || provider.mode,
+      kind: provider.mode,
       workspaceStatus: provider.status,
       specialty: provider.specialty || '',
       workplace: provider.clinic_name || '',
@@ -196,7 +196,7 @@ function buildAccountDirectory({ users = [], providers = [], doctors = [], facil
       sourceTypes: ['catalog_facility'],
       facilityId: facility.id,
       displayName: facility.name,
-      role: facility.type === 'clinic' ? 'clinic' : 'staff',
+      role: facility.type,
       kind: facility.type,
       catalogStatus: facility.is_active ? 'active' : 'disabled',
       homepageFeatured: facility.homepage_featured !== false,
@@ -219,7 +219,7 @@ function buildAccountDirectory({ users = [], providers = [], doctors = [], facil
         row.hasCatalog ? 'Catalog' : '',
       ].filter(Boolean).join(' + '),
       needsLinking: row.hasCatalog
-        && ['doctor', 'clinic'].includes(row.kind)
+        && ['doctor', 'clinic', 'hospital'].includes(row.kind)
         && !row.hasLoginAccount
         && !row.hasWorkspace,
       duplicateResolved: (row.linkedKeys || []).length > 1,
@@ -579,7 +579,7 @@ export async function updateUserAsAdmin(firebaseUser, userId, payload = {}) {
   }
 
   const patch = {};
-  if (['patient', 'doctor', 'clinic', 'staff', 'admin'].includes(payload.role)) patch.role = payload.role;
+  if (['patient', 'doctor', 'clinic', 'hospital', 'staff', 'admin'].includes(payload.role)) patch.role = payload.role;
   if (['active', 'disabled', 'pending'].includes(payload.status)) patch.status = payload.status;
   if (!Object.keys(patch).length) {
     return { ok: false, status: 400, data: { message: 'Không có dữ liệu cập nhật hợp lệ.' } };

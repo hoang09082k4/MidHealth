@@ -10,10 +10,11 @@ test('admin portal only accepts admin role', () => {
   assert.equal(isRoleAllowed(APP_ROLES.PATIENT, roles), false);
 });
 
-test('provider portal accepts doctor and clinic but not patient or admin', () => {
+test('provider portal accepts doctor, clinic, and hospital but not patient or admin', () => {
   const roles = rolesForPortal('provider');
   assert.equal(isRoleAllowed(APP_ROLES.DOCTOR, roles), true);
   assert.equal(isRoleAllowed(APP_ROLES.CLINIC, roles), true);
+  assert.equal(isRoleAllowed(APP_ROLES.HOSPITAL, roles), true);
   assert.equal(isRoleAllowed(APP_ROLES.PATIENT, roles), false);
   assert.equal(isRoleAllowed(APP_ROLES.ADMIN, roles), false);
 });

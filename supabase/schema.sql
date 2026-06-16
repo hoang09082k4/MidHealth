@@ -16,6 +16,7 @@ exception
 end $$;
 
 alter type public.app_user_role add value if not exists 'clinic';
+alter type public.app_user_role add value if not exists 'hospital';
 
 do $$
 begin
@@ -106,7 +107,7 @@ create table if not exists public.provider_workspaces (
   email text not null,
   owner_name text not null,
   owner_phone text,
-  mode text not null check (mode in ('doctor', 'clinic')),
+  mode text not null check (mode in ('doctor', 'clinic', 'hospital')),
   provider_role public.app_user_role not null default 'doctor',
   linked_doctor_id uuid,
   linked_facility_id uuid,
@@ -125,6 +126,14 @@ create table if not exists public.provider_workspaces (
   constraint provider_workspace_clinic_required check (
     mode <> 'clinic'
     or (nullif(trim(coalesce(clinic_name, '')), '') is not null and nullif(trim(coalesce(clinic_address, '')), '') is not null)
+  ),
+  constraint provider_workspace_hospital_required check (
+    mode <> 'hospital'
+    or (
+      nullif(trim(coalesce(clinic_name, '')), '') is not null
+      and nullif(trim(coalesce(clinic_address, '')), '') is not null
+      and nullif(trim(coalesce(tax_code, '')), '') is not null
+    )
   ),
   constraint provider_workspace_doctor_required check (
     mode <> 'doctor'
@@ -154,6 +163,23 @@ add column if not exists linked_doctor_id uuid;
 
 alter table public.provider_workspaces
 add column if not exists linked_facility_id uuid;
+
+do $$
+begin
+  alter table public.provider_workspaces drop constraint if exists provider_workspaces_mode_check;
+  alter table public.provider_workspaces add constraint provider_workspaces_mode_check
+    check (mode in ('doctor', 'clinic', 'hospital'));
+  alter table public.provider_workspaces drop constraint if exists provider_workspace_hospital_required;
+  alter table public.provider_workspaces add constraint provider_workspace_hospital_required
+    check (
+      mode <> 'hospital'
+      or (
+        nullif(trim(coalesce(clinic_name, '')), '') is not null
+        and nullif(trim(coalesce(clinic_address, '')), '') is not null
+        and nullif(trim(coalesce(tax_code, '')), '') is not null
+      )
+    );
+end $$;
 
 create table if not exists public.clinic_specialties (
   id uuid primary key default gen_random_uuid(),

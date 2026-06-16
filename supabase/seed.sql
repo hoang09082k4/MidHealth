@@ -358,16 +358,16 @@ insert into public.app_users (
   firebase_uid, email, full_name, avatar_url, role, status, auth_provider, email_verified
 )
 select
-  'catalog:clinic:' || f.id,
-  'clinic+' || regexp_replace(lower(coalesce(nullif(f.slug, ''), f.id::text)), '[^a-z0-9._-]+', '-', 'g') || '@catalog.midhealth.local',
+  'catalog:' || f.type || ':' || f.id,
+  f.type || '+' || regexp_replace(lower(coalesce(nullif(f.slug, ''), f.id::text)), '[^a-z0-9._-]+', '-', 'g') || '@catalog.midhealth.local',
   f.name,
   f.avatar_url,
-  'clinic'::public.app_user_role,
+  f.type::public.app_user_role,
   'pending'::public.app_user_status,
   'catalog',
   false
 from public.medical_facilities f
-where f.type = 'clinic'
+where f.type in ('clinic', 'hospital')
 on conflict (firebase_uid) do update set
   full_name = excluded.full_name,
   avatar_url = excluded.avatar_url,
@@ -414,7 +414,7 @@ on conflict (firebase_uid) do update set
 
 insert into public.provider_workspaces (
   firebase_uid, app_user_id, email, owner_name, owner_phone, mode, provider_role,
-  linked_facility_id, status, clinic_name, clinic_address, image_url,
+  linked_facility_id, status, clinic_name, clinic_address, tax_code, image_url,
   review_note, submitted_at, reviewed_at
 )
 select
@@ -423,23 +423,25 @@ select
   u.email,
   f.name,
   coalesce(f.phone, f.hotline),
-  'clinic',
-  'clinic'::public.app_user_role,
+  f.type,
+  f.type::public.app_user_role,
   f.id,
   'approved',
   f.name,
   coalesce(nullif(trim(f.address), ''), 'Chưa cập nhật địa chỉ'),
+  case when f.type = 'hospital' then 'CATALOG' else null end,
   f.avatar_url,
   'Hồ sơ catalog nội bộ được hệ thống đồng bộ.',
   now(),
   now()
 from public.medical_facilities f
-join public.app_users u on u.firebase_uid = 'catalog:clinic:' || f.id
-where f.type = 'clinic'
+join public.app_users u on u.firebase_uid = 'catalog:' || f.type || ':' || f.id
+where f.type in ('clinic', 'hospital')
 on conflict (firebase_uid) do update set
   app_user_id = excluded.app_user_id,
   linked_facility_id = excluded.linked_facility_id,
   owner_name = excluded.owner_name,
   clinic_name = excluded.clinic_name,
   clinic_address = excluded.clinic_address,
+  tax_code = excluded.tax_code,
   updated_at = now();

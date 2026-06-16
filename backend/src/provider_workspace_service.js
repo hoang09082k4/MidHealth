@@ -2,12 +2,13 @@ import { upsertAppUser } from './account_service.js';
 import { hasSupabaseConfig, supabase } from './supabase.js';
 import { APP_ROLES, requireRoles } from './authorization_service.js';
 
-const VALID_MODES = new Set(['doctor', 'clinic']);
+const VALID_MODES = new Set(['doctor', 'clinic', 'hospital']);
 const VALID_STATUSES = new Set(['draft', 'pending_review', 'approved', 'rejected']);
 const VALID_DOCTOR_TITLES = new Set(['BS', 'BS.CKI', 'BS.CKII', 'ThS.BS', 'TS.BS', 'PGS.TS.BS', 'GS.TS.BS']);
 const MODE_TO_APP_ROLE = {
   doctor: 'doctor',
   clinic: 'clinic',
+  hospital: 'hospital',
 };
 
 function isUuid(value) {
@@ -167,6 +168,7 @@ function emptyOperations(workspace, reason = '') {
     },
     appointments: [],
     slots: [],
+    specialties: [],
     services: [],
     report: [],
     activity: [],
@@ -298,8 +300,16 @@ async function getSpecialtyNameById(specialtyId) {
   return data?.name || '';
 }
 
+function facilityTypeForMode(mode) {
+  return mode === 'hospital' ? 'hospital' : 'clinic';
+}
+
+function facilityLabelForMode(mode) {
+  return mode === 'hospital' ? 'bệnh viện' : 'phòng khám';
+}
+
 async function findLinkedFacility(workspace) {
-  if (!workspace || workspace.mode !== 'clinic') return null;
+  if (!workspace || !['clinic', 'hospital'].includes(workspace.mode)) return null;
 
   if (workspace.linkedFacilityId && isUuid(workspace.linkedFacilityId)) {
     const { data, error } = await supabase
@@ -313,11 +323,12 @@ async function findLinkedFacility(workspace) {
 
   const clinicName = clean(workspace.clinicName);
   if (!clinicName) return null;
+  const facilityType = facilityTypeForMode(workspace.mode);
 
   const { data, error } = await supabase
     .from('medical_facilities')
     .select('id, name, address, type')
-    .eq('type', 'clinic')
+    .eq('type', facilityType)
     .ilike('name', `%${clinicName}%`)
     .limit(1)
     .maybeSingle();
@@ -349,6 +360,83 @@ async function findOrCreateSpecialty(name) {
     .single();
   if (error) throw error;
   return data;
+}
+
+function parseSpecialtyNames(value = '') {
+  return Array.from(new Set(
+    String(value || '')
+      .split(/[,;\n]/)
+      .map((item) => clean(item))
+      .filter(Boolean),
+  ));
+}
+
+async function syncFacilitySpecialties(facilityId, specialtyText = '') {
+  if (!isUuid(facilityId)) return [];
+  const names = parseSpecialtyNames(specialtyText);
+  if (!names.length) return [];
+
+  const rows = [];
+  for (const [index, name] of names.entries()) {
+    const specialty = await findOrCreateSpecialty(name);
+    rows.push({
+      facility_id: facilityId,
+      specialty_id: specialty.id,
+      description: `Chuyen khoa ${name} do co so dang ky tren MidHealth.`,
+      sort_order: index,
+    });
+  }
+
+  const { error } = await supabase
+    .from('facility_specialties')
+    .upsert(rows, { onConflict: 'facility_id,specialty_id' });
+  if (error) throw error;
+  return rows;
+}
+
+async function listFacilitySpecialties(facilityId) {
+  if (!isUuid(facilityId)) return [];
+  const { data, error } = await supabase
+    .from('facility_specialties')
+    .select('specialty_id, sort_order, clinic_specialties(id, name)')
+    .eq('facility_id', facilityId)
+    .order('sort_order', { ascending: true });
+  if (error) throw error;
+  return (data || [])
+    .map((row) => ({
+      id: row.clinic_specialties?.id || row.specialty_id,
+      name: row.clinic_specialties?.name || '',
+    }))
+    .filter((item) => item.id && item.name);
+}
+
+async function resolveFacilitySlotSpecialty(facilityId, payload = {}) {
+  const specialties = await listFacilitySpecialties(facilityId);
+  const requestedId = clean(payload.specialtyId || payload.specialty_id);
+  const requestedName = clean(payload.specialtyName || payload.specialty);
+
+  if (!specialties.length) {
+    if (!requestedName) return { error: 'Co so nay chua co chuyen khoa duoc duyet. Hay cap nhat ho so va cho admin duyet lai.', specialties };
+    const specialty = await findOrCreateSpecialty(requestedName);
+    await syncFacilitySpecialties(facilityId, requestedName);
+    return { specialtyId: specialty.id, specialties: await listFacilitySpecialties(facilityId) };
+  }
+
+  const match = specialties.find((item) => (
+    (requestedId && item.id === requestedId)
+    || (requestedName && item.name.toLocaleLowerCase('vi') === requestedName.toLocaleLowerCase('vi'))
+  ));
+
+  if (!match) {
+    return {
+      error: requestedId || requestedName
+        ? 'Chuyen khoa khong thuoc co so nay hoac chua duoc duyet.'
+        : 'Vui long chon chuyen khoa tiep nhan cho khung gio.',
+      specialties,
+    };
+  }
+
+  return { specialtyId: match.id, specialties };
 }
 
 async function syncProviderCatalogLink(workspaceRow) {
@@ -390,12 +478,14 @@ async function syncProviderCatalogLink(workspaceRow) {
     return { linked_doctor_id: result.data.id, linked_facility_id: null };
   }
 
+  const facilityType = facilityTypeForMode(workspace.mode);
+  const facilityLabel = facilityLabelForMode(workspace.mode);
   const existingFacility = workspace.linkedFacilityId ? null : await findLinkedFacility(workspace);
   const facilityRow = {
-    type: 'clinic',
+    type: facilityType,
     name: workspace.clinicName,
-    subtitle: 'Phòng khám đối tác MidHealth',
-    intro: `Hồ sơ phòng khám đối tác MidHealth: ${workspace.clinicName}.`,
+    subtitle: workspace.mode === 'hospital' ? 'Bệnh viện đối tác MidHealth' : 'Phòng khám đối tác MidHealth',
+    intro: `Hồ sơ ${facilityLabel} đối tác MidHealth: ${workspace.clinicName}.`,
     address: workspace.clinicAddress,
     avatar_url: workspace.imageUrl || null,
     phone: workspace.ownerPhone || null,
@@ -420,6 +510,8 @@ async function syncProviderCatalogLink(workspaceRow) {
       .select('id')
       .single();
   if (result.error) throw result.error;
+
+  await syncFacilitySpecialties(result.data.id, workspace.specialty);
 
   return { linked_doctor_id: null, linked_facility_id: result.data.id };
 }
@@ -479,6 +571,8 @@ function mapAppointmentForProvider(appointment) {
 function mapSlotForProvider(slot) {
   return {
     id: slot.id,
+    specialtyId: slot.specialty_id || '',
+    specialtyName: slot.clinic_specialties?.name || '',
     date: slot.slot_date,
     startTime: formatTime(slot.start_time),
     endTime: formatTime(slot.end_time),
@@ -493,12 +587,14 @@ function mapSlotForProvider(slot) {
 function validateWorkspacePayload(payload = {}) {
   const mode = clean(payload.mode);
   if (!VALID_MODES.has(mode)) {
-    return 'Vui lòng chọn Có phòng khám hoặc Không có phòng khám.';
+    return 'Vui lòng chọn Bác sĩ độc lập, Phòng khám hoặc Bệnh viện.';
   }
 
-  if (mode === 'clinic') {
-    if (!clean(payload.clinicName)) return 'Vui lòng nhập tên phòng khám.';
-    if (!clean(payload.clinicAddress)) return 'Vui lòng nhập địa chỉ phòng khám.';
+  if (['clinic', 'hospital'].includes(mode)) {
+    const label = mode === 'hospital' ? 'bệnh viện' : 'phòng khám';
+    if (!clean(payload.clinicName)) return `Vui lòng nhập tên ${label}.`;
+    if (!clean(payload.clinicAddress)) return `Vui lòng nhập địa chỉ ${label}.`;
+    if (mode === 'hospital' && !clean(payload.taxCode)) return 'Vui lòng nhập mã giấy phép hoạt động, mã KCB hoặc mã số thuế của bệnh viện.';
   }
 
   if (mode === 'doctor') {
@@ -548,7 +644,7 @@ export async function ensureProviderWorkspaceTableReady() {
 }
 
 export async function getProviderWorkspace(firebaseUser) {
-  const access = await requireRoles(firebaseUser, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC]);
+  const access = await requireRoles(firebaseUser, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL]);
   if (!access.ok) return access;
 
   if (!hasSupabaseConfig) {
@@ -577,7 +673,7 @@ export async function getProviderWorkspace(firebaseUser) {
 }
 
 export async function saveProviderWorkspace(firebaseUser, payload = {}) {
-  const access = await requireRoles(firebaseUser, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC]);
+  const access = await requireRoles(firebaseUser, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL]);
   if (!access.ok) return access;
 
   const tableReady = await ensureProviderWorkspaceTableReady();
@@ -606,6 +702,7 @@ export async function saveProviderWorkspace(firebaseUser, payload = {}) {
     email,
     emailVerified: true,
     markLogin: true,
+    allowRoleChange: true,
   });
   if (!accountResult.ok) return accountResult;
 
@@ -724,13 +821,14 @@ export async function getProviderWorkspaceOperations(firebaseUser) {
       return {
         ok: true,
         status: 200,
-        data: emptyOperations(workspace, 'Workspace đã duyệt nhưng chưa liên kết với danh mục bác sĩ/phòng khám.'),
+        data: emptyOperations(workspace, 'Workspace đã duyệt nhưng chưa liên kết với danh mục bác sĩ/bệnh viện/phòng khám.'),
       };
     }
 
     const linkedDoctorSpecialtyName = linkedDoctor
       ? await getSpecialtyNameById(linkedDoctor.specialty_id)
       : '';
+    const facilitySpecialties = linkedFacility ? await listFacilitySpecialties(linkedFacility.id) : [];
     const today = todayDateValue();
     const toDate = futureDateValue(13);
     let appointmentQuery = supabase
@@ -751,7 +849,7 @@ export async function getProviderWorkspaceOperations(firebaseUser) {
 
     let slotQuery = supabase
       .from('appointment_slots')
-      .select('id, slot_date, start_time, end_time, capacity, booked_count, is_active')
+      .select('id, specialty_id, slot_date, start_time, end_time, capacity, booked_count, is_active, clinic_specialties(id, name)')
       .gte('slot_date', today)
       .lte('slot_date', toDate)
       .order('slot_date', { ascending: true })
@@ -806,6 +904,7 @@ export async function getProviderWorkspaceOperations(firebaseUser) {
           name: linkedFacility.name,
           address: linkedFacility.address || '',
           type: linkedFacility.type,
+          specialties: facilitySpecialties,
         } : null,
         summary: {
           todayAppointments: todayAppointments.length,
@@ -818,6 +917,9 @@ export async function getProviderWorkspaceOperations(firebaseUser) {
         },
         appointments,
         slots,
+        specialties: linkedDoctor
+          ? [{ id: linkedDoctor.specialty_id || '', name: linkedDoctorSpecialtyName || workspace.specialty || '' }].filter((item) => item.id || item.name)
+          : facilitySpecialties,
         services: [],
         report: Array.from(reportByDate.values()).slice(0, 14),
         activity,
@@ -897,7 +999,7 @@ export async function saveProviderSlot(firebaseUser, payload = {}) {
   try {
     const { linkedDoctor, linkedFacility, linkedId } = await resolveProviderLink(workspace);
     if (!linkedId) {
-      return { ok: false, status: 409, data: { message: 'Workspace chưa liên kết với bác sĩ/phòng khám trong catalog.' } };
+      return { ok: false, status: 409, data: { message: 'Workspace chưa liên kết với bác sĩ/bệnh viện/phòng khám trong catalog.' } };
     }
 
     const slotDate = clean(payload.date || payload.slotDate);
@@ -913,10 +1015,17 @@ export async function saveProviderSlot(firebaseUser, payload = {}) {
       return { ok: false, status: 400, data: { message: 'Giờ bắt đầu/kết thúc không hợp lệ.' } };
     }
 
+    const facilitySpecialty = workspace.mode === 'doctor'
+      ? { specialtyId: linkedDoctor.specialty_id || null }
+      : await resolveFacilitySlotSpecialty(linkedFacility.id, payload);
+    if (facilitySpecialty.error) {
+      return { ok: false, status: 400, data: { message: facilitySpecialty.error, specialties: facilitySpecialty.specialties || [] } };
+    }
+
     const baseRow = {
       facility_id: workspace.mode === 'doctor' ? linkedDoctor.facility_id || null : linkedFacility.id,
       doctor_id: workspace.mode === 'doctor' ? linkedDoctor.id : null,
-      specialty_id: workspace.mode === 'doctor' ? linkedDoctor.specialty_id || null : null,
+      specialty_id: facilitySpecialty.specialtyId || null,
       service_id: null,
       slot_date: slotDate,
       start_time: startTime,
@@ -933,7 +1042,10 @@ export async function saveProviderSlot(firebaseUser, payload = {}) {
       .limit(1);
     lookup = workspace.mode === 'doctor'
       ? lookup.eq('doctor_id', linkedDoctor.id)
-      : lookup.eq('facility_id', linkedFacility.id).is('doctor_id', null);
+      : lookup
+        .eq('facility_id', linkedFacility.id)
+        .is('doctor_id', null)
+        .eq('specialty_id', facilitySpecialty.specialtyId);
 
     const { data: existingRows, error: lookupError } = await lookup;
     if (lookupError) throw lookupError;
@@ -967,7 +1079,10 @@ export async function saveProviderSlot(firebaseUser, payload = {}) {
         .limit(1);
       retryLookup = workspace.mode === 'doctor'
         ? retryLookup.eq('doctor_id', linkedDoctor.id)
-        : retryLookup.eq('facility_id', linkedFacility.id).is('doctor_id', null);
+        : retryLookup
+          .eq('facility_id', linkedFacility.id)
+          .is('doctor_id', null)
+          .eq('specialty_id', facilitySpecialty.specialtyId);
 
       const { data: retryRows, error: retryError } = await retryLookup;
       if (retryError) throw retryError;
@@ -988,6 +1103,7 @@ export async function saveProviderSlot(firebaseUser, payload = {}) {
         startTime,
         endTime,
         capacity,
+        specialtyId: facilitySpecialty.specialtyId || '',
       },
     });
     return { ok: true, status: existing?.id ? 200 : 201, data: mapSlotForProvider(saveResult.data) };

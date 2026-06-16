@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import { hasSupabaseConfig, supabase } from './supabase.js';
 
 const FIREBASE_AUTH_BASE_URL = 'https://identitytoolkit.googleapis.com/v1';
 
@@ -91,6 +92,67 @@ export function loginWithEmail({ email, password }) {
     password,
     returnSecureToken: true,
   });
+}
+
+export function sendPasswordResetEmail(email) {
+  return firebaseRequest('accounts:sendOobCode', {
+    requestType: 'PASSWORD_RESET',
+    email,
+  });
+}
+
+function normalizePhone(value = '') {
+  return String(value || '').replace(/\D/g, '').slice(0, 10);
+}
+
+export async function resolvePatientEmailByPhone(phone) {
+  if (!hasSupabaseConfig) {
+    return {
+      ok: false,
+      status: 503,
+      data: { message: 'Backend chưa cấu hình Supabase để đăng nhập bằng số điện thoại.' },
+    };
+  }
+
+  const normalizedPhone = normalizePhone(phone);
+  if (!/^0(3|5|7|8|9)\d{8}$/.test(normalizedPhone)) {
+    return {
+      ok: false,
+      status: 400,
+      data: { message: 'Xin vui lòng nhập đúng số điện thoại!' },
+    };
+  }
+
+  const { data, error } = await supabase
+    .from('patient_profiles')
+    .select('email, status')
+    .eq('phone', normalizedPhone)
+    .eq('role', 'patient')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    return { ok: false, status: 500, data: { message: error.message } };
+  }
+
+  if (!data?.email) {
+    return {
+      ok: false,
+      status: 404,
+      data: { message: 'Số điện thoại này chưa được đăng ký tài khoản MidHealth.' },
+    };
+  }
+
+  if (data.status && data.status !== 'active') {
+    return {
+      ok: false,
+      status: 403,
+      data: { message: 'Tài khoản liên kết với số điện thoại này chưa hoạt động.' },
+    };
+  }
+
+  return { ok: true, status: 200, data: { email: data.email } };
 }
 
 export function lookupAccount(idToken) {

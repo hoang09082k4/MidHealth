@@ -6,6 +6,31 @@ import { DashboardPreview, WorkspaceBrand } from './giao_dien_lam_viec';
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
 const PERSONAL_EMAIL_DOMAINS = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com'];
 
+function normalizePhone(value = '') {
+  return String(value || '').replace(/\D/g, '').slice(0, 10);
+}
+
+function validateEmail(value = '') {
+  const email = value.trim();
+  if (!email) return 'Vui lòng nhập email.';
+  if (!email.includes('@')) return 'Email cần có ký tự @.';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Email chưa đúng định dạng.';
+  return '';
+}
+
+function validatePhone(value = '') {
+  const phone = normalizePhone(value);
+  if (!phone) return 'Vui lòng nhập số điện thoại.';
+  if (phone.length !== 10) return 'Xin vui lòng nhập đúng số điện thoại!';
+  return '';
+}
+
+function validatePassword(value = '') {
+  if (!value) return 'Vui lòng nhập mật khẩu.';
+  if (value.length < 6) return 'Mật khẩu cần tối thiểu 6 ký tự.';
+  return '';
+}
+
 function isPersonalEmail(email = '') {
   const normalizedEmail = email.trim().toLowerCase();
   if (normalizedEmail === 'test@gmail.com') return false;
@@ -73,11 +98,44 @@ function AuthLayout({ children, mode = 'register', onHome }) {
 function TrangDangKy({ onOtpSent, onSwitchToLogin, onHome }) {
   const [formData, setFormData] = useState({ name: '', phone: '', email: '' });
   const [message, setMessage] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
+  const updateField = (field, value) => {
+    const nextValue = field === 'phone' ? normalizePhone(value) : value;
+    setFormData((current) => ({
+      ...current,
+      [field]: nextValue,
+    }));
+    const phoneError = field === 'phone' && value && nextValue !== value
+      ? 'Xin vui lòng nhập đúng số điện thoại!'
+      : field === 'phone' && nextValue ? validatePhone(nextValue) : '';
+    setFieldErrors((current) => ({
+      ...current,
+      [field]: field === 'phone' ? phoneError
+        : field === 'email' && nextValue ? validateEmail(nextValue)
+          : '',
+    }));
+  };
+  const validateForm = () => {
+    const errors = {};
+    if (!formData.name.trim()) errors.name = 'Vui lòng nhập họ và tên.';
+    const phoneMessage = validatePhone(formData.phone);
+    if (phoneMessage) errors.phone = phoneMessage;
+    const emailMessage = validateEmail(formData.email);
+    if (emailMessage) errors.email = emailMessage;
+    return errors;
+  };
+  const canSubmit = !isLoading && !Object.keys(validateForm()).length;
 
   const submit = async (event) => {
     event.preventDefault();
     setMessage('');
+
+    const errors = validateForm();
+    if (Object.keys(errors).length) {
+      setFieldErrors(errors);
+      return;
+    }
 
     const email = formData.email.trim().toLowerCase();
     if (isPersonalEmail(email)) {
@@ -104,9 +162,9 @@ function TrangDangKy({ onOtpSent, onSwitchToLogin, onHome }) {
     <div className="dw-register-page refined">
       <section className="dw-register-main">
         <WorkspaceBrand onHome={onHome} />
-        <form className="dw-auth-form dw-register-form" onSubmit={submit}>
+        <form className="dw-auth-form dw-register-form" onSubmit={submit} noValidate>
         <h1>Đăng ký tài khoản đối tác</h1>
-        <p className="dw-auth-intro">Bước này chỉ tạo tài khoản đăng nhập. Hồ sơ bác sĩ/phòng khám sẽ là một trang riêng sau khi bạn đăng nhập.</p>
+        <p className="dw-auth-intro">Bước này chỉ tạo tài khoản đăng nhập. Hồ sơ bác sĩ, bệnh viện hoặc phòng khám sẽ là một trang riêng sau khi bạn đăng nhập.</p>
         <div className="dw-register-note">
           <span>01</span>
           <div>
@@ -115,25 +173,28 @@ function TrangDangKy({ onOtpSent, onSwitchToLogin, onHome }) {
           </div>
         </div>
         <label>
-          Họ và tên <span>*</span>
-          <input value={formData.name} onChange={(event) => setFormData({ ...formData, name: event.target.value })} placeholder="Họ và tên đầy đủ" required />
+          Họ và tên
+          <input className={fieldErrors.name ? 'has-error' : ''} value={formData.name} onChange={(event) => updateField('name', event.target.value)} placeholder="Họ và tên đầy đủ" />
+          {fieldErrors.name && <small className="field-error">{fieldErrors.name}</small>}
         </label>
         <label>
-          Số điện thoại <span>*</span>
-          <input value={formData.phone} onChange={(event) => setFormData({ ...formData, phone: event.target.value })} placeholder="0901234567" required inputMode="tel" />
+          Số điện thoại
+          <input className={fieldErrors.phone ? 'has-error' : ''} value={formData.phone} onChange={(event) => updateField('phone', event.target.value)} placeholder="0901234567" inputMode="tel" />
+          {fieldErrors.phone && <small className="field-error">{fieldErrors.phone}</small>}
           <small>MidHealth sẽ dùng số này để liên hệ xác minh hồ sơ đối tác.</small>
         </label>
         <label>
-          Email cơ quan/chuyên môn <span>*</span>
-          <input value={formData.email} onChange={(event) => setFormData({ ...formData, email: event.target.value })} placeholder="ten@benhvien.vn" required type="email" />
+          Email cơ quan/chuyên môn
+          <input className={fieldErrors.email ? 'has-error' : ''} value={formData.email} onChange={(event) => updateField('email', event.target.value)} placeholder="ten@benhvien.vn" inputMode="email" type="text" />
+          {fieldErrors.email && <small className="field-error">{fieldErrors.email}</small>}
         </label>
         {message ? <p className="dw-form-alert">{message}</p> : null}
-        <button type="submit" disabled={isLoading}>{isLoading ? 'Đang gửi OTP...' : 'Tiếp tục'}</button>
+        <button type="submit" disabled={!canSubmit}>{isLoading ? 'Đang gửi OTP...' : 'Tiếp tục'}</button>
         <div className="dw-register-note muted">
           <span>02</span>
           <div>
             <strong>Thiết lập hồ sơ riêng</strong>
-            <p>Sau khi đăng nhập, bạn sẽ vào trang hồ sơ để chọn bác sĩ độc lập hoặc phòng khám.</p>
+            <p>Sau khi đăng nhập, bạn sẽ vào trang hồ sơ để chọn bác sĩ độc lập, bệnh viện hoặc phòng khám.</p>
           </div>
         </div>
         <p className="dw-auth-switch">Bạn đã có tài khoản? <button type="button" onClick={onSwitchToLogin}>Đăng nhập</button></p>
@@ -142,7 +203,7 @@ function TrangDangKy({ onOtpSent, onSwitchToLogin, onHome }) {
       <section className="dw-register-preview">
         <span>Tài khoản trước, hồ sơ sau</span>
         <h2>Đăng ký xong sẽ chuyển về đăng nhập, sau đó mở trang hồ sơ riêng</h2>
-        <p>MidHealth tách tài khoản đăng nhập khỏi hồ sơ chuyên môn để hồ sơ bác sĩ/phòng khám được kiểm duyệt rõ ràng và ghi dữ liệu vận hành đúng vào Supabase.</p>
+        <p>MidHealth tách tài khoản đăng nhập khỏi hồ sơ chuyên môn để hồ sơ bác sĩ, bệnh viện hoặc phòng khám được kiểm duyệt rõ ràng và ghi dữ liệu vận hành đúng vào Supabase.</p>
         <DashboardPreview />
       </section>
     </div>
@@ -153,10 +214,20 @@ function TrangXacNhanOtp({ pendingAccount, onRegistered, onBack, onHome }) {
   const [otp, setOtp] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState(`Mã OTP đã được gửi đến ${pendingAccount.email}. Vui lòng kiểm tra email để tiếp tục.`);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
+  const canSubmit = !isLoading && otp.length === 6 && !validatePassword(password);
 
   const submit = async (event) => {
     event.preventDefault();
+    const errors = {};
+    if (otp.length !== 6) errors.otp = 'Vui lòng nhập đủ 6 số OTP.';
+    const passwordMessage = validatePassword(password);
+    if (passwordMessage) errors.password = passwordMessage;
+    if (Object.keys(errors).length) {
+      setFieldErrors(errors);
+      return;
+    }
     setIsLoading(true);
     setMessage('');
 
@@ -199,19 +270,21 @@ function TrangXacNhanOtp({ pendingAccount, onRegistered, onBack, onHome }) {
 
   return (
     <AuthLayout onHome={onHome}>
-      <form className="dw-auth-form" onSubmit={submit}>
+      <form className="dw-auth-form" onSubmit={submit} noValidate>
         <h1>Xác nhận đăng ký</h1>
         <p className="dw-auth-intro">Nhập OTP email và tạo mật khẩu để mở tài khoản đối tác.</p>
         <label>
-          Mã OTP <span>*</span>
-          <input value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Nhập mã OTP" required inputMode="numeric" maxLength="6" />
+          Mã OTP
+          <input className={fieldErrors.otp ? 'has-error' : ''} value={otp} onChange={(event) => { const nextOtp = event.target.value.replace(/\D/g, '').slice(0, 6); setOtp(nextOtp); setFieldErrors((current) => ({ ...current, otp: nextOtp && nextOtp.length < 6 ? 'Vui lòng nhập đủ 6 số OTP.' : '' })); }} placeholder="Nhập mã OTP" inputMode="numeric" maxLength="6" />
+          {fieldErrors.otp && <small className="field-error">{fieldErrors.otp}</small>}
         </label>
         <label>
-          Mật khẩu <span>*</span>
-          <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Tối thiểu 6 ký tự" required minLength={6} type="password" />
+          Mật khẩu
+          <input className={fieldErrors.password ? 'has-error' : ''} value={password} onChange={(event) => { const nextPassword = event.target.value; setPassword(nextPassword); setFieldErrors((current) => ({ ...current, password: nextPassword ? validatePassword(nextPassword) : '' })); }} placeholder="Tối thiểu 6 ký tự" minLength={6} type="password" />
+          {fieldErrors.password && <small className="field-error">{fieldErrors.password}</small>}
         </label>
         {message ? <p className="dw-form-alert neutral">{message}</p> : null}
-        <button type="submit" disabled={isLoading || otp.length < 6 || password.length < 6}>{isLoading ? 'Đang xác nhận...' : 'Xác nhận đăng ký'}</button>
+        <button type="submit" disabled={!canSubmit}>{isLoading ? 'Đang xác nhận...' : 'Xác nhận đăng ký'}</button>
         <p className="dw-auth-switch">
           <button type="button" onClick={resendOtp} disabled={isLoading}>Gửi lại OTP</button>
           <span> · </span>
@@ -225,11 +298,32 @@ function TrangXacNhanOtp({ pendingAccount, onRegistered, onBack, onHome }) {
 function TrangDangNhap({ onLogin, onRegister, onHome, initialMessage = '' }) {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [message, setMessage] = useState(initialMessage);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
+  const updateField = (field, value) => {
+    setFormData((current) => ({ ...current, [field]: value }));
+    setFieldErrors((current) => ({
+      ...current,
+      [field]: field === 'email' && value ? validateEmail(value) : '',
+    }));
+  };
+  const validateForm = () => {
+    const errors = {};
+    const emailMessage = validateEmail(formData.email);
+    if (emailMessage) errors.email = emailMessage;
+    if (!formData.password) errors.password = 'Vui lòng nhập mật khẩu.';
+    return errors;
+  };
+  const canSubmit = !isLoading && !Object.keys(validateForm()).length;
 
   const submit = async (event) => {
     event.preventDefault();
     setMessage('');
+    const errors = validateForm();
+    if (Object.keys(errors).length) {
+      setFieldErrors(errors);
+      return;
+    }
     setIsLoading(true);
 
     try {
@@ -252,19 +346,21 @@ function TrangDangNhap({ onLogin, onRegister, onHome, initialMessage = '' }) {
 
   return (
     <AuthLayout mode="login" onHome={onHome}>
-      <form className="dw-auth-form" onSubmit={submit}>
+      <form className="dw-auth-form" onSubmit={submit} noValidate>
         <h1>Đăng nhập đối tác</h1>
         <p className="dw-auth-intro">Chào mừng quay trở lại.</p>
         <label>
           Email
-          <input value={formData.email} onChange={(event) => setFormData({ ...formData, email: event.target.value })} placeholder="Email đã đăng ký" required type="email" />
+          <input className={fieldErrors.email ? 'has-error' : ''} value={formData.email} onChange={(event) => updateField('email', event.target.value)} placeholder="Email đã đăng ký" inputMode="email" type="text" />
+          {fieldErrors.email && <small className="field-error">{fieldErrors.email}</small>}
         </label>
         <label>
           Mật khẩu
-          <input value={formData.password} onChange={(event) => setFormData({ ...formData, password: event.target.value })} placeholder="Mật khẩu" required type="password" />
+          <input className={fieldErrors.password ? 'has-error' : ''} value={formData.password} onChange={(event) => updateField('password', event.target.value)} placeholder="Mật khẩu" type="password" />
+          {fieldErrors.password && <small className="field-error">{fieldErrors.password}</small>}
         </label>
         {message ? <p className={message.includes('Đăng ký') ? 'dw-form-alert neutral' : 'dw-form-alert'}>{message}</p> : null}
-        <button type="submit" disabled={isLoading}>{isLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}</button>
+        <button type="submit" disabled={!canSubmit}>{isLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}</button>
         <p className="dw-auth-switch">Chưa có tài khoản? <button type="button" onClick={onRegister}>Đăng ký</button></p>
       </form>
     </AuthLayout>

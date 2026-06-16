@@ -27,7 +27,7 @@ async function upsertManagedUser({ kind, entity, fullName, avatarUrl }) {
       email: identity.email,
       full_name: fullName,
       avatar_url: avatarUrl || null,
-      role: kind === 'clinic' ? 'clinic' : 'doctor',
+      role: kind === 'clinic' || kind === 'hospital' ? kind : 'doctor',
       status: 'pending',
       auth_provider: MANAGED_PROVIDER,
       email_verified: false,
@@ -63,16 +63,17 @@ async function createDoctorWorkspace(doctor, user) {
   if (error) throw error;
 }
 
-async function createClinicWorkspace(facility, user) {
+async function createFacilityWorkspace(facility, user) {
   const now = new Date().toISOString();
+  const facilityRole = facility.type === 'hospital' ? 'hospital' : 'clinic';
   const { error } = await supabase.from('provider_workspaces').upsert({
     firebase_uid: user.firebase_uid,
     app_user_id: user.id,
     email: user.email,
     owner_name: facility.name,
     owner_phone: facility.phone || facility.hotline || null,
-    mode: 'clinic',
-    provider_role: 'clinic',
+    mode: facilityRole,
+    provider_role: facilityRole,
     linked_doctor_id: null,
     linked_facility_id: facility.id,
     status: 'approved',
@@ -97,7 +98,7 @@ export async function syncCatalogManagedAccounts() {
     supabase
       .from('medical_facilities')
       .select('id, slug, type, name, address, phone, hotline, avatar_url')
-      .eq('type', 'clinic')
+      .in('type', ['clinic', 'hospital'])
       .order('created_at', { ascending: true }),
     supabase
       .from('provider_workspaces')
@@ -117,7 +118,7 @@ export async function syncCatalogManagedAccounts() {
       .filter((doctor) => linkedDoctorIds.has(doctor.id))
       .map((doctor) => normalizeName(doctor.full_name)),
   );
-  const result = { doctorsCreated: 0, clinicsCreated: 0, alreadyLinked: 0, duplicatesSkipped: 0 };
+  const result = { doctorsCreated: 0, clinicsCreated: 0, hospitalsCreated: 0, alreadyLinked: 0, duplicatesSkipped: 0 };
 
   for (const doctor of doctors) {
     if (linkedDoctorIds.has(doctor.id)) {
@@ -144,14 +145,16 @@ export async function syncCatalogManagedAccounts() {
       result.alreadyLinked += 1;
       continue;
     }
+    const kind = facility.type === 'hospital' ? 'hospital' : 'clinic';
     const user = await upsertManagedUser({
-      kind: 'clinic',
+      kind,
       entity: facility,
       fullName: facility.name,
       avatarUrl: facility.avatar_url,
     });
-    await createClinicWorkspace(facility, user);
-    result.clinicsCreated += 1;
+    await createFacilityWorkspace(facility, user);
+    if (kind === 'hospital') result.hospitalsCreated += 1;
+    else result.clinicsCreated += 1;
   }
 
   return result;
