@@ -7,9 +7,12 @@ import {
   kiem_tra_ngay_sinh,
 } from '../../data/du_lieu_ho_so';
 import { createAppointment, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
+import { saveLocalAppointment } from '../../lib/local_appointments';
 import { doctorImageName, doctorImagePath } from '../../lib/doctor_images';
 import { useReferenceData } from '../../lib/reference_data';
 import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from '../phieu_kham/phieu_kham_dien_tu';
+
+const CANVAS_FONT = 'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
 const DAY_LABELS = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
 const DEFAULT_ADDRESS = '250 Đ. Nguyễn Xí, Bình Lợi Trung, Hồ Chí Minh';
@@ -227,14 +230,6 @@ function validateProfile(profile) {
   return { normalized, errors };
 }
 
-function luu_lich_kham(appointment) {
-  const current = JSON.parse(localStorage.getItem('midhealth_appointments') || '[]');
-  localStorage.setItem('midhealth_appointments', JSON.stringify([
-    appointment,
-    ...current.filter((item) => (item.id || item.ticket) !== (appointment.id || appointment.ticket)),
-  ]));
-}
-
 function tai_anh_phieu(appointment) {
   const { bookingRows, patientRows } = tao_dong_phieu_kham(appointment);
   const rows = [...bookingRows, ...patientRows].filter((row) => co_gia_tri(row.value));
@@ -245,12 +240,12 @@ function tai_anh_phieu(appointment) {
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#176bdd';
-  ctx.font = 'bold 28px Arial';
+  ctx.font = `bold 28px ${CANVAS_FONT}`;
   ctx.fillText('MidHealth - Phiếu khám điện tử', 40, 60);
   ctx.fillStyle = '#111827';
-  ctx.font = 'bold 20px Arial';
+  ctx.font = `bold 20px ${CANVAS_FONT}`;
   ctx.fillText(appointment.doctorShortName || appointment.doctorName, 40, 105);
-  ctx.font = '16px Arial';
+  ctx.font = `16px ${CANVAS_FONT}`;
   rows.forEach((row, index) => {
     const y = 155 + index * 38;
     ctx.fillStyle = '#64748b';
@@ -324,10 +319,10 @@ function ProfileModal({ mode, profile, errors, isSaving, onClose, onChange, onSa
           <SelectField label="Tỉnh / Thành phố" name="province" value={profile.province} placeholder="Chọn tỉnh / thành phố" onChange={onChange}>
             {addressData.map((province) => <option key={province.name}>{province.name}</option>)}
           </SelectField>
-          <SelectField label="Quận / Huyện" name="district" value={profile.district} placeholder="Chọn quận / huyện" onChange={onChange}>
+          <SelectField label="Phường/Xã/Khu vực" name="district" value={profile.district} placeholder="Chọn phường/xã/khu vực" onChange={onChange}>
             {(selectedProvince?.districts || []).map((district) => <option key={district.name}>{district.name}</option>)}
           </SelectField>
-          <SelectField label="Phường / Xã" name="ward" value={profile.ward} placeholder="Chọn phường / xã" onChange={onChange}>
+          <SelectField label="Tổ/Ấp/Đơn vị chi tiết" name="ward" value={profile.ward} placeholder="Chọn thông tin chi tiết" onChange={onChange}>
             {(selectedDistrict?.wards || []).map((ward) => <option key={ward}>{ward}</option>)}
           </SelectField>
           <Field label="Địa chỉ cụ thể" name="address" value={profile.address} required placeholder="Số nhà, tên đường" error={errors.address} onChange={onChange} />
@@ -584,7 +579,7 @@ function TrangDatLichBacSi({ doctor, initialScreen = 'detail', user, onBackHome,
         attachments: attachedFiles.map((file) => file.name),
       });
       setAppointment(nextAppointment);
-      luu_lich_kham(nextAppointment);
+      saveLocalAppointment(user, nextAppointment);
       setScreen('success');
     } catch (error) {
       setMessage(error.message || 'Có lỗi xảy ra khi đặt lịch.');

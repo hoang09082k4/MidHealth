@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
+import { loadNotifications } from '../../lib/notifications';
 import BieuTuongLogo from './bieu_tuong_logo';
 
 const ACCOUNT_ITEMS = [
   { id: 'lich_kham', label: 'Lịch khám' },
   { id: 'lich_su_thanh_toan', label: 'Lịch sử thanh toán' },
-  { id: 'ho_so', label: 'Hồ sơ' },
+  { id: 'ho_so', label: 'Hồ sơ khám điện tử' },
+  { id: 'thong_bao', label: 'Thông báo' },
 ];
 
 const BOOKING_ITEMS = [
@@ -46,6 +48,7 @@ function ThanhDieuHuong({
 }) {
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isBookingOpen, setIsBookingOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
   const accountRef = useRef(null);
   const bookingRef = useRef(null);
 
@@ -75,9 +78,29 @@ function ThanhDieuHuong({
     };
   }, [isAccountOpen, isBookingOpen]);
 
+  useEffect(() => {
+    let active = true;
+    if (!user) {
+      setNotifications([]);
+      return () => {
+        active = false;
+      };
+    }
+
+    loadNotifications(user).then((items) => {
+      if (active) setNotifications(items);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
   const openMedicalAssistant = () => {
     window.dispatchEvent(new CustomEvent('midhealth:open-chatbot'));
   };
+
+  const unreadCount = notifications.filter((item) => !item.read).length;
 
   return (
     <header className="site-header">
@@ -124,7 +147,7 @@ function ThanhDieuHuong({
         </div>
         <a href="/tin-tuc" onClick={(event) => { event.preventDefault(); onHealthNews(); }}>Tin Y tế</a>
         <button type="button" onClick={openMedicalAssistant}>Trợ lý y khoa</button>
-        <a href="/danh-cho-bac-si" onClick={(event) => { event.preventDefault(); onDoctorWorkspace(); }}>Dành cho bác sĩ</a>
+        <a href="/danh-cho-bac-si" onClick={(event) => { event.preventDefault(); onDoctorWorkspace(); }}>Đối tác y tế</a>
       </nav>
 
       {user ? (
@@ -153,6 +176,7 @@ function ThanhDieuHuong({
               {ACCOUNT_ITEMS.map((item) => (
                 <button
                   key={item.id}
+                  className={item.id === 'thong_bao' ? 'account-dropdown-notification-link' : ''}
                   type="button"
                   role="menuitem"
                   onClick={() => {
@@ -160,7 +184,8 @@ function ThanhDieuHuong({
                     onOpenAccount(item.id);
                   }}
                 >
-                  {item.label}
+                  <span>{item.label}</span>
+                  {item.id === 'thong_bao' && unreadCount > 0 ? <b className="account-notification-badge">{unreadCount > 9 ? '9+' : unreadCount}</b> : null}
                 </button>
               ))}
               <button

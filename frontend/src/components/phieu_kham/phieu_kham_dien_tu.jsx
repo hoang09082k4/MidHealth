@@ -8,6 +8,8 @@ import {
   kiem_tra_ngay_sinh,
 } from '../../data/du_lieu_ho_so';
 import { cancelAppointment, listAppointments, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
+import { mergeAppointments, readLocalAppointments, saveLocalAppointments } from '../../lib/local_appointments';
+import { loadNotifications, markNotificationsRead } from '../../lib/notifications';
 import { useReferenceData } from '../../lib/reference_data';
 
 function tao_ten_benh_nhan(user) {
@@ -111,27 +113,8 @@ function HangThongTin({ label, value, highlight }) {
   );
 }
 
-function doc_lich_kham_luu_cuc_bo() {
-  try {
-    const data = JSON.parse(localStorage.getItem('midhealth_appointments') || '[]');
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
-}
-
-function luu_lich_kham_cuc_bo(appointments) {
-  localStorage.setItem('midhealth_appointments', JSON.stringify(appointments));
-}
-
 function gop_lich_kham(appointments) {
-  const seen = new Set();
-  return appointments.filter((item) => {
-    const key = item.id || item.appointmentCode || item.ticket;
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  return mergeAppointments(appointments);
 }
 
 function chuyen_ngay_loc(dateValue) {
@@ -335,7 +318,7 @@ function PhieuKhamChiTiet({ appointment, compact = false }) {
 function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onTabChange, onLogout }) {
   const [activeTab, setActiveTab] = useState(initialTab);
   const [selectedAppointment, setSelectedAppointment] = useState(appointment);
-  const [appointments, setAppointments] = useState(() => gop_lich_kham([appointment, ...doc_lich_kham_luu_cuc_bo()].filter(Boolean)));
+  const [appointments, setAppointments] = useState(() => gop_lich_kham([appointment, ...readLocalAppointments(user)].filter(Boolean)));
   const [searchTerm, setSearchTerm] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filterDraft, setFilterDraft] = useState(FILTER_DEFAULT);
@@ -361,6 +344,8 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isProfileSaving, setIsProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
+  const [notifications, setNotifications] = useState([]);
+  const [selectedNotificationId, setSelectedNotificationId] = useState('');
 
   const profile = profiles.find((item) => item.id === selectedProfileId) || profiles[0];
   const selectedProvince = useMemo(
@@ -455,6 +440,24 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
     setActiveTab(initialTab);
   }, [initialTab]);
 
+  useEffect(() => {
+    setAppointments(gop_lich_kham([appointment, ...readLocalAppointments(user)].filter(Boolean)));
+    setSelectedAppointment(appointment || null);
+  }, [appointment, user]);
+
+  useEffect(() => {
+    let isMounted = true;
+    loadNotifications(user).then((items) => {
+      if (!isMounted) return;
+      setNotifications(items);
+      setSelectedNotificationId((current) => current || items[0]?.id || '');
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user, appointments]);
+
   const changeTab = (nextTab) => {
     setActiveTab(nextTab);
     onTabChange?.(nextTab);
@@ -472,7 +475,7 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
         if (!isMounted) return;
         setAppointments((current) => {
           const nextAppointments = gop_lich_kham([appointment, ...items, ...current].filter(Boolean));
-          luu_lich_kham_cuc_bo(nextAppointments);
+          saveLocalAppointments(user, nextAppointments);
           return nextAppointments;
         });
       })
@@ -536,7 +539,7 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
             ? { ...item, status: 'Đã hủy' }
             : item
         ));
-        luu_lich_kham_cuc_bo(nextAppointments);
+        saveLocalAppointments(user, nextAppointments);
         return nextAppointments;
       });
     } catch (error) {
@@ -663,7 +666,7 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
           }
           : item
       ));
-      luu_lich_kham_cuc_bo(nextAppointments);
+      saveLocalAppointments(user, nextAppointments);
       return nextAppointments;
     });
     setIsEditingProfile(false);
@@ -739,10 +742,29 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
     setIsFilterOpen(false);
   };
 
+  const unreadNotificationCount = notifications.filter((item) => !item.read).length;
+  const activeNotification = notifications.find((item) => item.id === selectedNotificationId) || notifications[0];
+
+  const selectNotification = (notification) => {
+    setSelectedNotificationId(notification.id);
+    if (!notification.read) {
+      markNotificationsRead(user, [notification.id]);
+      setNotifications((current) => current.map((item) => (
+        item.id === notification.id ? { ...item, read: true } : item
+      )));
+    }
+  };
+
+  const markAllNotificationsRead = () => {
+    markNotificationsRead(user, notifications.map((item) => item.id));
+    setNotifications((current) => current.map((item) => ({ ...item, read: true })));
+  };
+
   const menu = [
     ['lich_kham', 'Lịch khám'],
     ['lich_su_thanh_toan', 'Lịch sử thanh toán'],
     ['ho_so', 'Hồ sơ khám điện tử'],
+    ['thong_bao', 'Thông báo', unreadNotificationCount],
     ['tai_khoan', 'Tài khoản'],
   ];
 
@@ -750,9 +772,10 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
     <>
       <section className="account-page">
         <aside className="account-sidebar">
-          {menu.map(([key, label]) => (
+          {menu.map(([key, label, count]) => (
             <button className={activeTab === key ? 'active' : ''} key={key} type="button" onClick={() => changeTab(key)}>
-              {label}
+              <span>{label}</span>
+              {count ? <b className="account-sidebar-badge">{count > 9 ? '9+' : count}</b> : null}
             </button>
           ))}
           <button type="button" onClick={handleLogout}>Đăng xuất</button>
@@ -893,6 +916,77 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
           </>
         )}
 
+        {activeTab === 'thong_bao' && (
+          <>
+            <div className="account-title-row">
+              <h2>Thông báo</h2>
+              {notifications.length > 0 ? <button type="button" onClick={markAllNotificationsRead}>Đánh dấu đã đọc</button> : null}
+            </div>
+            {notifications.length > 0 ? (
+              <div className="notification-account-layout">
+                <div className="notification-account-list">
+                  {notifications.map((notification) => (
+                    <button
+                      key={notification.id}
+                      className={[
+                        'notification-account-item',
+                        notification.id === activeNotification?.id ? 'active' : '',
+                        notification.read ? 'read' : '',
+                      ].filter(Boolean).join(' ')}
+                      type="button"
+                      onClick={() => selectNotification(notification)}
+                    >
+                      <span>
+                        <strong>{notification.title}</strong>
+                        <small>{notification.summary || notification.message}</small>
+                        {notification.patientName ? <em>{notification.patientName}</em> : null}
+                      </span>
+                      {!notification.read ? <b>mới</b> : null}
+                    </button>
+                  ))}
+                </div>
+
+                {activeNotification ? (
+                  <article className="notification-detail-card">
+                    <div>
+                      <span className={activeNotification.read ? 'notification-status read' : 'notification-status'}>{activeNotification.read ? 'Đã đọc' : 'Chưa đọc'}</span>
+                      <h3>{activeNotification.title}</h3>
+                      <p>{activeNotification.detailMessage || activeNotification.message}</p>
+                    </div>
+                    <div className="notification-detail-summary">
+                      {activeNotification.appointmentCode ? <span><small>Mã phiếu</small><strong>{activeNotification.appointmentCode}</strong></span> : null}
+                      {activeNotification.patientName ? <span><small>Bệnh nhân</small><strong>{activeNotification.patientName}</strong></span> : null}
+                      {activeNotification.schedule ? <span><small>Thời gian</small><strong>{activeNotification.schedule}</strong></span> : null}
+                    </div>
+                    {(activeNotification.sections || []).map((section) => (
+                      <section className="notification-detail-section" key={section.title}>
+                        <h4>{section.title}</h4>
+                        {section.rows.map(([label, value]) => (
+                          <div className="notification-detail-row" key={label}>
+                            <span>{label}</span>
+                            <strong>{value}</strong>
+                          </div>
+                        ))}
+                      </section>
+                    ))}
+                    {activeNotification.notes?.length ? (
+                      <section className="notification-detail-section note">
+                        <h4>Lưu ý</h4>
+                        {activeNotification.notes.map((note) => <p key={note}>{note}</p>)}
+                      </section>
+                    ) : null}
+                    <div className="notification-detail-actions">
+                      <button type="button" onClick={() => changeTab('lich_kham')}>Xem lịch khám</button>
+                    </div>
+                  </article>
+                ) : null}
+              </div>
+            ) : (
+              <div className="empty-payment"><span>▤</span><p>Chưa có thông báo mới</p></div>
+            )}
+          </>
+        )}
+
         {activeTab === 'ho_so' && (
           <>
             <h2>Hồ sơ khám điện tử</h2>
@@ -946,10 +1040,10 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
                     <OChonHoSo label="Tỉnh / Thành phố" name="province" value={profileDraft.province} placeholder="Chọn Tỉnh / Thành phố" onChange={updateProfileDraft}>
                       {addressData.map((province) => <option key={province.name}>{province.name}</option>)}
                     </OChonHoSo>
-                    <OChonHoSo label="Quận / Huyện" name="district" value={profileDraft.district} placeholder="Chọn Quận / Huyện" onChange={updateProfileDraft}>
+                    <OChonHoSo label="Phường/Xã/Khu vực" name="district" value={profileDraft.district} placeholder="Chọn phường/xã/khu vực" onChange={updateProfileDraft}>
                       {(selectedProvince?.districts || []).map((district) => <option key={district.name}>{district.name}</option>)}
                     </OChonHoSo>
-                    <OChonHoSo label="Phường / Xã" name="ward" value={profileDraft.ward} placeholder="Chọn phường xã" onChange={updateProfileDraft}>
+                    <OChonHoSo label="Tổ/Ấp/Đơn vị chi tiết" name="ward" value={profileDraft.ward} placeholder="Chọn thông tin chi tiết" onChange={updateProfileDraft}>
                       {(selectedDistrict?.wards || []).map((ward) => <option key={ward}>{ward}</option>)}
                     </OChonHoSo>
                   </div>
@@ -1006,8 +1100,8 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
                   <HangThongTin label="Email" value={profile.email || '--'} />
                   <HangThongTin label="Địa chỉ" value={[profile.address, profile.ward, profile.district, profile.province].filter(Boolean).join(', ') || '--'} />
                   <HangThongTin label="Tỉnh / Thành phố" value={profile.province || '--'} />
-                  <HangThongTin label="Quận / Huyện" value={profile.district || '--'} />
-                  <HangThongTin label="Phường / Xã" value={profile.ward || '--'} />
+                  <HangThongTin label="Phường/Xã/Khu vực" value={profile.district || '--'} />
+                  <HangThongTin label="Tổ/Ấp/Đơn vị chi tiết" value={profile.ward || '--'} />
                   <HangThongTin label="Mã BHYT" value={profile.insuranceCode || '--'} />
                   <HangThongTin label="Số CMND/CCCD" value={profile.citizenId || '--'} />
                   <HangThongTin label="Dân tộc" value={profile.ethnicity} />

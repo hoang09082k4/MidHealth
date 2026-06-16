@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from '../phieu_kham/phieu_kham_dien_tu';
 import { createAppointment, listAppointments, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
+import { mergeAppointments, readLocalAppointments, saveLocalAppointment } from '../../lib/local_appointments';
 import { useReferenceData } from '../../lib/reference_data';
 import {
   chuan_hoa_bhyt,
@@ -9,6 +10,8 @@ import {
   kiem_tra_bhyt,
   kiem_tra_ngay_sinh,
 } from '../../data/du_lieu_ho_so';
+
+const CANVAS_FONT = 'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
 function anh_phong_kham(path) {
   if (!path) return '';
@@ -20,20 +23,6 @@ function lay_ten_tat(name = '') {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return 'BN';
   return parts.slice(-2).map((part) => part[0]).join('').toUpperCase();
-}
-
-function luu_lich_kham(appointment) {
-  const current = JSON.parse(localStorage.getItem('midhealth_appointments') || '[]');
-  localStorage.setItem('midhealth_appointments', JSON.stringify([appointment, ...current.filter((item) => (item.id || item.ticket) !== (appointment.id || appointment.ticket))]));
-}
-
-function doc_lich_hen_cuc_bo() {
-  try {
-    const appointments = JSON.parse(localStorage.getItem('midhealth_appointments') || '[]');
-    return Array.isArray(appointments) ? appointments : [];
-  } catch {
-    return [];
-  }
 }
 
 function gia_tri_ngay(date = new Date()) {
@@ -240,26 +229,26 @@ function tai_anh_phieu(appointment) {
   ctx.arc(460, 70, 30, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = '#ffffff';
-  ctx.font = '700 34px Arial';
+  ctx.font = `700 34px ${CANVAS_FONT}`;
   ctx.textAlign = 'center';
   ctx.fillText('✓', 460, 82);
   ctx.fillStyle = '#0f172a';
-  ctx.font = '700 26px Arial';
+  ctx.font = `700 26px ${CANVAS_FONT}`;
   ctx.fillText('Đặt lịch thành công!', 460, 135);
-  ctx.font = '700 42px Arial';
+  ctx.font = `700 42px ${CANVAS_FONT}`;
   ctx.fillStyle = '#16c784';
   ctx.fillText(String(appointment.number), 460, 210);
-  ctx.font = '700 20px Arial';
+  ctx.font = `700 20px ${CANVAS_FONT}`;
   ctx.fillStyle = '#0f172a';
   ctx.fillText('STT', 460, 172);
   ctx.textAlign = 'left';
   rows.forEach((row, index) => {
     const y = 290 + index * 34;
     ctx.fillStyle = '#64748b';
-    ctx.font = '18px Arial';
+    ctx.font = `18px ${CANVAS_FONT}`;
     ctx.fillText(row.label, 80, y);
     ctx.fillStyle = row.highlight ? '#16a34a' : '#0f172a';
-    ctx.font = '700 18px Arial';
+    ctx.font = `700 18px ${CANVAS_FONT}`;
     ctx.fillText(String(row.value), 360, y);
   });
   const link = document.createElement('a');
@@ -481,10 +470,10 @@ function ModalHoSoPhongKham({ mode, profile, errors = {}, canSave, isSaving, onC
             <SelectField label="Tỉnh / Thành phố" name="province" value={profile.province} placeholder="Chọn Tỉnh / Thành phố" onChange={onChange}>
               {addressData.map((province) => <option key={province.name}>{province.name}</option>)}
             </SelectField>
-            <SelectField label="Quận / Huyện" name="district" value={profile.district} placeholder="Chọn Quận / Huyện" onChange={onChange}>
+            <SelectField label="Phường/Xã/Khu vực" name="district" value={profile.district} placeholder="Chọn phường/xã/khu vực" onChange={onChange}>
               {(selectedProvince?.districts || []).map((district) => <option key={district.name}>{district.name}</option>)}
             </SelectField>
-            <SelectField label="Phường / Xã" name="ward" value={profile.ward} placeholder="Chọn Phường / Xã" onChange={onChange}>
+            <SelectField label="Tổ/Ấp/Đơn vị chi tiết" name="ward" value={profile.ward} placeholder="Chọn thông tin chi tiết" onChange={onChange}>
               {(selectedDistrict?.wards || []).map((ward) => <option key={ward}>{ward}</option>)}
             </SelectField>
             <Field label="Địa chỉ cụ thể" name="address" value={profile.address} placeholder="Số nhà, tên đường" onChange={onChange} />
@@ -551,7 +540,7 @@ function TrangDatLichPhongKham({ clinic, initialScreen = 'detail', user, onBackH
   const [calendarMonth, setCalendarMonth] = useState(() => dau_thang());
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [slotError, setSlotError] = useState('');
-  const [bookedAppointments, setBookedAppointments] = useState(() => doc_lich_hen_cuc_bo());
+  const [bookedAppointments, setBookedAppointments] = useState(() => readLocalAppointments(user));
   const [note, setNote] = useState('');
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [galleryIndex, setGalleryIndex] = useState(null);
@@ -708,6 +697,7 @@ function TrangDatLichPhongKham({ clinic, initialScreen = 'detail', user, onBackH
   useEffect(() => {
     let isMounted = true;
     const fallbackProfile = tao_ho_so_tu_tai_khoan(user);
+    setBookedAppointments(readLocalAppointments(user));
 
     if (!user) {
       setPatientProfiles(fallbackProfile.name ? [fallbackProfile] : []);
@@ -730,7 +720,7 @@ function TrangDatLichPhongKham({ clinic, initialScreen = 'detail', user, onBackH
 
     listAppointments(user)
       .then((items) => {
-        if (isMounted) setBookedAppointments((current) => [...items, ...current]);
+        if (isMounted) setBookedAppointments((current) => mergeAppointments([...items, ...current]));
       })
       .catch(() => {});
 
@@ -918,8 +908,8 @@ function TrangDatLichPhongKham({ clinic, initialScreen = 'detail', user, onBackH
         attachments: attachedFiles.map((file) => file.name),
       });
       setAppointment(nextAppointment);
-      luu_lich_kham(nextAppointment);
-      setBookedAppointments((current) => [nextAppointment, ...current]);
+      saveLocalAppointment(user, nextAppointment);
+      setBookedAppointments((current) => mergeAppointments([nextAppointment, ...current]));
       setScreen('success');
     } catch (error) {
       setWarning(error.message || 'Không thể xác nhận đặt khám. Vui lòng thử lại.');

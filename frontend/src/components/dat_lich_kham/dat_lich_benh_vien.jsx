@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from '../phieu_kham/phieu_kham_dien_tu';
 import { createAppointment, createPayPalOrder, listAppointments, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
+import { mergeAppointments, readLocalAppointments, saveLocalAppointment } from '../../lib/local_appointments';
 import { useReferenceData } from '../../lib/reference_data';
 import { calculateAppointmentPrice, formatCurrency } from '../../lib/pricing';
 import {
@@ -10,6 +11,8 @@ import {
   kiem_tra_bhyt,
   kiem_tra_ngay_sinh,
 } from '../../data/du_lieu_ho_so';
+
+const CANVAS_FONT = 'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
 function anh_benh_vien(path) {
   if (!path) return '';
@@ -45,11 +48,6 @@ function lay_ten_tat(fullName) {
   return parts.slice(-2).map((part) => part[0]).join('').toUpperCase();
 }
 
-function luu_lich_kham(appointment) {
-  const current = JSON.parse(localStorage.getItem('midhealth_appointments') || '[]');
-  localStorage.setItem('midhealth_appointments', JSON.stringify([appointment, ...current.filter((item) => (item.id || item.ticket) !== (appointment.id || appointment.ticket))]));
-}
-
 const MAX_ATTACHMENT_COUNT = 5;
 const MAX_ATTACHMENT_SIZE = 15 * 1024 * 1024;
 const ACCEPTED_ATTACHMENT_TYPES = new Set(['image/png', 'image/jpeg']);
@@ -57,15 +55,6 @@ const ACCEPTED_ATTACHMENT_TYPES = new Set(['image/png', 'image/jpeg']);
 function hien_thi_dung_luong(bytes = 0) {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))}KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-}
-
-function doc_lich_hen_cuc_bo() {
-  try {
-    const appointments = JSON.parse(localStorage.getItem('midhealth_appointments') || '[]');
-    return Array.isArray(appointments) ? appointments : [];
-  } catch {
-    return [];
-  }
 }
 
 function dia_chi_day_du(profile) {
@@ -88,24 +77,24 @@ function tai_anh_phieu(appointment) {
   context.arc(canvas.width / 2, 46, 30, 0, Math.PI * 2);
   context.fill();
   context.fillStyle = '#ffffff';
-  context.font = 'bold 34px Arial';
+  context.font = `bold 34px ${CANVAS_FONT}`;
   context.textAlign = 'center';
   context.fillText('✓', canvas.width / 2, 58);
 
   context.fillStyle = '#111827';
-  context.font = 'bold 24px Arial';
+  context.font = `bold 24px ${CANVAS_FONT}`;
   context.fillText('Đặt lịch thành công!', canvas.width / 2, 120);
-  context.font = '16px Arial';
+  context.font = `16px ${CANVAS_FONT}`;
   context.fillText('STT', canvas.width / 2 - 80, 168);
   context.fillStyle = '#16a34a';
-  context.font = 'bold 36px Arial';
+  context.font = `bold 36px ${CANVAS_FONT}`;
   context.fillText(String(appointment.number), canvas.width / 2 - 80, 208);
 
   const drawSection = (title, rows, yStart) => {
     let y = yStart;
     context.textAlign = 'left';
     context.fillStyle = '#111827';
-    context.font = 'bold 18px Arial';
+    context.font = `bold 18px ${CANVAS_FONT}`;
     context.fillText(title, 32, y);
     y += 30;
     rows.forEach((row) => {
@@ -115,7 +104,7 @@ function tai_anh_phieu(appointment) {
       context.lineTo(canvas.width - 32, y + 8);
       context.stroke();
       context.fillStyle = '#111827';
-      context.font = '16px Arial';
+      context.font = `16px ${CANVAS_FONT}`;
       context.fillText(row.label, 32, y + 34);
       context.fillStyle = row.highlight ? '#16a34a' : '#111827';
       context.fillText(String(row.value), 330, y + 34);
@@ -131,10 +120,10 @@ function tai_anh_phieu(appointment) {
   context.stroke();
   context.fillStyle = '#111827';
   context.textAlign = 'left';
-  context.font = 'bold 18px Arial';
+  context.font = `bold 18px ${CANVAS_FONT}`;
   context.fillText(appointment.doctorShortName, 90, 270);
   context.fillStyle = '#4b5563';
-  context.font = '16px Arial';
+  context.font = `16px ${CANVAS_FONT}`;
   context.fillText(appointment.address, 90, 296);
 
   const nextY = drawSection('Thông tin đặt khám', visibleBookingRows, 350);
@@ -426,27 +415,21 @@ function chuyen_ho_so_tu_api(profile) {
   });
 }
 
-function doc_ho_so_tu_lich_cuc_bo() {
-  try {
-    const appointments = JSON.parse(localStorage.getItem('midhealth_appointments') || '[]');
-    if (!Array.isArray(appointments)) return [];
-    return appointments
-      .map((appointment) => appointment.patientProfile ? {
-        ...appointment.patientProfile,
-        name: appointment.patientProfile.name || appointment.patientName,
-        phone: appointment.patientProfile.phone || appointment.phone,
-      } : {
-        name: appointment.patientName || '',
-        birthDate: appointment.birthDate || '',
-        phone: appointment.phone || '',
-        gender: appointment.gender || 'Nam',
-        address: appointment.patientAddress || '',
-      })
-      .filter((profile) => profile.name && profile.phone)
-      .map(chuyen_ho_so_tu_api);
-  } catch {
-    return [];
-  }
+function doc_ho_so_tu_lich_cuc_bo(user) {
+  return readLocalAppointments(user)
+    .map((appointment) => appointment.patientProfile ? {
+      ...appointment.patientProfile,
+      name: appointment.patientProfile.name || appointment.patientName,
+      phone: appointment.patientProfile.phone || appointment.phone,
+    } : {
+      name: appointment.patientName || '',
+      birthDate: appointment.birthDate || '',
+      phone: appointment.phone || '',
+      gender: appointment.gender || 'Nam',
+      address: appointment.patientAddress || '',
+    })
+    .filter((profile) => profile.name && profile.phone)
+    .map(chuyen_ho_so_tu_api);
 }
 
 function gop_ho_so(profiles) {
@@ -654,10 +637,10 @@ function ModalHoSo({ mode, profile, errors = {}, canSave, onClose, onEdit, onCha
             <SelectField label="Tỉnh / thành phố" name="province" value={profile.province} placeholder="Chọn tỉnh / thành phố" onChange={onChange} error={errors.province}>
               {addressData.map((province) => <option key={province.name}>{province.name}</option>)}
             </SelectField>
-            <SelectField label="Quận / huyện" name="district" value={profile.district} placeholder="Chọn quận / huyện" onChange={onChange} error={errors.district}>
+            <SelectField label="Phường/Xã/Khu vực" name="district" value={profile.district} placeholder="Chọn phường/xã/khu vực" onChange={onChange} error={errors.district}>
               {(selectedProvince?.districts || []).map((district) => <option key={district.name}>{district.name}</option>)}
             </SelectField>
-            <SelectField label="Phường / xã" name="ward" value={profile.ward} placeholder="Chọn phường / xã" onChange={onChange} error={errors.ward}>
+            <SelectField label="Tổ/Ấp/Đơn vị chi tiết" name="ward" value={profile.ward} placeholder="Chọn thông tin chi tiết" onChange={onChange} error={errors.ward}>
               {(selectedDistrict?.wards || []).map((ward) => <option key={ward}>{ward}</option>)}
             </SelectField>
             <Field label="Địa chỉ cụ thể" name="address" value={profile.address} required placeholder="Số nhà, tên đường" onChange={onChange} error={errors.address} />
@@ -864,10 +847,10 @@ function TrangDatLichBenhVien({ hospital, initialScreen = 'detail', user, onBack
   const [hospitalSlots, setHospitalSlots] = useState([]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [slotError, setSlotError] = useState('');
-  const [bookedAppointments, setBookedAppointments] = useState(() => doc_lich_hen_cuc_bo());
+  const [bookedAppointments, setBookedAppointments] = useState(() => readLocalAppointments(user));
   const [patientProfile, setPatientProfile] = useState(() => tao_ho_so_mac_dinh(user));
   const [selectedPatient, setSelectedPatient] = useState(null);
-  const [existingProfiles, setExistingProfiles] = useState(() => doc_ho_so_tu_lich_cuc_bo());
+  const [existingProfiles, setExistingProfiles] = useState(() => doc_ho_so_tu_lich_cuc_bo(user));
   const [isSearchingExistingProfile, setIsSearchingExistingProfile] = useState(false);
   const [profileSearchTerm, setProfileSearchTerm] = useState('');
   const [profileDraft, setProfileDraft] = useState(null);
@@ -1019,7 +1002,7 @@ function TrangDatLichBenhVien({ hospital, initialScreen = 'detail', user, onBack
 
   useEffect(() => {
     let isMounted = true;
-    const localProfiles = doc_ho_so_tu_lich_cuc_bo();
+    const localProfiles = doc_ho_so_tu_lich_cuc_bo(user);
     setExistingProfiles(localProfiles);
 
     if (!user) return () => {
@@ -1048,7 +1031,7 @@ function TrangDatLichBenhVien({ hospital, initialScreen = 'detail', user, onBack
 
   useEffect(() => {
     let isMounted = true;
-    const localAppointments = doc_lich_hen_cuc_bo();
+    const localAppointments = readLocalAppointments(user);
     setBookedAppointments(localAppointments);
 
     if (!user) return () => {
@@ -1058,10 +1041,10 @@ function TrangDatLichBenhVien({ hospital, initialScreen = 'detail', user, onBack
     listAppointments(user)
       .then((appointments) => {
         if (!isMounted) return;
-        setBookedAppointments([
+        setBookedAppointments(mergeAppointments([
           ...(appointments || []),
           ...localAppointments,
-        ]);
+        ]));
       })
       .catch(() => {
         if (isMounted) setBookedAppointments(localAppointments);
@@ -1366,8 +1349,8 @@ function TrangDatLichBenhVien({ hospital, initialScreen = 'detail', user, onBack
         attachments: attachedFiles.map((file) => file.name),
       });
       setAppointment(nextAppointment);
-      luu_lich_kham(nextAppointment);
-      setBookedAppointments((current) => [nextAppointment, ...current]);
+      saveLocalAppointment(user, nextAppointment);
+      setBookedAppointments((current) => mergeAppointments([nextAppointment, ...current]));
       const paymentOrder = await createPayPalOrder(user, nextAppointment.id);
       if (paymentOrder.approvalUrl) {
         window.location.assign(paymentOrder.approvalUrl);

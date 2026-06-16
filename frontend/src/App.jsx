@@ -166,6 +166,7 @@ function routeFromLocation() {
       'lich-kham': 'lich_kham',
       'thanh-toan': 'lich_su_thanh_toan',
       'ho-so': 'ho_so',
+      'thong-bao': 'thong_bao',
       'bao-mat': 'tai_khoan',
     }[patientAccountMatch[1]] || 'lich_kham';
     return { page: 'patient-account', accountTab };
@@ -530,6 +531,7 @@ function App() {
       lich_kham: 'lich-kham',
       lich_su_thanh_toan: 'thanh-toan',
       ho_so: 'ho-so',
+      thong_bao: 'thong-bao',
       tai_khoan: 'bao-mat',
     }[accountTab] || 'lich-kham';
     pushUrl(`/tai-khoan/${accountPath}`);
@@ -721,6 +723,7 @@ function App() {
             onSelectSpecialty={showSpecialtyBooking}
             onOpenHealthNews={showHealthNews}
             onOpenBookingOverview={showBookingOverview}
+            onOpenPublicInfo={showPublicInfo}
           />
         )}
         </Suspense>

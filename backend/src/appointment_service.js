@@ -1,6 +1,10 @@
+import nodemailer from 'nodemailer';
 import { linkPatientProfileToAppUser, upsertAppUser } from './account_service.js';
+import { config } from './config.js';
 import { hasSupabaseConfig, supabase } from './supabase.js';
 import { calculateAppointmentPrice } from './pricing.js';
+
+const reminderEmailSent = new Set();
 
 function clean(value) {
   return typeof value === 'string' ? value.trim() : value;
@@ -27,6 +31,106 @@ function toDate(value) {
 function toTime(value) {
   const match = String(value || '').match(/(\d{2}:\d{2})/);
   return match ? `${match[1]}:00` : null;
+}
+
+function hasMailConfig() {
+  return Boolean(config.gmailUser && config.gmailAppPassword);
+}
+
+function mailTransporter() {
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: config.gmailUser,
+      pass: config.gmailAppPassword.replace(/\s/g, ''),
+    },
+  });
+}
+
+function appointmentDateTime(appointment) {
+  const dateValue = appointment?.appointment_date;
+  const timeValue = String(appointment?.appointment_start_time || appointment?.appointment_time || '00:00').slice(0, 5);
+  const value = new Date(`${dateValue}T${timeValue}:00`);
+  return Number.isNaN(value.getTime()) ? null : value;
+}
+
+function appointmentMailTarget(firebaseUser, owner, appointment, input = {}) {
+  return normalizeEmail(
+    input?.patientProfile?.email
+    || input?.email
+    || appointment?.patient_medical_profiles?.email
+    || owner?.email
+    || firebaseUser?.email
+  );
+}
+
+function appointmentMailHtml({ title, appointment, ticket, input = {}, reminder = false }) {
+  const place = input.doctorName || input.facilityName || input.hospitalName || appointment.medical_facilities?.name || 'Cơ sở y tế';
+  const timeText = input.time || appointment.appointment_time_text || '';
+  const dateText = input.dateDisplay || toDisplayDate(appointment.appointment_date);
+  const patientName = appointment.patient_name || input.patientName || '';
+  const code = ticket?.appointment_code || '';
+  const lead = reminder
+    ? 'Lịch khám của bạn sắp diễn ra. Vui lòng đến sớm khoảng 15 phút để làm thủ tục.'
+    : 'MidHealth đã ghi nhận lịch khám của bạn.';
+
+  return `
+    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a">
+      <h2>${title}</h2>
+      <p>${lead}</p>
+      <table style="border-collapse:collapse;width:100%;max-width:620px">
+        <tr><td style="padding:8px;border-bottom:1px solid #e5e7eb">Mã phiếu</td><td style="padding:8px;border-bottom:1px solid #e5e7eb"><strong>${code}</strong></td></tr>
+        <tr><td style="padding:8px;border-bottom:1px solid #e5e7eb">Bệnh nhân</td><td style="padding:8px;border-bottom:1px solid #e5e7eb">${patientName}</td></tr>
+        <tr><td style="padding:8px;border-bottom:1px solid #e5e7eb">Nơi khám</td><td style="padding:8px;border-bottom:1px solid #e5e7eb">${place}</td></tr>
+        <tr><td style="padding:8px;border-bottom:1px solid #e5e7eb">Ngày khám</td><td style="padding:8px;border-bottom:1px solid #e5e7eb">${dateText}</td></tr>
+        <tr><td style="padding:8px;border-bottom:1px solid #e5e7eb">Giờ khám</td><td style="padding:8px;border-bottom:1px solid #e5e7eb"><strong>${timeText}</strong></td></tr>
+      </table>
+      <p>Bạn có thể mở MidHealth để xem phiếu khám điện tử và theo dõi trạng thái lịch hẹn.</p>
+    </div>
+  `;
+}
+
+async function sendAppointmentEmail({ firebaseUser, owner, appointment, ticket, input = {}, reminder = false }) {
+  if (!hasMailConfig()) return;
+  const to = appointmentMailTarget(firebaseUser, owner, appointment, input);
+  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return;
+
+  const subject = reminder
+    ? 'MidHealth nhắc lịch khám sắp diễn ra'
+    : 'MidHealth xác nhận lịch khám của bạn';
+
+  await mailTransporter().sendMail({
+    from: `"MidHealth" <${config.gmailUser}>`,
+    to,
+    subject,
+    html: appointmentMailHtml({
+      title: reminder ? 'Nhắc lịch khám' : 'Đặt lịch khám thành công',
+      appointment,
+      ticket,
+      input,
+      reminder,
+    }),
+  });
+}
+
+async function sendUpcomingAppointmentReminders(firebaseUser, owner, appointments = []) {
+  if (!hasMailConfig()) return;
+  const now = new Date();
+  await Promise.all((appointments || []).map(async (appointment) => {
+    const appointmentTime = appointmentDateTime(appointment);
+    if (!appointmentTime) return;
+    const hoursUntil = (appointmentTime.getTime() - now.getTime()) / 36e5;
+    if (hoursUntil < 0 || hoursUntil > 24 || appointment.status === 'cancelled') return;
+    const key = `${owner?.id || firebaseUser?.localId}:${appointment.id}`;
+    if (reminderEmailSent.has(key)) return;
+    reminderEmailSent.add(key);
+    try {
+      const ticket = Array.isArray(appointment.queue_tickets) ? appointment.queue_tickets[0] : appointment.queue_tickets;
+      await sendAppointmentEmail({ firebaseUser, owner, appointment, ticket, reminder: true });
+    } catch {
+      reminderEmailSent.delete(key);
+    }
+  }));
 }
 
 function formatTime(value) {
@@ -1093,6 +1197,12 @@ export async function createAppointment(firebaseUser, payload = {}) {
       .single();
     if (ticketError) throw ticketError;
 
+    try {
+      await sendAppointmentEmail({ firebaseUser, owner, appointment, ticket, input: payload });
+    } catch {
+      // Email delivery must not roll back a successful appointment.
+    }
+
     return {
       ok: true,
       status: 201,
@@ -1135,6 +1245,12 @@ export async function listAppointments(firebaseUser) {
       .eq('owner_profile_id', owner.id)
       .order('created_at', { ascending: false });
     if (error) throw error;
+
+    try {
+      await sendUpcomingAppointmentReminders(firebaseUser, owner, data || []);
+    } catch {
+      // Listing appointments should stay reliable even if email is unavailable.
+    }
 
     return {
       ok: true,
