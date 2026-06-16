@@ -1,14 +1,14 @@
 import {
   createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
   updatePassword,
   updateProfile,
 } from 'firebase/auth';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { savePatientProfile } from '../../lib/appointments';
 import { firebaseAuth, signInWithGoogle } from '../../lib/firebase';
+import { useReferenceData } from '../../lib/reference_data';
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
 const initialProfile = {
@@ -29,6 +29,35 @@ const initialProfile = {
 };
 
 const supportedCardImageTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+function email_hop_le(value = '') {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function thong_bao_email(value = '') {
+  const email = value.trim();
+  if (!email) return 'Vui lòng nhập email.';
+  if (!email.includes('@')) return 'Email cần có ký tự @. Ví dụ: ten@gmail.com.';
+  if (!email_hop_le(email)) return 'Email chưa đúng định dạng. Ví dụ: ten@gmail.com.';
+  return '';
+}
+
+function chuan_hoa_so_dien_thoai(value = '') {
+  return String(value || '').replace(/\D/g, '').slice(0, 10);
+}
+
+function thong_bao_so_dien_thoai(value = '') {
+  const phone = chuan_hoa_so_dien_thoai(value);
+  if (!phone) return 'Vui lòng nhập số điện thoại.';
+  if (!/^0(3|5|7|8|9)\d{8}$/.test(phone)) return 'Xin vui lòng nhập đúng số điện thoại!';
+  return '';
+}
+
+function thong_bao_mat_khau(value = '') {
+  if (!value) return 'Vui lòng nhập mật khẩu.';
+  if (value.length < 6) return 'Mật khẩu cần tối thiểu 6 ký tự.';
+  return '';
+}
 
 function chuan_hoa_ngay_tu_qr(value) {
   const digits = String(value || '').replace(/\D/g, '');
@@ -241,20 +270,32 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
   const [signupAuthUser, setSignupAuthUser] = useState(null);
   const [form, setForm] = useState({
     email: '',
+    phone: '',
     password: '',
     remember: false,
     otp: '',
     profile: initialProfile,
   });
   const [message, setMessage] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [cardUpload, setCardUpload] = useState({ loading: false, type: '', fileName: '', previewUrl: '', result: null, error: '' });
   const [autofilledFields, setAutofilledFields] = useState([]);
   const [cardCamera, setCardCamera] = useState({ active: false, type: '', status: '', quality: null });
+  const { addressData, ethnicGroups, occupations } = useReferenceData();
+  const selectedProvince = useMemo(
+    () => addressData.find((item) => item.name === form.profile.province),
+    [addressData, form.profile.province],
+  );
+  const selectedDistrict = useMemo(
+    () => selectedProvince?.districts.find((item) => item.name === form.profile.district),
+    [selectedProvince, form.profile.district],
+  );
 
   useEffect(() => {
     setForm({
       email: '',
+      phone: '',
       password: '',
       remember: false,
       otp: '',
@@ -278,10 +319,11 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
   }, [initialMode]);
 
   const cap_nhat_form = (field, value) => {
+    const nextValue = field === 'phone' ? chuan_hoa_so_dien_thoai(value) : value;
     setForm((current) => ({
       ...current,
-      [field]: value,
-      profile: field === 'email' ? { ...current.profile, email: value } : current.profile,
+      [field]: nextValue,
+      profile: field === 'email' ? { ...current.profile, email: nextValue } : current.profile,
     }));
 
     if (field === 'email') {
@@ -291,12 +333,32 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
       setSignupAuthUser(null);
       setSignupStep(1);
     }
+    setFieldErrors((current) => ({
+      ...current,
+      [field]: field === 'email' && nextValue ? thong_bao_email(nextValue)
+        : field === 'phone' && value && nextValue !== value ? 'Xin vui lòng nhập đúng số điện thoại!'
+          : field === 'phone' && nextValue ? thong_bao_so_dien_thoai(nextValue)
+            : '',
+    }));
   };
 
   const cap_nhat_ho_so = (field, value) => {
+    const nextValue = field === 'phone' ? chuan_hoa_so_dien_thoai(value) : value;
     setForm((current) => ({
       ...current,
-      profile: { ...current.profile, [field]: value },
+      profile: {
+        ...current.profile,
+        [field]: nextValue,
+        ...(field === 'province' ? { district: '', ward: '' } : {}),
+        ...(field === 'district' ? { ward: '' } : {}),
+      },
+    }));
+    const phoneError = field === 'phone' && value && nextValue !== value
+      ? 'Xin vui lòng nhập đúng số điện thoại!'
+      : field === 'phone' && nextValue ? thong_bao_so_dien_thoai(nextValue) : '';
+    setFieldErrors((current) => ({
+      ...current,
+      [`profile.${field}`]: phoneError,
     }));
   };
 
@@ -481,8 +543,10 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
   };
 
   const gui_otp_dang_ky = async () => {
-    if (!form.email.trim()) {
-      throw new Error('Vui lòng nhập email trước khi đăng ký.');
+    const emailMessage = thong_bao_email(form.email);
+    if (emailMessage) {
+      setFieldErrors((current) => ({ ...current, email: emailMessage }));
+      throw new Error(emailMessage);
     }
 
     await goi_api('/api/auth/otp/send', { email: form.email.trim() });
@@ -521,6 +585,12 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
   };
 
   const hoan_tat_ho_so_google = async () => {
+    const errors = validateSignupProfile();
+    if (Object.keys(errors).length) {
+      setFieldErrors((current) => ({ ...current, ...errors }));
+      throw new Error('Vui lòng kiểm tra lại các ô thông tin màu đỏ.');
+    }
+
     const profile = {
       ...form.profile,
       email: googleSignupUser.email || form.email.trim(),
@@ -549,6 +619,12 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
   };
 
   const hoan_tat_ho_so_email = async () => {
+    const errors = validateSignupProfile();
+    if (Object.keys(errors).length) {
+      setFieldErrors((current) => ({ ...current, ...errors }));
+      throw new Error('Vui lòng kiểm tra lại các ô thông tin màu đỏ.');
+    }
+
     let authUser = signupAuthUser;
     if (!authUser) {
       try {
@@ -629,11 +705,18 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
   };
 
   const dang_nhap_email = async () => {
-    const credential = await signInWithEmailAndPassword(
-      firebaseAuth,
-      form.email.trim(),
-      form.password,
-    );
+    const errors = validateLoginForm();
+    if (Object.keys(errors).length) {
+      setFieldErrors((current) => ({ ...current, ...errors }));
+      throw new Error('Vui lòng kiểm tra lại số điện thoại và mật khẩu.');
+    }
+
+    const loginData = await goi_api('/api/auth/login', {
+      phone: chuan_hoa_so_dien_thoai(form.phone),
+      password: form.password,
+      portal: 'patient',
+    });
+    const credential = await signInWithEmailAndPassword(firebaseAuth, loginData.email, form.password);
     return credential.user;
   };
 
@@ -709,22 +792,48 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
   const handleResetPassword = async () => {
     setMessage('');
 
-    if (!form.email.trim()) {
-      setMessage('Nhập email của bạn để đặt lại mật khẩu.');
+    const phoneMessage = thong_bao_so_dien_thoai(form.phone);
+    if (phoneMessage) {
+      setFieldErrors((current) => ({ ...current, phone: phoneMessage }));
+      setMessage(phoneMessage);
       return;
     }
 
     try {
-      await sendPasswordResetEmail(firebaseAuth, form.email.trim());
-      setMessage('Đã gửi email đặt lại mật khẩu. Vui lòng kiểm tra hộp thư.');
+      await goi_api('/api/auth/password-reset', { phone: chuan_hoa_so_dien_thoai(form.phone) });
+      setMessage('Đã gửi email đặt lại mật khẩu tới email liên kết với số điện thoại này.');
     } catch (error) {
       setMessage(lay_thong_bao_loi(error));
     }
   };
 
+  const validateLoginForm = () => {
+    const errors = {};
+    const phoneMessage = thong_bao_so_dien_thoai(form.phone);
+    if (phoneMessage) errors.phone = phoneMessage;
+    if (!form.password) errors.password = 'Vui lòng nhập mật khẩu.';
+    return errors;
+  };
+
+  const validateSignupProfile = () => {
+    const errors = {};
+    if (!form.profile.fullName.trim()) errors['profile.fullName'] = 'Vui lòng nhập họ và tên.';
+    const phoneMessage = thong_bao_so_dien_thoai(form.profile.phone);
+    if (phoneMessage) errors['profile.phone'] = phoneMessage;
+    if (!form.profile.dateOfBirth.trim()) errors['profile.dateOfBirth'] = 'Vui lòng chọn ngày sinh.';
+    if (!form.profile.province.trim()) errors['profile.province'] = 'Vui lòng chọn tỉnh/thành phố.';
+    if (!form.profile.address.trim()) errors['profile.address'] = 'Vui lòng nhập địa chỉ cụ thể.';
+    return errors;
+  };
+
+  const canSubmitSignin = !isLoading && !thong_bao_so_dien_thoai(form.phone) && Boolean(form.password);
+  const canSubmitSignupEmail = !isLoading && !thong_bao_email(form.email);
+  const canSubmitSignupPassword = !isLoading && !thong_bao_mat_khau(form.password);
+  const canFinishProfile = !isLoading && !cardUpload.loading && !Object.keys(validateSignupProfile()).length;
+
   const renderSignupStep = () => (
     <section className="signup-wizard-page">
-      <form className="signup-wizard-card" onSubmit={handleSubmit}>
+      <form className="signup-wizard-card" onSubmit={handleSubmit} noValidate>
         <CacBuocDangKy step={signupStep} />
 
         {signupStep === 1 && (
@@ -737,13 +846,14 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
               <>
                 <p>Nhập Gmail để MidHealth gửi mã OTP xác thực tài khoản.</p>
                 <input
-                  className="signup-single-input"
-                  type="email"
+                  className={fieldErrors.email ? 'signup-single-input has-error' : 'signup-single-input'}
+                  type="text"
+                  inputMode="email"
                   value={form.email}
                   onChange={(event) => cap_nhat_form('email', event.target.value)}
                   placeholder="Địa chỉ Gmail của bạn"
-                  required
                 />
+                {fieldErrors.email && <small className="field-error">{fieldErrors.email}</small>}
               </>
             ) : (
               <>
@@ -768,7 +878,7 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
               </>
             )}
             {message && <div className="auth-message">{message}</div>}
-            <button type="submit" disabled={isLoading || (!googleSignupUser && otpSent && form.otp.length < 6)}>
+            <button type="submit" disabled={googleSignupUser ? isLoading : otpSent ? isLoading || form.otp.length < 6 : !canSubmitSignupEmail}>
               {isLoading ? 'Đang xử lý...' : googleSignupUser || otpSent ? 'Tiếp tục' : 'Gửi OTP'}
             </button>
             {!googleSignupUser && otpSent && (
@@ -785,17 +895,21 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
             <p>Nhập mật khẩu gồm tối thiểu 6 ký tự để bảo vệ hồ sơ khám điện tử của bạn và đăng nhập những lần sau.</p>
             <label>
               Mật khẩu
-              <input
-                type="password"
-                value={form.password}
-                onChange={(event) => cap_nhat_form('password', event.target.value)}
-                placeholder="Tạo mật khẩu cho tài khoản"
-                required
-                minLength={6}
-              />
+                <input
+                  type="password"
+                  className={fieldErrors.password ? 'has-error' : ''}
+                  value={form.password}
+                  onChange={(event) => {
+                    cap_nhat_form('password', event.target.value);
+                    setFieldErrors((current) => ({ ...current, password: event.target.value ? thong_bao_mat_khau(event.target.value) : '' }));
+                  }}
+                  placeholder="Tạo mật khẩu cho tài khoản"
+                  minLength={6}
+                />
+                {fieldErrors.password && <small className="field-error">{fieldErrors.password}</small>}
             </label>
             {message && <div className="auth-message">{message}</div>}
-            <button type="submit" disabled={isLoading || form.password.length < 6}>
+            <button type="submit" disabled={!canSubmitSignupPassword}>
               {isLoading ? 'Đang xử lý...' : 'Tạo mật khẩu'}
             </button>
           </div>
@@ -887,31 +1001,31 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
             <div className="profile-form-grid" ref={profileFormRef}>
               <div>
                 <h3>Thông tin hồ sơ khám điện tử</h3>
-                <label className={lop_tu_dong_dien('fullName')}>Họ và tên <span>*</span><input value={form.profile.fullName} onChange={(event) => cap_nhat_ho_so('fullName', event.target.value)} placeholder="Họ và tên" required /></label>
-                <label>Số điện thoại <span>*</span><input value={form.profile.phone} onChange={(event) => cap_nhat_ho_so('phone', event.target.value)} placeholder="Số điện thoại" required /></label>
-                <label className={lop_tu_dong_dien('dateOfBirth')}>Ngày sinh <span>*</span><input type="date" value={form.profile.dateOfBirth} onChange={(event) => cap_nhat_ho_so('dateOfBirth', event.target.value)} required /></label>
+                <label className={fieldErrors['profile.fullName'] ? `${lop_tu_dong_dien('fullName')} has-field-error` : lop_tu_dong_dien('fullName')}>Họ và tên <span>*</span><input value={form.profile.fullName} onChange={(event) => cap_nhat_ho_so('fullName', event.target.value)} placeholder="Họ và tên" />{fieldErrors['profile.fullName'] && <small className="field-error">{fieldErrors['profile.fullName']}</small>}</label>
+                <label className={fieldErrors['profile.phone'] ? 'has-field-error' : ''}>Số điện thoại <span>*</span><input inputMode="tel" value={form.profile.phone} onChange={(event) => cap_nhat_ho_so('phone', event.target.value)} placeholder="Số điện thoại" />{fieldErrors['profile.phone'] && <small className="field-error">{fieldErrors['profile.phone']}</small>}</label>
+                <label className={fieldErrors['profile.dateOfBirth'] ? `${lop_tu_dong_dien('dateOfBirth')} has-field-error` : lop_tu_dong_dien('dateOfBirth')}>Ngày sinh <span>*</span><input type="date" value={form.profile.dateOfBirth} onChange={(event) => cap_nhat_ho_so('dateOfBirth', event.target.value)} />{fieldErrors['profile.dateOfBirth'] && <small className="field-error">{fieldErrors['profile.dateOfBirth']}</small>}</label>
                 <label className={lop_tu_dong_dien('citizenId')}>Số CMND/CCCD<input value={form.profile.citizenId} onChange={(event) => cap_nhat_ho_so('citizenId', event.target.value)} placeholder="Số CMND/CCCD" /></label>
                 <div className={`gender-field ${lop_tu_dong_dien('gender')}`}>
                   <span>Giới tính</span>
                   <button className={form.profile.gender === 'male' ? 'active' : ''} type="button" onClick={() => cap_nhat_ho_so('gender', 'male')}>Nam</button>
                   <button className={form.profile.gender === 'female' ? 'active' : ''} type="button" onClick={() => cap_nhat_ho_so('gender', 'female')}>Nữ</button>
                 </div>
-                <label>Địa chỉ email của bạn<input type="email" value={form.email} disabled /></label>
-                <label>Dân tộc<select value={form.profile.ethnicity} onChange={(event) => cap_nhat_ho_so('ethnicity', event.target.value)}><option>Kinh</option><option>Hoa</option><option>Khmer</option><option>Chăm</option><option>Khác</option></select></label>
+                <label>Địa chỉ email của bạn<input type="text" value={form.email} disabled /></label>
+                <label>Dân tộc<select value={form.profile.ethnicity} onChange={(event) => cap_nhat_ho_so('ethnicity', event.target.value)}>{ethnicGroups.map((item) => <option key={item}>{item}</option>)}</select></label>
               </div>
               <div>
                 <h3>Thông tin bổ sung</h3>
                 <label className={lop_tu_dong_dien('healthInsuranceNumber')}>Mã thẻ Bảo hiểm y tế<input value={form.profile.healthInsuranceNumber} onChange={(event) => cap_nhat_ho_so('healthInsuranceNumber', event.target.value)} placeholder="Mã số trên thẻ Bảo hiểm y tế" /></label>
-                <label className={lop_tu_dong_dien('province')}>Tỉnh / Thành phố<select value={form.profile.province} onChange={(event) => cap_nhat_ho_so('province', event.target.value)}><option value="">Chọn tỉnh thành phố của bạn</option>{form.profile.province && !['TP. Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ'].includes(form.profile.province) && <option>{form.profile.province}</option>}<option>TP. Hồ Chí Minh</option><option>Hà Nội</option><option>Đà Nẵng</option><option>Cần Thơ</option></select></label>
-                <label className={lop_tu_dong_dien('district')}>Quận / Huyện<select value={form.profile.district} onChange={(event) => cap_nhat_ho_so('district', event.target.value)}><option value="">Chọn quận huyện của bạn</option>{form.profile.district && !['Quận 1', 'Quận 3', 'Quận Bình Thạnh', 'TP. Thủ Đức'].includes(form.profile.district) && <option>{form.profile.district}</option>}<option>Quận 1</option><option>Quận 3</option><option>Quận Bình Thạnh</option><option>TP. Thủ Đức</option></select></label>
-                <label className={lop_tu_dong_dien('ward')}>Phường / Xã<select value={form.profile.ward} onChange={(event) => cap_nhat_ho_so('ward', event.target.value)}><option value="">Chọn phường xã của bạn</option>{form.profile.ward && !['Phường Bến Nghé', 'Phường Đa Kao', 'Phường Linh Trung'].includes(form.profile.ward) && <option>{form.profile.ward}</option>}<option>Phường Bến Nghé</option><option>Phường Đa Kao</option><option>Phường Linh Trung</option></select></label>
-                <label className={lop_tu_dong_dien('address')}>Địa chỉ cụ thể<input value={form.profile.address} onChange={(event) => cap_nhat_ho_so('address', event.target.value)} placeholder="Số nhà, tên đường" /></label>
+                <label className={fieldErrors['profile.province'] ? `${lop_tu_dong_dien('province')} has-field-error` : lop_tu_dong_dien('province')}>Tỉnh / Thành phố <span>*</span><select value={form.profile.province} onChange={(event) => cap_nhat_ho_so('province', event.target.value)}><option value="">Chọn tỉnh/thành phố của bạn</option>{addressData.map((province) => <option key={province.name}>{province.name}</option>)}</select>{fieldErrors['profile.province'] && <small className="field-error">{fieldErrors['profile.province']}</small>}</label>
+                <label className={lop_tu_dong_dien('district')}>Phường/Xã/Khu vực<select value={form.profile.district} onChange={(event) => cap_nhat_ho_so('district', event.target.value)}><option value="">Chọn phường/xã/khu vực</option>{(selectedProvince?.districts || []).map((district) => <option key={district.name}>{district.name}</option>)}</select></label>
+                <label className={lop_tu_dong_dien('ward')}>Tổ/Ấp/Đơn vị chi tiết<select value={form.profile.ward} onChange={(event) => cap_nhat_ho_so('ward', event.target.value)}><option value="">Chọn thông tin chi tiết</option>{(selectedDistrict?.wards || []).map((ward) => <option key={ward}>{ward}</option>)}</select></label>
+                <label className={fieldErrors['profile.address'] ? `${lop_tu_dong_dien('address')} has-field-error` : lop_tu_dong_dien('address')}>Địa chỉ cụ thể <span>*</span><input value={form.profile.address} onChange={(event) => cap_nhat_ho_so('address', event.target.value)} placeholder="Số nhà, tên đường" />{fieldErrors['profile.address'] && <small className="field-error">{fieldErrors['profile.address']}</small>}</label>
                 <label>Mã giới thiệu<input value={form.profile.referralCode} onChange={(event) => cap_nhat_ho_so('referralCode', event.target.value)} placeholder="Mã của người giới thiệu" /></label>
-                <label>Nghề nghiệp<select value={form.profile.occupation} onChange={(event) => cap_nhat_ho_so('occupation', event.target.value)}><option value="">Chọn nghề nghiệp</option><option>Nhân viên văn phòng</option><option>Học sinh / Sinh viên</option><option>Kinh doanh</option><option>Khác</option></select></label>
+                <label>Nghề nghiệp<select value={form.profile.occupation} onChange={(event) => cap_nhat_ho_so('occupation', event.target.value)}><option value="">Chọn nghề nghiệp</option>{occupations.map((item) => <option key={item}>{item}</option>)}</select></label>
               </div>
             </div>
             {message && <div className="auth-message">{message}</div>}
-            <button className="finish-profile-button" type="submit" disabled={isLoading || cardUpload.loading}>
+            <button className="finish-profile-button" type="submit" disabled={!canFinishProfile}>
               {isLoading ? 'Đang lưu...' : 'Hoàn tất'}
             </button>
           </div>
@@ -947,6 +1061,7 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
 
             <form
               className="auth-form"
+              noValidate
               onSubmit={(event) => {
                 event.preventDefault();
                 bat_dau_dang_ky();
@@ -954,10 +1069,11 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
             >
               <label>
                 Email
-                <input type="email" value={form.email} onChange={(event) => cap_nhat_form('email', event.target.value)} placeholder="Nhập email để nhận OTP" required />
+                <input className={fieldErrors.email ? 'has-error' : ''} type="text" inputMode="email" value={form.email} onChange={(event) => cap_nhat_form('email', event.target.value)} placeholder="Nhập email để nhận OTP" />
+                {fieldErrors.email && <small className="field-error">{fieldErrors.email}</small>}
               </label>
               {message && <div className="auth-message">{message}</div>}
-              <button type="submit" disabled={isLoading}>{isLoading ? 'Đang gửi OTP...' : 'Đăng ký'}</button>
+              <button type="submit" disabled={!canSubmitSignupEmail}>{isLoading ? 'Đang gửi OTP...' : 'Đăng ký'}</button>
             </form>
 
             <div className="auth-divider"><span>hoặc</span></div>
@@ -1004,18 +1120,20 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
             <button type="button" onClick={mo_form_dang_ky} disabled={isLoading}>Đăng ký</button>
           </div>
 
-          <form onSubmit={handleSubmit} className="auth-form" autoComplete="off">
+          <form onSubmit={handleSubmit} className="auth-form" autoComplete="off" noValidate>
             <label>
-              Email
+              Số điện thoại
               <input
                 autoComplete="off"
-                name="midhealth_login_email"
-                type="email"
-                value={form.email}
-                onChange={(event) => cap_nhat_form('email', event.target.value)}
-                placeholder="Nhập email"
-                required
+                name="midhealth_login_phone"
+                type="text"
+                inputMode="tel"
+                value={form.phone}
+                onChange={(event) => cap_nhat_form('phone', event.target.value)}
+                placeholder="Số điện thoại"
+                className={fieldErrors.phone ? 'has-error' : ''}
               />
+              {fieldErrors.phone && <small className="field-error">{fieldErrors.phone}</small>}
             </label>
             <label>
               Mật khẩu
@@ -1026,8 +1144,9 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
                 value={form.password}
                 onChange={(event) => cap_nhat_form('password', event.target.value)}
                 placeholder="Nhập mật khẩu"
-                required
+                className={fieldErrors.password ? 'has-error' : ''}
               />
+              {fieldErrors.password && <small className="field-error">{fieldErrors.password}</small>}
             </label>
             <div className="auth-row">
               <label className="checkbox-line">
@@ -1037,7 +1156,7 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
               <button className="link-button" type="button" onClick={handleResetPassword}>Quên mật khẩu?</button>
             </div>
             {message && <div className="auth-message">{message}</div>}
-            <button type="submit" disabled={isLoading}>{isLoading ? 'Đang xử lý...' : 'Đăng nhập'}</button>
+            <button type="submit" disabled={!canSubmitSignin}>{isLoading ? 'Đang xử lý...' : 'Đăng nhập'}</button>
           </form>
 
           <div className="auth-divider"><span>hoặc</span></div>

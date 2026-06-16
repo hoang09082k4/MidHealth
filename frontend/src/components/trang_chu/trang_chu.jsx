@@ -27,24 +27,68 @@ function HanhDongMuc({ action = 'Xem thêm', onAction }) {
   );
 }
 
-function MucTinTuong({ items }) {
+function findCatalogItemByName(items = [], name = '') {
+  const target = normalizeSearchText(name);
+  return items.find((item) => normalizeSearchText(item.name).includes(target) || target.includes(normalizeSearchText(item.name))) || null;
+}
+
+function MucTinTuong({ items, catalog, onBookHospital, onSelectSpecialty, onOpenHealthNews, onOpenPublicInfo }) {
+  const handleOpenGuide = () => {
+    onOpenPublicInfo?.('huong-dan-dat-kham');
+  };
+
+  const handleOpenItem = (item) => {
+    const action = item.action || {};
+
+    if (action.type === 'info') {
+      onOpenPublicInfo?.(action.slug);
+      return;
+    }
+
+    if (action.type === 'health') {
+      onOpenHealthNews?.({ name: 'list', category: action.category || 'tin-y-te' });
+      return;
+    }
+
+    if (action.type === 'hospital') {
+      const hospital = findCatalogItemByName(catalog.hospitals, action.name);
+      if (hospital) {
+        onBookHospital?.(hospital);
+        return;
+      }
+      onOpenHealthNews?.({ name: 'search', keyword: action.name || item.title, category: 'kinh-nghiem-di-kham' });
+      return;
+    }
+
+    if (action.type === 'specialty') {
+      const specialty = findCatalogItemByName(catalog.specialties, action.name);
+      onSelectSpecialty?.(specialty || { name: action.name });
+    }
+  };
+
   return (
     <section className="trust-section">
-      <article className="video-card">
+      <button className="video-card" type="button" onClick={handleOpenGuide}>
         <div className="video-thumb">
           <span>▶</span>
         </div>
         <h2>Hướng dẫn đặt lịch và theo dõi số khám MidHealth</h2>
-      </article>
+        <p>Mở hướng dẫn đặt khám, nhận phiếu điện tử và theo dõi lịch hẹn.</p>
+      </button>
       <div className="trust-news">
         <h2>Tin tưởng ở MidHealth</h2>
         <div className="trust-grid">
           {items.map((item) => (
-            <article key={item.title}>
-              <strong>{item.source}</strong>
-              <p>{item.title}</p>
-              <div className="trust-image">MH</div>
-            </article>
+            <button className="trust-item" type="button" key={item.title} onClick={() => handleOpenItem(item)}>
+              <span>
+                <strong>{item.source}</strong>
+                <p>{item.title}</p>
+                <small>{item.actionLabel}</small>
+              </span>
+              <span className="trust-image">
+                {item.image ? <img src={item.image} alt="" loading="lazy" /> : 'MH'}
+              </span>
+            </button>
           ))}
         </div>
       </div>
@@ -123,7 +167,7 @@ function homepageItems(items = []) {
   return (featuredItems.length ? featuredItems : items).slice(0, 8);
 }
 
-function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onBookClinic, onSelectSpecialty, onOpenHealthNews, onOpenBookingOverview }) {
+function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onBookClinic, onSelectSpecialty, onOpenHealthNews, onOpenBookingOverview, onOpenPublicInfo }) {
   const { doctors, hospitals, clinics, specialties } = catalog;
   const featuredDoctors = homepageItems(doctors);
   const featuredHospitals = homepageItems(hospitals);
@@ -237,7 +281,14 @@ function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onB
 
       <TheChuyenKhoa specialties={specialties} onSelectSpecialty={onSelectSpecialty} />
       <MucTinYTeTrangChu onNavigate={onOpenHealthNews} onSelectSpecialty={onSelectSpecialty} />
-      <MucTinTuong items={trustItems} />
+      <MucTinTuong
+        items={trustItems}
+        catalog={catalog}
+        onBookHospital={onBookHospital}
+        onSelectSpecialty={onSelectSpecialty}
+        onOpenHealthNews={onOpenHealthNews}
+        onOpenPublicInfo={onOpenPublicInfo}
+      />
 
     </>
   );
