@@ -1,4 +1,10 @@
 {
+  "scripts": {
+    "test": "npm test --prefix backend",
+    "build": "npm run build --prefix frontend",
+    "check:env": "npm run check:env --prefix backend",
+    "verify": "npm test --prefix backend && npm run build --prefix frontend"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.1"
   },
