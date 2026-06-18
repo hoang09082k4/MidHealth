@@ -186,6 +186,10 @@ function parseCacheMaxAge(cacheControl = '') {
   return match ? Number(match[1]) * 1000 : 60 * 60 * 1000;
 }
 
+function allowedFirebaseProjectIds() {
+  return Array.from(new Set([config.firebaseProjectId, DEFAULT_FIREBASE_PROJECT_ID].filter(Boolean)));
+}
+
 async function getFirebaseCerts() {
   if (firebaseCertsCache.certs && Date.now() < firebaseCertsCache.expiresAt) return firebaseCertsCache.certs;
 
@@ -208,11 +212,11 @@ async function verifyIdTokenWithPublicCerts(idToken) {
     const [encodedHeader, encodedPayload, encodedSignature] = parts;
     const header = parseJwtPart(encodedHeader);
     const payload = parseJwtPart(encodedPayload);
-    const projectId = config.firebaseProjectId || DEFAULT_FIREBASE_PROJECT_ID;
+    const projectIds = allowedFirebaseProjectIds();
 
     if (header.alg !== 'RS256' || !header.kid) return null;
-    if (payload.aud !== projectId) return null;
-    if (payload.iss !== `https://securetoken.google.com/${projectId}`) return null;
+    if (!projectIds.includes(payload.aud)) return null;
+    if (payload.iss !== `https://securetoken.google.com/${payload.aud}`) return null;
     if (!payload.sub || typeof payload.sub !== 'string') return null;
     if (payload.exp * 1000 <= Date.now()) return null;
 
