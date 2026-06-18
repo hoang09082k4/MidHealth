@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { firebaseAuth } from '../../lib/firebase';
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
 const emptyArticleForm = {
@@ -104,6 +106,16 @@ async function loginAdminWithBackend(email, password) {
     throw new Error('Backend đăng nhập thành công nhưng không trả Firebase ID token.');
   }
   return payload.data;
+}
+
+async function loginAdminWithFirebase(email, password) {
+  const credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+  const idToken = await credential.user.getIdToken();
+  return {
+    idToken,
+    email: credential.user.email || email,
+    displayName: credential.user.displayName || credential.user.email || email,
+  };
 }
 
 function MetricCard({ label, value, helper, tone = 'default' }) {
@@ -257,7 +269,7 @@ export default function AdminDashboard({ onBackHome }) {
     setLoading(true);
     setMessage('');
     try {
-      const data = await loginAdminWithBackend(email.trim(), password);
+      const data = await loginAdminWithFirebase(email.trim(), password);
       setBackendToken(data.idToken);
       setAdminUser({
         email: data.email || email.trim(),

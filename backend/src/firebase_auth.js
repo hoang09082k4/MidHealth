@@ -1,7 +1,11 @@
+import crypto from 'node:crypto';
 import { config } from './config.js';
 import { hasSupabaseConfig, supabase } from './supabase.js';
 
 const FIREBASE_AUTH_BASE_URL = 'https://identitytoolkit.googleapis.com/v1';
+const FIREBASE_CERTS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
+const DEFAULT_FIREBASE_PROJECT_ID = 'midhealth-1c1b9';
+let firebaseCertsCache = { certs: null, expiresAt: 0 };
 
 export const hasFirebaseConfig = Boolean(config.firebaseApiKey);
 
@@ -163,6 +167,75 @@ export async function verifyIdToken(idToken) {
   if (!idToken) return null;
 
   const result = await lookupAccount(idToken);
-  if (!result.ok) return null;
+  if (!result.ok) return verifyIdTokenWithPublicCerts(idToken);
   return result.data.users?.[0] || null;
+}
+
+function decodeBase64Url(value = '') {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+  return Buffer.from(padded, 'base64');
+}
+
+function parseJwtPart(value = '') {
+  return JSON.parse(decodeBase64Url(value).toString('utf8'));
+}
+
+function parseCacheMaxAge(cacheControl = '') {
+  const match = cacheControl.match(/max-age=(\d+)/i);
+  return match ? Number(match[1]) * 1000 : 60 * 60 * 1000;
+}
+
+async function getFirebaseCerts() {
+  if (firebaseCertsCache.certs && Date.now() < firebaseCertsCache.expiresAt) return firebaseCertsCache.certs;
+
+  const response = await fetch(FIREBASE_CERTS_URL);
+  if (!response.ok) throw new Error('Unable to fetch Firebase public certificates.');
+
+  const certs = await response.json();
+  firebaseCertsCache = {
+    certs,
+    expiresAt: Date.now() + parseCacheMaxAge(response.headers.get('cache-control') || ''),
+  };
+  return certs;
+}
+
+async function verifyIdTokenWithPublicCerts(idToken) {
+  try {
+    const parts = String(idToken).split('.');
+    if (parts.length !== 3) return null;
+
+    const [encodedHeader, encodedPayload, encodedSignature] = parts;
+    const header = parseJwtPart(encodedHeader);
+    const payload = parseJwtPart(encodedPayload);
+    const projectId = config.firebaseProjectId || DEFAULT_FIREBASE_PROJECT_ID;
+
+    if (header.alg !== 'RS256' || !header.kid) return null;
+    if (payload.aud !== projectId) return null;
+    if (payload.iss !== `https://securetoken.google.com/${projectId}`) return null;
+    if (!payload.sub || typeof payload.sub !== 'string') return null;
+    if (payload.exp * 1000 <= Date.now()) return null;
+
+    const certs = await getFirebaseCerts();
+    const cert = certs[header.kid];
+    if (!cert) return null;
+
+    const verifier = crypto.createVerify('RSA-SHA256');
+    verifier.update(`${encodedHeader}.${encodedPayload}`);
+    verifier.end();
+
+    const signature = decodeBase64Url(encodedSignature);
+    if (!verifier.verify(cert, signature)) return null;
+
+    return {
+      localId: payload.sub,
+      uid: payload.sub,
+      email: payload.email,
+      displayName: payload.name || payload.email,
+      emailVerified: Boolean(payload.email_verified),
+      providerUserInfo: payload.firebase?.sign_in_provider ? [{ providerId: payload.firebase.sign_in_provider }] : [],
+    };
+  } catch {
+    return null;
+  }
 }
