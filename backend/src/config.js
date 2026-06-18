@@ -25,6 +25,16 @@ envPaths.filter((envPath, index) => envPaths.indexOf(envPath) === index && fs.ex
   });
 });
 
+const defaultAllowedOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:4173',
+  'http://127.0.0.1:4173',
+  'https://midhealth.vercel.app',
+  'https://midhealth.vn',
+  'https://www.midhealth.vn',
+];
+
 export const config = {
   port: process.env.PORT || 4000,
   firebaseApiKey: process.env.FIREBASE_API_KEY,
@@ -36,7 +46,11 @@ export const config = {
   gmailAppPassword: process.env.GMAIL_APP_PASSWORD,
   otpExpiresMinutes: Number(process.env.OTP_EXPIRES_MINUTES || 5),
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
-  allowedOrigins: (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,https://midhealth.vercel.app')
+  allowedOrigins: [
+    ...defaultAllowedOrigins,
+    ...(process.env.ALLOWED_ORIGINS || '').split(','),
+  ]
+    .join(',')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
@@ -50,9 +64,9 @@ export const config = {
   paypalCancelUrl: process.env.PAYPAL_CANCEL_URL || 'http://localhost:4000/api/payments/paypal/cancel',
   paymentPendingExpiryMinutes: Number(process.env.PAYMENT_PENDING_EXPIRY_MINUTES || 15),
   momoEndpoint: (process.env.MOMO_ENDPOINT || 'https://test-payment.momo.vn').replace(/\/+$/, ''),
-  momoPartnerCode: process.env.MOMO_PARTNER_CODE || 'MOMO',
-  momoAccessKey: process.env.MOMO_ACCESS_KEY || 'F8BBA842ECF85',
-  momoSecretKey: process.env.MOMO_SECRET_KEY || 'K951B6PE1waDMi640xX08PD3vg6EkVlz',
+  momoPartnerCode: process.env.MOMO_PARTNER_CODE,
+  momoAccessKey: process.env.MOMO_ACCESS_KEY,
+  momoSecretKey: process.env.MOMO_SECRET_KEY,
   momoPartnerName: process.env.MOMO_PARTNER_NAME || 'MidHealth',
   momoStoreId: process.env.MOMO_STORE_ID || 'MidHealthStore',
   momoReturnUrl: process.env.MOMO_RETURN_URL || 'http://localhost:4000/api/payments/momo/return',

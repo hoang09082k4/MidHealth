@@ -7,6 +7,7 @@ import {
   updateCatalogEntityAsAdmin,
   updateUserAsAdmin,
 } from '../../backend/src/admin_service.js';
+import { applyCorsHeaders } from '../../backend/src/cors.js';
 import { verifyIdToken } from '../../backend/src/firebase_auth.js';
 
 function sendJson(response, statusCode, payload) {
@@ -29,6 +30,13 @@ async function getFirebaseUser(request) {
 }
 
 export default async function handler(request, response) {
+  applyCorsHeaders(request, response);
+
+  if (request.method === 'OPTIONS') {
+    response.status(204).end();
+    return;
+  }
+
   if (!['GET', 'POST', 'PATCH', 'DELETE'].includes(request.method)) {
     sendJson(response, 405, { message: 'Method not allowed.' });
     return;

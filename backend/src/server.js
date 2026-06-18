@@ -2,6 +2,7 @@ import http from 'node:http';
 import { URL } from 'node:url';
 import { upsertAppUser } from './account_service.js';
 import { requirePortal, requireRoles, APP_ROLES } from './authorization_service.js';
+import { applyCorsHeaders } from './cors.js';
 import {
   deleteHealthArticleAsAdmin,
   getAdminDashboard,
@@ -75,10 +76,15 @@ import {
   updateProviderAppointmentStatus,
   updateProviderSlot,
 } from './provider_workspace_service.js';
+import {
+  createQueueTicket,
+  getQueueTicket,
+  listQueueTickets,
+  updateQueueTicket,
+} from './queue_service.js';
+import { applySecurityHeaders } from './security_headers.js';
 import { hasSupabaseConfig } from './supabase.js';
-import { queueTickets } from './tickets.js';
 
-let tickets = [...queueTickets];
 const chatbotRateLimits = new Map();
 const authRateLimits = new Map();
 const cardScanRateLimits = new Map();
@@ -137,12 +143,6 @@ function isCardScanRateLimited(request) {
   return current.count > limit;
 }
 
-function getCorsOrigin(request) {
-  const origin = request.headers.origin;
-  if (origin && config.allowedOrigins.includes(origin)) return origin;
-  return config.allowedOrigins[0] || '*';
-}
-
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -168,10 +168,6 @@ function readBody(request) {
       }
     });
   });
-}
-
-function normalizeTicket(ticketCode) {
-  return decodeURIComponent(ticketCode || '').trim().toUpperCase();
 }
 
 async function getUserFromRequest(request) {
@@ -203,37 +199,10 @@ async function ensurePatientAccess(firebaseUser) {
   return access;
 }
 
-function createTicket(payload) {
-  const nextNumber = Math.max(...tickets.map((ticket) => ticket.number), 0) + 1;
-  const ticket = {
-    ticket: `MH-${String(1000 + nextNumber).slice(-4)}`,
-    patient: payload.patient || 'Bệnh nhân mới',
-    department: payload.department || 'Khám tổng quát',
-    doctor: payload.doctor || 'Chờ phân bác sĩ',
-    room: payload.room || 'Đang cập nhật',
-    number: nextNumber,
-    current: Math.max(nextNumber - 6, 1),
-    status: 'Đang chờ',
-    eta: 'Đang tính toán',
-    ownerId: payload.ownerId || null,
-    createdAt: new Date().toISOString(),
-  };
-
-  tickets = [...tickets, ticket];
-  return ticket;
-}
-
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
-  response.setHeader('Access-Control-Allow-Origin', getCorsOrigin(request));
-  response.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
-  response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  response.setHeader('Vary', 'Origin');
-  response.setHeader('X-Content-Type-Options', 'nosniff');
-  response.setHeader('X-Frame-Options', 'DENY');
-  response.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  response.setHeader('Cache-Control', 'no-store');
+  applyCorsHeaders(request, response);
+  applySecurityHeaders(response);
 
   if (request.method === 'OPTIONS') {
     sendJson(response, 200, { ok: true });
@@ -507,14 +476,23 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/api/auth/me') {
     const authHeader = request.headers.authorization || '';
     const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    const optionalSessionCheck = url.searchParams.get('optional') === '1';
 
     if (!idToken) {
+      if (optionalSessionCheck) {
+        sendJson(response, 200, { data: { allowed: false, reason: 'MISSING_TOKEN' } });
+        return;
+      }
       sendJson(response, 401, { message: 'Thiếu token đăng nhập' });
       return;
     }
 
     const firebaseUser = await verifyIdToken(idToken);
     if (!firebaseUser) {
+      if (optionalSessionCheck) {
+        sendJson(response, 200, { data: { allowed: false, reason: 'INVALID_TOKEN' } });
+        return;
+      }
       sendJson(response, 401, { message: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.' });
       return;
     }
@@ -534,6 +512,10 @@ const server = http.createServer(async (request, response) => {
       });
     }
     if (!access.ok) {
+      if (optionalSessionCheck) {
+        sendJson(response, 200, { data: { allowed: false, reason: access.data?.code || 'PORTAL_ACCESS_DENIED' } });
+        return;
+      }
       sendJson(response, access.status, access.data);
       return;
     }
@@ -543,6 +525,10 @@ const server = http.createServer(async (request, response) => {
     if (portal === 'patient' && !allowIncompletePatient) {
       const profileComplete = await hasCompletePatientProfile(firebaseUser);
       if (!profileComplete) {
+        if (optionalSessionCheck) {
+          sendJson(response, 200, { data: { allowed: false, reason: 'PATIENT_PROFILE_INCOMPLETE' } });
+          return;
+        }
         sendJson(response, 403, {
           message: 'Tài khoản chưa hoàn tất hồ sơ đăng ký.',
           code: 'PATIENT_PROFILE_INCOMPLETE',
@@ -1269,14 +1255,14 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.method === 'GET' && url.pathname === '/api/queue') {
-    sendJson(response, 200, { data: tickets });
+    const result = await listQueueTickets();
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     return;
   }
 
   if (request.method === 'GET' && url.pathname.startsWith('/api/queue/')) {
-    const ticketCode = normalizeTicket(url.pathname.replace('/api/queue/', ''));
-    const ticket = tickets.find((item) => item.ticket === ticketCode);
-    sendJson(response, ticket ? 200 : 404, ticket ? { data: ticket } : { message: 'Không tìm thấy số khám' });
+    const result = await getQueueTicket(url.pathname.replace('/api/queue/', ''));
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     return;
   }
 
@@ -1293,10 +1279,10 @@ const server = http.createServer(async (request, response) => {
         sendJson(response, access.status, access.data);
         return;
       }
-      const ticket = createTicket({ ...payload, ownerId: user.localId });
-      sendJson(response, 201, { data: ticket });
+      const result = await createQueueTicket(user, payload);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     } catch {
-      sendJson(response, 400, { message: 'Dữ liệu gửi lên không hợp lệ' });
+      sendJson(response, 400, { message: 'Dữ liệu gửi lên không hợp lệ.' });
     }
     return;
   }
@@ -1313,21 +1299,11 @@ const server = http.createServer(async (request, response) => {
         sendJson(response, access.status, access.data);
         return;
       }
-      const ticketCode = normalizeTicket(url.pathname.replace('/api/queue/', ''));
       const payload = await readBody(request);
-      const ticketIndex = tickets.findIndex((item) => item.ticket === ticketCode);
-
-      if (ticketIndex === -1) {
-        sendJson(response, 404, { message: 'Không tìm thấy số khám' });
-        return;
-      }
-
-      tickets = tickets.map((ticket, index) => (
-        index === ticketIndex ? { ...ticket, ...payload, ticket: ticket.ticket } : ticket
-      ));
-      sendJson(response, 200, { data: tickets[ticketIndex] });
+      const result = await updateQueueTicket(url.pathname.replace('/api/queue/', ''), payload);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     } catch {
-      sendJson(response, 400, { message: 'Dữ liệu gửi lên không hợp lệ' });
+      sendJson(response, 400, { message: 'Dữ liệu gửi lên không hợp lệ.' });
     }
     return;
   }
