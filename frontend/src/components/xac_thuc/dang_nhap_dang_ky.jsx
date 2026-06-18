@@ -7,10 +7,16 @@ import {
 } from 'firebase/auth';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { savePatientProfile } from '../../lib/appointments';
-import { firebaseAuth, signInWithGoogle } from '../../lib/firebase';
+import {
+  firebaseAuth,
+  getGoogleRedirectResult,
+  signInWithGoogle,
+  signInWithGoogleRedirect,
+} from '../../lib/firebase';
 import { useReferenceData } from '../../lib/reference_data';
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
+const GOOGLE_AUTH_MODE_KEY = 'midhealth_google_auth_mode';
 const initialProfile = {
   fullName: '',
   phone: '',
@@ -222,8 +228,8 @@ async function xac_minh_cong_benh_nhan(user, { allowIncomplete = false } = {}) {
 
 function lay_thong_bao_loi(error) {
   const code = error?.code || '';
-  if (code.includes('auth/operation-not-allowed')) return 'Firebase chua bat phuong thuc dang nhap Email/Password.';
-  if (code.includes('auth/network-request-failed')) return 'Khong ket noi duoc Firebase. Vui long kiem tra mang hoac cau hinh Firebase.';
+  if (code.includes('auth/operation-not-allowed')) return 'Firebase chưa bật phương thức đăng nhập Email/Password.';
+  if (code.includes('auth/network-request-failed')) return 'Không kết nối được Firebase. Vui lòng kiểm tra mạng hoặc cấu hình Firebase.';
 
   if (code.includes('auth/invalid-credential')) return 'Email hoặc mật khẩu không đúng.';
   if (code.includes('auth/email-already-in-use')) return 'Email này đã được đăng ký.';
@@ -262,6 +268,7 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
   const otpInputRefs = useRef([]);
   const profileFormRef = useRef(null);
   const cardVideoRef = useRef(null);
+  const googleRedirectHandledRef = useRef(false);
   const [mode, setMode] = useState('signin');
   const [signupStep, setSignupStep] = useState(1);
   const [otpSent, setOtpSent] = useState(false);
@@ -317,6 +324,36 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
     setSignupAuthUser(null);
     setMessage('');
   }, [initialMode]);
+
+  useEffect(() => {
+    if (googleRedirectHandledRef.current) return;
+    googleRedirectHandledRef.current = true;
+
+    let isMounted = true;
+
+    const xu_ly_ket_qua_redirect = async () => {
+      try {
+        const credential = await getGoogleRedirectResult();
+        if (!credential || !isMounted) return;
+
+        const redirectMode = sessionStorage.getItem(GOOGLE_AUTH_MODE_KEY) || 'signin';
+        sessionStorage.removeItem(GOOGLE_AUTH_MODE_KEY);
+        setMessage('');
+        setIsLoading(true);
+        await xu_ly_google_credential(credential, redirectMode);
+      } catch (error) {
+        if (isMounted) setMessage(lay_thong_bao_loi(error));
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+    xu_ly_ket_qua_redirect();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const cap_nhat_form = (field, value) => {
     const nextValue = field === 'phone' ? chuan_hoa_so_dien_thoai(value) : value;
@@ -662,12 +699,49 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
     return authUser;
   };
 
+  const xu_ly_google_credential = async (credential, authMode = mode) => {
+    if (!credential?.user) {
+      throw new Error('Khong nhan duoc thong tin dang nhap Google. Vui long thu lai.');
+    }
+
+    if (authMode === 'signup-entry') {
+      const googleUser = credential.user;
+      setGoogleSignupUser(googleUser);
+      setSignupAuthUser(null);
+      setMode('signup');
+      setSignupStep(1);
+      setOtpSent(false);
+      setOtpToken('');
+      setForm((current) => ({
+        ...current,
+        email: googleUser.email || '',
+        otp: '',
+        password: '',
+        profile: {
+          ...current.profile,
+          email: googleUser.email || '',
+          fullName: current.profile.fullName || googleUser.displayName || '',
+        },
+      }));
+      setMessage('Google da xac thuc email. Bam tiep tuc de tao mat khau.');
+      return;
+    }
+
+    const idToken = await credential.user.getIdToken();
+    await goi_api('/api/auth/google', { idToken, portal: 'patient' });
+    await xac_minh_cong_benh_nhan(credential.user);
+    onAuthSuccess(credential.user);
+    onBack();
+  };
+
   const dang_nhap_google = async () => {
     setMessage('');
     setIsLoading(true);
 
     try {
       const credential = await signInWithGoogle();
+      await xu_ly_google_credential(credential, mode);
+      return;
 
       if (mode === 'signup-entry') {
         const googleUser = credential.user;
@@ -698,6 +772,19 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
       onAuthSuccess(credential.user);
       onBack();
     } catch (error) {
+      const code = error?.code || '';
+      const shouldUseRedirect = [
+        'auth/popup-closed-by-user',
+        'auth/popup-blocked',
+        'auth/cancelled-popup-request',
+      ].some((item) => code.includes(item));
+
+      if (shouldUseRedirect) {
+        sessionStorage.setItem(GOOGLE_AUTH_MODE_KEY, mode);
+        await signInWithGoogleRedirect();
+        return;
+      }
+
       setMessage(lay_thong_bao_loi(error));
     } finally {
       setIsLoading(false);
@@ -708,15 +795,15 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
     const errors = validateLoginForm();
     if (Object.keys(errors).length) {
       setFieldErrors((current) => ({ ...current, ...errors }));
-      throw new Error('Vui lòng kiểm tra lại số điện thoại và mật khẩu.');
+      throw new Error('Vui lòng kiểm tra lại email và mật khẩu.');
     }
 
-    const loginData = await goi_api('/api/auth/login', {
-      phone: chuan_hoa_so_dien_thoai(form.phone),
+    await goi_api('/api/auth/login', {
+      email: form.email.trim(),
       password: form.password,
       portal: 'patient',
     });
-    const credential = await signInWithEmailAndPassword(firebaseAuth, loginData.email, form.password);
+    const credential = await signInWithEmailAndPassword(firebaseAuth, form.email.trim(), form.password);
     return credential.user;
   };
 
@@ -792,16 +879,16 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
   const handleResetPassword = async () => {
     setMessage('');
 
-    const phoneMessage = thong_bao_so_dien_thoai(form.phone);
-    if (phoneMessage) {
-      setFieldErrors((current) => ({ ...current, phone: phoneMessage }));
-      setMessage(phoneMessage);
+    const emailMessage = thong_bao_email(form.email);
+    if (emailMessage) {
+      setFieldErrors((current) => ({ ...current, email: emailMessage }));
+      setMessage(emailMessage);
       return;
     }
 
     try {
-      await goi_api('/api/auth/password-reset', { phone: chuan_hoa_so_dien_thoai(form.phone) });
-      setMessage('Đã gửi email đặt lại mật khẩu tới email liên kết với số điện thoại này.');
+      await goi_api('/api/auth/password-reset', { email: form.email.trim() });
+      setMessage('Đã gửi email đặt lại mật khẩu tới địa chỉ email của bạn.');
     } catch (error) {
       setMessage(lay_thong_bao_loi(error));
     }
@@ -809,8 +896,8 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
 
   const validateLoginForm = () => {
     const errors = {};
-    const phoneMessage = thong_bao_so_dien_thoai(form.phone);
-    if (phoneMessage) errors.phone = phoneMessage;
+    const emailMessage = thong_bao_email(form.email);
+    if (emailMessage) errors.email = emailMessage;
     if (!form.password) errors.password = 'Vui lòng nhập mật khẩu.';
     return errors;
   };
@@ -826,7 +913,7 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
     return errors;
   };
 
-  const canSubmitSignin = !isLoading && !thong_bao_so_dien_thoai(form.phone) && Boolean(form.password);
+  const canSubmitSignin = !isLoading && !thong_bao_email(form.email) && Boolean(form.password);
   const canSubmitSignupEmail = !isLoading && !thong_bao_email(form.email);
   const canSubmitSignupPassword = !isLoading && !thong_bao_mat_khau(form.password);
   const canFinishProfile = !isLoading && !cardUpload.loading && !Object.keys(validateSignupProfile()).length;
@@ -1122,18 +1209,18 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
 
           <form onSubmit={handleSubmit} className="auth-form" autoComplete="off" noValidate>
             <label>
-              Số điện thoại
+              Email
               <input
-                autoComplete="off"
-                name="midhealth_login_phone"
+                autoComplete="email"
+                name="midhealth_login_email"
                 type="text"
-                inputMode="tel"
-                value={form.phone}
-                onChange={(event) => cap_nhat_form('phone', event.target.value)}
-                placeholder="Số điện thoại"
-                className={fieldErrors.phone ? 'has-error' : ''}
+                inputMode="email"
+                value={form.email}
+                onChange={(event) => cap_nhat_form('email', event.target.value)}
+                placeholder="Email"
+                className={fieldErrors.email ? 'has-error' : ''}
               />
-              {fieldErrors.phone && <small className="field-error">{fieldErrors.phone}</small>}
+              {fieldErrors.email && <small className="field-error">{fieldErrors.email}</small>}
             </label>
             <label>
               Mật khẩu

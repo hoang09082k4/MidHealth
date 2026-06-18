@@ -2,7 +2,9 @@ import { initializeApp } from 'firebase/app';
 import { getAnalytics, isSupported } from 'firebase/analytics';
 import {
   getAuth,
+  getRedirectResult,
   GoogleAuthProvider,
+  signInWithRedirect,
   signInWithPopup,
 } from 'firebase/auth';
 
@@ -31,4 +33,13 @@ if (typeof window !== 'undefined') {
 export function signInWithGoogle() {
   googleProvider.setCustomParameters({ prompt: 'select_account' });
   return signInWithPopup(firebaseAuth, googleProvider);
+}
+
+export function signInWithGoogleRedirect() {
+  googleProvider.setCustomParameters({ prompt: 'select_account' });
+  return signInWithRedirect(firebaseAuth, googleProvider);
+}
+
+export function getGoogleRedirectResult() {
+  return getRedirectResult(firebaseAuth);
 }

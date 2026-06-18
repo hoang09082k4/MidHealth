@@ -20,11 +20,11 @@ function unavailable() {
   return {
     ok: false,
     status: 503,
-    data: { message: 'Backend chua cau hinh SUPABASE_URL hoac SUPABASE_SERVICE_ROLE_KEY.' },
+    data: { message: 'Backend chưa cấu hình SUPABASE_URL hoặc SUPABASE_SERVICE_ROLE_KEY.' },
   };
 }
 
-function fail(error, message = 'Khong the tai du lieu tin y te tu Supabase.') {
+function fail(error, message = 'Không thể tải dữ liệu tin y tế từ Supabase.') {
   return {
     ok: false,
     status: 500,
@@ -194,7 +194,7 @@ export async function getHealthArticle(identifier) {
       .maybeSingle();
 
     if (error) throw error;
-    if (!data) return { ok: false, status: 404, data: { message: 'Khong tim thay bai viet tin y te.' } };
+    if (!data) return { ok: false, status: 404, data: { message: 'Không tìm thấy bài viết tin y tế.' } };
 
     await supabase
       .from('health_articles')
@@ -289,7 +289,7 @@ export async function getHealthAuthor(authorId) {
       .maybeSingle();
 
     if (error) throw error;
-    if (!data) return { ok: false, status: 404, data: { message: 'Khong tim thay tac gia.' } };
+    if (!data) return { ok: false, status: 404, data: { message: 'Không tìm thấy tác giả.' } };
     return { ok: true, status: 200, data: mapPerson(data) };
   } catch (error) {
     return fail(error);

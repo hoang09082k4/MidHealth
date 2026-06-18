@@ -147,7 +147,7 @@ function ThanhDieuHuong({
         </div>
         <a href="/tin-tuc" onClick={(event) => { event.preventDefault(); onHealthNews(); }}>Tin Y tế</a>
         <button type="button" onClick={openMedicalAssistant}>Trợ lý y khoa</button>
-        <a href="/danh-cho-bac-si" onClick={(event) => { event.preventDefault(); onDoctorWorkspace(); }}>Đối tác y tế</a>
+        <a href="/danh-cho-bac-si" onClick={(event) => { event.preventDefault(); onDoctorWorkspace(); }}>Dành cho bác sĩ</a>
       </nav>
 
       {user ? (

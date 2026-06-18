@@ -27,7 +27,7 @@ async function firebaseRequest(path, payload) {
     return {
       ok: false,
       status: 503,
-      data: { message: 'Khong the ket noi Firebase Authentication. Vui long thu lai sau.' },
+      data: { message: 'Không thể kết nối Firebase Authentication. Vui lòng thử lại sau.' },
     };
   }
 

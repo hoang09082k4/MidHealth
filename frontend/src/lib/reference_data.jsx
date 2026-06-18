@@ -105,7 +105,7 @@ export async function fetchReferenceData() {
     const response = await fetch(`${apiBaseUrl}/api/reference-data`);
 
     if (!response.ok) {
-      throw new Error(`Khong tai duoc du lieu tham chieu: ${response.status}`);
+      throw new Error(`Không tải được dữ liệu tham chiếu: ${response.status}`);
     }
 
     const payload = await response.json();

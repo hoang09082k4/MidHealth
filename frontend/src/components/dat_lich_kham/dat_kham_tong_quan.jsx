@@ -30,7 +30,7 @@ const TAB_CONTENT = {
 
 function duong_dan_anh(prefix, path = '') {
   if (!path) return '';
-  if (/^(https?:)?\/\//.test(path) || path.startsWith('/')) return path;
+  if (/^(https?:)?\/\//.test(path) || path.startsWith('/') || path.startsWith('data:image/')) return path;
   return `${prefix}/${path}`;
 }
 

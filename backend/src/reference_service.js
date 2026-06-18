@@ -7,7 +7,7 @@ export async function getReferenceData() {
     return {
       ok: false,
       status: 503,
-      data: { message: 'Backend chua cau hinh Supabase.' },
+      data: { message: 'Backend chưa cấu hình Supabase.' },
     };
   }
 
@@ -35,7 +35,7 @@ export async function getReferenceData() {
       ok: false,
       status: 500,
       data: {
-        message: 'Khong the tai du lieu danh muc tu Supabase.',
+        message: 'Không thể tải dữ liệu danh mục từ Supabase.',
         detail: error.message,
       },
     };
