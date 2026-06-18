@@ -16,6 +16,13 @@ GMAIL_USER=your_email@gmail.com
 GMAIL_APP_PASSWORD=your_gmail_app_password
 JWT_SECRET=your_random_long_secret
 OTP_EXPIRES_MINUTES=5
+FRONTEND_URL=http://localhost:5173
+MOMO_ENDPOINT=https://test-payment.momo.vn
+MOMO_PARTNER_CODE=MOMO
+MOMO_ACCESS_KEY=...
+MOMO_SECRET_KEY=...
+MOMO_RETURN_URL=http://localhost:4000/api/payments/momo/return
+MOMO_IPN_URL=http://localhost:4000/api/payments/momo/ipn
 ```
 
 Chạy SQL trong `supabase/schema.sql` tại Supabase SQL Editor trước khi đăng ký tài khoản để backend lưu hồ sơ bệnh nhân.

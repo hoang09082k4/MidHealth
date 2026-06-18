@@ -73,6 +73,120 @@ a {
   font-weight: 700;
 }
 
+.app-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(7, 24, 50, 0.48);
+  backdrop-filter: blur(6px);
+}
+
+.app-confirm-modal {
+  width: min(520px, 100%);
+  overflow: hidden;
+  border: 1px solid #dce6f2;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 26px 80px rgba(7, 24, 50, 0.28);
+  animation: app-confirm-in 0.18s ease both;
+}
+
+.app-confirm-modal header {
+  display: grid;
+  gap: 6px;
+  padding: 22px 26px 18px;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.app-confirm-modal header span {
+  color: #176bdd;
+  font-size: 0.76rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.app-confirm-modal.danger header span {
+  color: #b42318;
+}
+
+.app-confirm-modal h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1.28rem;
+  line-height: 1.3;
+}
+
+.app-confirm-modal section {
+  display: grid;
+  gap: 10px;
+  padding: 24px 26px;
+}
+
+.app-confirm-modal p {
+  margin: 0;
+  color: #334155;
+  font-size: 1.02rem;
+  line-height: 1.6;
+}
+
+.app-confirm-modal small {
+  display: block;
+  color: #64748b;
+  font-weight: 650;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.app-confirm-modal footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 26px 22px;
+  border-top: 1px solid #edf2f7;
+  background: #f8fbff;
+}
+
+.app-confirm-modal footer button {
+  min-width: 110px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid #cbd8e6;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #26384d;
+  font-weight: 800;
+}
+
+.app-confirm-modal footer button.confirm {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #ffffff;
+}
+
+.app-confirm-modal footer button.confirm.danger {
+  border-color: #dc2626;
+  background: #dc2626;
+}
+
+.app-confirm-modal footer button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+@keyframes app-confirm-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .site-shell {
   min-height: 100vh;
   overflow-x: clip;
@@ -3493,6 +3607,39 @@ select.has-error:focus,
   white-space: nowrap;
 }
 
+.hospital-payment-methods {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.hospital-payment-methods h3 {
+  margin: 0;
+}
+
+.hospital-payment-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.hospital-payment-total span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.hospital-payment-total strong {
+  white-space: nowrap;
+  color: #0f766e;
+  font-size: 1.06rem;
+}
+
 .hospital-calendar {
   max-width: 1040px;
 }
@@ -5859,6 +6006,85 @@ select.has-error:focus,
   padding: 32px 0 74px;
 }
 
+.payment-result-page {
+  min-height: calc(100vh - 76px);
+  display: grid;
+  place-items: center;
+  padding: 36px 18px 76px;
+  background: #f3f3f3;
+}
+
+.payment-result-card {
+  width: min(620px, 100%);
+  padding: 30px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+  text-align: center;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+}
+
+.payment-result-mark {
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  color: #ffffff;
+  font-size: 1.65rem;
+  font-weight: 800;
+}
+
+.payment-result-card.success .payment-result-mark {
+  background: #16a34a;
+}
+
+.payment-result-card.cancelled .payment-result-mark {
+  background: #f59e0b;
+}
+
+.payment-result-card.failed .payment-result-mark {
+  background: #dc2626;
+}
+
+.payment-result-card h1 {
+  margin: 0 0 12px;
+  color: #111827;
+  font-size: 1.45rem;
+}
+
+.payment-result-card p {
+  margin: 0 auto;
+  max-width: 480px;
+  color: #4b5563;
+  line-height: 1.65;
+}
+
+.payment-result-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 24px;
+}
+
+.payment-result-actions button {
+  min-width: 150px;
+  min-height: 44px;
+  border: 1px solid var(--blue);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--blue);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.payment-result-actions button:first-child {
+  background: var(--blue);
+  color: #ffffff;
+}
+
 .booking-success-card {
   width: min(860px, calc(100% - 36px));
   margin: 0 auto;
@@ -6304,6 +6530,17 @@ select.has-error:focus,
   color: #475569;
   font-weight: 600;
   line-height: 1.7;
+}
+
+.notification-detail-compact {
+  color: #334155;
+  font-size: 1.04rem;
+}
+
+.notification-detail-patient {
+  margin-top: 10px !important;
+  color: var(--blue) !important;
+  font-weight: 800 !important;
 }
 
 .notification-status {
@@ -19015,4 +19252,1656 @@ button.dw-midhealth-brand {
 .admin-article-form-grid select,
 .admin-article-form-grid textarea {
   font-size: 1rem;
+}
+
+/* Professional refresh for provider and admin workspaces. */
+.doctor-workspace-shell,
+.admin-site-shell {
+  --ops-ink: #102033;
+  --ops-muted: #5d6b7c;
+  --ops-subtle: #eef3f7;
+  --ops-border: #d9e2eb;
+  --ops-panel: #ffffff;
+  --ops-page: #f3f6f8;
+  --ops-navy: #15283c;
+  --ops-navy-2: #20384f;
+  --ops-blue: #1f6fbf;
+  --ops-teal: #147e75;
+  --ops-amber: #b66d12;
+  --ops-red: #b33a3a;
+  --ops-shadow: 0 12px 28px rgba(15, 34, 54, 0.08);
+  color: var(--ops-ink);
+  background: var(--ops-page);
+}
+
+.doctor-workspace-shell main,
+.admin-site-shell main {
+  background: transparent;
+}
+
+.dw-dashboard-page.refined,
+.admin-site-shell {
+  background:
+    linear-gradient(180deg, #eef3f7 0, #f7f9fb 330px, #f7f9fb 100%);
+}
+
+.dw-live-dashboard.refined,
+.admin-shell {
+  border: 1px solid var(--ops-border);
+  border-radius: 8px;
+  background: var(--ops-panel);
+  box-shadow: var(--ops-shadow);
+}
+
+.dw-live-dashboard.refined .dw-live-sidebar,
+.admin-sidebar {
+  border: 0;
+  background: linear-gradient(180deg, var(--ops-navy) 0%, #102235 100%);
+  color: #dce7f1;
+}
+
+.dw-live-dashboard.refined .dw-live-brand,
+.admin-brand {
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(220, 231, 241, 0.12);
+}
+
+.dw-live-dashboard.refined .dw-app-mark,
+.admin-brand-mark,
+.admin-shield {
+  border-radius: 7px;
+  background: #f4f8fb;
+  color: var(--ops-navy);
+  box-shadow: none;
+}
+
+.dw-live-dashboard.refined .dw-live-brand strong,
+.admin-brand strong {
+  color: #ffffff;
+}
+
+.dw-live-dashboard.refined .dw-live-brand span,
+.admin-brand small,
+.admin-sidebar-account span,
+.admin-sidebar-account strong {
+  color: #aebfce;
+}
+
+.dw-live-dashboard.refined .dw-live-sidebar nav,
+.admin-sidebar nav {
+  gap: 6px;
+}
+
+.dw-live-dashboard.refined .dw-live-sidebar nav > b,
+.admin-nav-label {
+  color: #88a0b7;
+}
+
+.dw-live-dashboard.refined .dw-live-sidebar nav > button,
+.admin-sidebar button {
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #dbe6ef;
+  font-weight: 750;
+}
+
+.dw-live-dashboard.refined .dw-live-sidebar nav > button i {
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #b8c8d7;
+}
+
+.dw-live-dashboard.refined .dw-live-sidebar nav > button:hover,
+.dw-live-dashboard.refined .dw-live-sidebar nav > button.active,
+.admin-sidebar button:hover,
+.admin-sidebar button.active {
+  border-color: rgba(255, 255, 255, 0.11);
+  background: var(--ops-navy-2);
+  color: #ffffff;
+}
+
+.dw-live-dashboard.refined .dw-live-sidebar nav > button.active i {
+  background: #ffffff;
+  color: var(--ops-navy);
+}
+
+.admin-sidebar button.active::before,
+.dw-live-dashboard.refined .dw-live-sidebar nav > button.active::after {
+  background: #6bd1c7;
+}
+
+.dw-sidebar-account,
+.admin-sidebar-account {
+  border: 1px solid rgba(220, 231, 241, 0.14);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.dw-sidebar-account > button,
+.admin-topbar-actions button,
+.admin-section-heading > button,
+.admin-actions button,
+.admin-content-actions button,
+.admin-article-editor-head button,
+.admin-article-publish-field > button,
+.dw-primary-command,
+.dw-appointment-actions button,
+.dw-slot-manager button {
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.dw-live-dashboard.refined .dw-live-content,
+.admin-main {
+  background: #f7f9fb;
+}
+
+.dw-workspace-topbar,
+.admin-topbar {
+  border-bottom: 1px solid var(--ops-border);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+}
+
+.dw-workspace-topbar > div:first-child strong,
+.admin-topbar h1,
+.dw-dashboard-heading.compact h1,
+.admin-section-heading h2 {
+  color: var(--ops-ink);
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.dw-workspace-topbar > div:first-child span,
+.admin-topbar p,
+.dw-dashboard-heading.compact p,
+.admin-section-heading p {
+  color: var(--ops-muted);
+}
+
+.dw-connection-state,
+.dw-operations-notice,
+.dw-workflow-callout.warning,
+.admin-alert {
+  border-radius: 7px;
+}
+
+.dw-connection-state.connected {
+  border-color: #b9ddd8;
+  background: #eef8f6;
+  color: var(--ops-teal);
+}
+
+.dw-metric-grid.refined article,
+.dw-operations-grid.refined > article,
+.dw-data-panel.clean,
+.dw-operation-chart.clean,
+.dw-schedule-board article,
+.dw-slot-form-card,
+.dw-slot-list.upgraded,
+.dw-profile-fields article,
+.admin-card,
+.admin-metric-card,
+.admin-review-guide,
+.admin-article-editor,
+.admin-content-row,
+.admin-empty-panel {
+  border: 1px solid var(--ops-border);
+  border-radius: 8px;
+  background: var(--ops-panel);
+  box-shadow: 0 4px 14px rgba(16, 32, 51, 0.04);
+}
+
+.dw-metric-grid.refined article::before,
+.admin-metric-card::before {
+  width: 3px;
+  background: var(--ops-blue);
+}
+
+.dw-metric-grid.refined article.dw-metric-orange::before,
+.admin-metric-warning::before {
+  background: var(--ops-amber);
+}
+
+.dw-metric-grid.refined article.dw-metric-green::before,
+.admin-metric-success::before {
+  background: var(--ops-teal);
+}
+
+.dw-metric-grid.refined article.dw-metric-violet::before {
+  background: #64748b;
+}
+
+.dw-metric-grid.refined strong,
+.admin-metric-card strong {
+  color: var(--ops-ink);
+  font-weight: 850;
+}
+
+.dw-metric-grid.refined small,
+.admin-metric-card span {
+  color: #506178;
+  text-transform: none;
+}
+
+.dw-primary-command,
+.admin-topbar-actions button:first-child,
+.admin-section-heading > button,
+.admin-action-primary,
+.admin-article-publish-field > button,
+.dw-appointment-actions button:first-of-type,
+.dw-slot-form-card > button {
+  border: 1px solid var(--ops-blue);
+  background: var(--ops-blue);
+  color: #ffffff;
+}
+
+.dw-primary-command:hover,
+.admin-topbar-actions button:first-child:hover,
+.admin-section-heading > button:hover,
+.admin-action-primary:hover,
+.admin-article-publish-field > button:hover {
+  background: #195d9f;
+}
+
+.dw-primary-command.soft-warning,
+.admin-action-danger {
+  border-color: #d9a86a;
+  background: #fff6ea;
+  color: #8b530e;
+}
+
+.admin-topbar-actions button:last-child,
+.admin-content-actions button,
+.admin-article-editor-head button,
+.dw-sidebar-account > button {
+  border-color: #cdd8e3;
+  background: #ffffff;
+  color: #354a60;
+}
+
+.admin-action-danger:hover {
+  border-color: var(--ops-amber);
+  background: #ffefd9;
+}
+
+.admin-table-wrap,
+.dw-data-panel.clean,
+.dw-slot-list.upgraded {
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.admin-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.admin-table th {
+  background: #eef3f7;
+  color: #41556b;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.admin-table td {
+  border-bottom: 1px solid #e5ecf2;
+  color: #26394d;
+}
+
+.admin-table tbody tr:hover,
+.dw-appointment-list article:hover,
+.dw-slot-list.upgraded article:hover {
+  background: #fbfdff;
+}
+
+.admin-review-toolbar,
+.dw-data-toolbar {
+  border: 1px solid var(--ops-border);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.admin-review-toolbar input,
+.admin-review-toolbar select,
+.admin-article-form-grid input,
+.admin-article-form-grid select,
+.admin-article-form-grid textarea,
+.doctor-workspace-shell input,
+.doctor-workspace-shell select,
+.doctor-workspace-shell textarea {
+  border-color: #cfd9e4;
+  border-radius: 6px;
+  background-color: #ffffff;
+}
+
+.admin-review-toolbar input:focus,
+.admin-review-toolbar select:focus,
+.admin-article-form-grid input:focus,
+.admin-article-form-grid select:focus,
+.admin-article-form-grid textarea:focus,
+.doctor-workspace-shell input:focus,
+.doctor-workspace-shell select:focus,
+.doctor-workspace-shell textarea:focus {
+  border-color: var(--ops-blue);
+  box-shadow: 0 0 0 3px rgba(31, 111, 191, 0.12);
+}
+
+.dw-status.confirmed,
+.admin-status-approved,
+.admin-status-active,
+.admin-status-confirmed,
+.admin-status-completed,
+.admin-status-paid {
+  background: #e8f6f3;
+  color: var(--ops-teal);
+}
+
+.dw-status.pending,
+.admin-status-pending,
+.admin-status-pending_review,
+.admin-status-draft,
+.admin-status-unpaid {
+  background: #fff4e5;
+  color: #8b530e;
+}
+
+.dw-status.cancelled,
+.admin-status-rejected,
+.admin-status-disabled,
+.admin-status-cancelled {
+  background: #fbeaea;
+  color: var(--ops-red);
+}
+
+.dw-risk,
+.admin-status,
+.dw-provider-status {
+  border-radius: 999px;
+  font-weight: 850;
+}
+
+.dw-link-card,
+.dw-intake-step,
+.dw-upload-box,
+.dw-selected-specialty,
+.dw-specialty-section,
+.dw-verification-note,
+.dw-profile-preview article,
+.dw-profile-checklist {
+  border-color: var(--ops-border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.dw-profile-hero {
+  border: 1px solid var(--ops-border);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: var(--ops-shadow);
+}
+
+.dw-profile-hero aside {
+  border-radius: 8px;
+  background: #f2f6f9;
+  color: var(--ops-ink);
+}
+
+.dw-choice-grid button {
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.dw-choice-grid button.active {
+  border-color: var(--ops-blue);
+  background: #eef6ff;
+  color: var(--ops-ink);
+}
+
+@media (max-width: 760px) {
+  .dw-live-dashboard.refined,
+  .admin-shell,
+  .dw-profile-hero {
+    border-radius: 0;
+  }
+
+  .dw-live-dashboard.refined .dw-live-sidebar,
+  .admin-sidebar {
+    background: var(--ops-navy);
+  }
+
+  .dw-live-dashboard.refined .dw-live-sidebar nav > button,
+  .admin-sidebar button {
+    min-height: 40px;
+  }
+}
+
+/* Mature, decisive typography pass for admin and provider surfaces. */
+.doctor-workspace-shell,
+.admin-site-shell {
+  --ops-font: "Segoe UI", Arial, Helvetica, sans-serif;
+  --ops-ink: #0b1726;
+  --ops-muted: #536174;
+  --ops-border: #cfd8e3;
+  --ops-blue: #1b5f9f;
+  --ops-teal: #0f766e;
+  --ops-navy: #101c2b;
+  --ops-navy-2: #18283b;
+  --ops-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  font-family: var(--ops-font);
+}
+
+.doctor-workspace-shell *,
+.admin-site-shell * {
+  font-family: var(--ops-font);
+  letter-spacing: 0;
+}
+
+.admin-site-shell {
+  background: #eef2f6;
+}
+
+.admin-login-page,
+.dw-dashboard-page.refined,
+.dw-provider-profile-page.refined {
+  background:
+    linear-gradient(180deg, #eef2f6 0, #f7f9fb 260px, #f7f9fb 100%);
+}
+
+.admin-login-page {
+  align-items: center;
+  min-height: 100vh;
+  padding: 44px 24px;
+}
+
+.admin-access-page {
+  justify-content: center;
+}
+
+.admin-login-card {
+  width: min(560px, 100%);
+  padding: 34px 40px 38px;
+  border: 1px solid #cfd8e3;
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.09);
+}
+
+.admin-access-page .admin-login-card {
+  position: relative;
+  border-top: 4px solid #0f766e;
+}
+
+.admin-access-page .admin-login-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: #ffffff;
+}
+
+.admin-back-link {
+  margin: 0 0 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #0f766e;
+  font-size: 0.875rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.admin-back-link:hover {
+  color: #0b5f59;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.admin-eyebrow,
+.admin-nav-label,
+.dw-dashboard-heading.compact > div > span,
+.dw-metric-grid.refined small,
+.admin-metric-card span,
+.admin-table th {
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.admin-login-card .admin-eyebrow {
+  display: block;
+  margin-bottom: 18px;
+  color: #0f766e;
+}
+
+.admin-login-card h1,
+.admin-topbar h1,
+.dw-dashboard-heading.compact h1,
+.dw-profile-hero h1,
+.dw-profile-form h2,
+.dw-profile-preview h2 {
+  color: #0b1726;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+.admin-login-card h1 {
+  margin: 0 0 20px;
+  font-size: clamp(2rem, 3.2vw, 2.35rem);
+  line-height: 1.12;
+}
+
+.admin-login-card p {
+  max-width: 46rem;
+  margin: 0 0 22px;
+  color: #536174;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.7;
+}
+
+.admin-login-card p strong {
+  color: #334155;
+  font-weight: 800;
+}
+
+.admin-alert {
+  margin: 20px 0 24px;
+  padding: 13px 15px;
+  border: 1px solid #efb7b7;
+  border-left: 4px solid #b42323;
+  border-radius: 4px;
+  background: #fff3f3;
+  color: #a11212;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.admin-access-actions,
+.admin-topbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.admin-access-actions button,
+.admin-login-form button,
+.admin-topbar-actions button,
+.admin-section-heading > button,
+.admin-actions button,
+.admin-content-actions button,
+.admin-article-editor-head button,
+.admin-article-publish-field > button,
+.dw-primary-command,
+.dw-appointment-actions button,
+.dw-slot-manager button,
+.dw-sidebar-account > button {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 4px;
+  font-size: 0.9375rem;
+  font-weight: 800;
+  line-height: 1.2;
+  box-shadow: none;
+}
+
+.admin-access-actions button:first-child,
+.admin-login-form button,
+.admin-topbar-actions button:first-child,
+.admin-section-heading > button,
+.admin-action-primary,
+.admin-article-publish-field > button,
+.dw-primary-command {
+  border: 1px solid #0f766e;
+  background: #0f766e;
+  color: #ffffff;
+}
+
+.admin-access-actions button:first-child:hover,
+.admin-login-form button:hover,
+.admin-topbar-actions button:first-child:hover,
+.admin-section-heading > button:hover,
+.admin-action-primary:hover,
+.admin-article-publish-field > button:hover,
+.dw-primary-command:hover {
+  border-color: #0b5f59;
+  background: #0b5f59;
+}
+
+.admin-access-actions button:last-child,
+.admin-topbar-actions button:last-child,
+.admin-content-actions button,
+.admin-article-editor-head button {
+  border: 1px solid #111827;
+  background: #111827;
+  color: #ffffff;
+}
+
+.admin-access-actions button:disabled,
+.admin-login-form button:disabled,
+.admin-topbar-actions button:disabled {
+  border-color: #cbd5e1;
+  background: #e2e8f0;
+  color: #64748b;
+}
+
+.admin-shell,
+.dw-live-dashboard.refined {
+  border-radius: 4px;
+}
+
+.admin-sidebar,
+.dw-live-dashboard.refined .dw-live-sidebar {
+  background: #101c2b;
+}
+
+.admin-sidebar button,
+.dw-live-dashboard.refined .dw-live-sidebar nav > button {
+  border-radius: 4px;
+  font-weight: 750;
+}
+
+.admin-card,
+.admin-metric-card,
+.admin-review-guide,
+.admin-article-editor,
+.admin-content-row,
+.dw-metric-grid.refined article,
+.dw-operations-grid.refined > article,
+.dw-data-panel.clean,
+.dw-operation-chart.clean,
+.dw-schedule-board article,
+.dw-slot-form-card,
+.dw-slot-list.upgraded,
+.dw-profile-fields article {
+  border-radius: 4px;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.04);
+}
+
+.admin-metric-card strong,
+.dw-metric-grid.refined strong {
+  font-weight: 750;
+}
+
+.admin-table th,
+.admin-table td {
+  padding-top: 13px;
+  padding-bottom: 13px;
+}
+
+.admin-status,
+.dw-status,
+.dw-risk,
+.dw-provider-status {
+  border-radius: 4px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+@media (max-width: 760px) {
+  .admin-login-page {
+    padding: 20px 14px;
+  }
+
+  .admin-login-card {
+    padding: 28px 22px;
+  }
+
+  .admin-access-actions button {
+    width: 100%;
+  }
+}
+
+/* Calmer clinical operations palette: less glare, softer contrast. */
+.doctor-workspace-shell,
+.admin-site-shell {
+  --ops-ink: #1e2a36;
+  --ops-muted: #607082;
+  --ops-border: #d6dee7;
+  --ops-page: #f4f7f9;
+  --ops-panel: #ffffff;
+  --ops-navy: #2a3848;
+  --ops-navy-2: #34485c;
+  --ops-blue: #3f6f91;
+  --ops-teal: #4f8580;
+  --ops-amber: #a87635;
+  --ops-red: #a15a5a;
+  --ops-shadow: 0 8px 20px rgba(31, 45, 61, 0.07);
+  color: var(--ops-ink);
+  background: var(--ops-page);
+}
+
+.admin-site-shell,
+.admin-login-page,
+.dw-dashboard-page.refined,
+.dw-provider-profile-page.refined {
+  background:
+    linear-gradient(180deg, #eef3f6 0, #f6f8fa 280px, #f6f8fa 100%);
+}
+
+.admin-login-card,
+.admin-card,
+.admin-metric-card,
+.admin-review-guide,
+.admin-article-editor,
+.admin-content-row,
+.dw-live-dashboard.refined,
+.dw-metric-grid.refined article,
+.dw-operations-grid.refined > article,
+.dw-data-panel.clean,
+.dw-operation-chart.clean,
+.dw-schedule-board article,
+.dw-slot-form-card,
+.dw-slot-list.upgraded,
+.dw-profile-hero,
+.dw-profile-fields article {
+  border-color: var(--ops-border);
+  box-shadow: var(--ops-shadow);
+}
+
+.admin-sidebar,
+.dw-live-dashboard.refined .dw-live-sidebar {
+  background: linear-gradient(180deg, #2a3848 0%, #253444 100%);
+}
+
+.admin-sidebar button:hover,
+.admin-sidebar button.active,
+.dw-live-dashboard.refined .dw-live-sidebar nav > button:hover,
+.dw-live-dashboard.refined .dw-live-sidebar nav > button.active {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: #34485c;
+}
+
+.admin-brand small,
+.admin-sidebar-account span,
+.admin-sidebar-account strong,
+.dw-live-dashboard.refined .dw-live-brand span {
+  color: #bac7d3;
+}
+
+.admin-nav-label,
+.dw-live-dashboard.refined .dw-live-sidebar nav > b {
+  color: #a8b8c6;
+}
+
+.admin-access-page .admin-login-card {
+  border-top-color: var(--ops-teal);
+}
+
+.admin-back-link,
+.admin-login-card .admin-eyebrow {
+  color: #467a75;
+}
+
+.admin-login-card h1,
+.admin-topbar h1,
+.dw-dashboard-heading.compact h1,
+.admin-section-heading h2,
+.dw-profile-hero h1,
+.dw-profile-form h2,
+.dw-profile-preview h2,
+.admin-table strong,
+.dw-appointment-list strong {
+  color: #1e2a36;
+}
+
+.admin-login-card p,
+.admin-topbar p,
+.admin-section-heading p,
+.dw-dashboard-heading.compact p,
+.dw-metric-grid.refined p,
+.admin-metric-card small,
+.admin-table small,
+.dw-appointment-list p,
+.dw-activity-feed p {
+  color: #607082;
+  font-weight: 500;
+}
+
+.admin-eyebrow,
+.admin-nav-label,
+.dw-dashboard-heading.compact > div > span,
+.dw-metric-grid.refined small,
+.admin-metric-card span,
+.admin-table th {
+  color: #526578;
+}
+
+.admin-access-actions button:first-child,
+.admin-login-form button,
+.admin-topbar-actions button:first-child,
+.admin-section-heading > button,
+.admin-action-primary,
+.admin-article-publish-field > button,
+.dw-primary-command,
+.dw-appointment-actions button:first-of-type,
+.dw-slot-form-card > button {
+  border-color: #3f6f91;
+  background: #3f6f91;
+  color: #ffffff;
+}
+
+.admin-access-actions button:first-child:hover,
+.admin-login-form button:hover,
+.admin-topbar-actions button:first-child:hover,
+.admin-section-heading > button:hover,
+.admin-action-primary:hover,
+.admin-article-publish-field > button:hover,
+.dw-primary-command:hover {
+  border-color: #345f7c;
+  background: #345f7c;
+}
+
+.admin-access-actions button:last-child,
+.admin-topbar-actions button:last-child,
+.admin-content-actions button,
+.admin-article-editor-head button {
+  border-color: #425466;
+  background: #425466;
+  color: #ffffff;
+}
+
+.admin-access-actions button:last-child:hover,
+.admin-topbar-actions button:last-child:hover,
+.admin-content-actions button:hover,
+.admin-article-editor-head button:hover {
+  border-color: #344455;
+  background: #344455;
+}
+
+.dw-primary-command.soft-warning,
+.admin-action-danger {
+  border-color: #d8c4a6;
+  background: #fbf6ed;
+  color: #835f2c;
+}
+
+.admin-alert {
+  border-color: #e7c8c8;
+  border-left-color: #a15a5a;
+  background: #fbf3f3;
+  color: #814343;
+}
+
+.admin-table th {
+  background: #edf2f5;
+}
+
+.admin-table td {
+  border-bottom-color: #e4eaf0;
+  color: #314150;
+}
+
+.admin-table tbody tr:hover,
+.dw-appointment-list article:hover,
+.dw-slot-list.upgraded article:hover {
+  background: #f9fbfc;
+}
+
+.admin-review-toolbar,
+.dw-data-toolbar,
+.dw-link-card,
+.dw-intake-step,
+.dw-upload-box,
+.dw-selected-specialty,
+.dw-specialty-section,
+.dw-verification-note,
+.dw-profile-preview article,
+.dw-profile-checklist,
+.dw-profile-hero aside {
+  border-color: var(--ops-border);
+  background: #f7f9fb;
+}
+
+.admin-review-toolbar input,
+.admin-review-toolbar select,
+.admin-article-form-grid input,
+.admin-article-form-grid select,
+.admin-article-form-grid textarea,
+.doctor-workspace-shell input,
+.doctor-workspace-shell select,
+.doctor-workspace-shell textarea {
+  border-color: #d2dbe5;
+  background-color: #ffffff;
+  color: #273544;
+}
+
+.admin-review-toolbar input:focus,
+.admin-review-toolbar select:focus,
+.admin-article-form-grid input:focus,
+.admin-article-form-grid select:focus,
+.admin-article-form-grid textarea:focus,
+.doctor-workspace-shell input:focus,
+.doctor-workspace-shell select:focus,
+.doctor-workspace-shell textarea:focus {
+  border-color: #6b94b0;
+  box-shadow: 0 0 0 3px rgba(63, 111, 145, 0.13);
+}
+
+.dw-status.confirmed,
+.admin-status-approved,
+.admin-status-active,
+.admin-status-confirmed,
+.admin-status-completed,
+.admin-status-paid,
+.dw-provider-status.approved {
+  background: #edf7f4;
+  color: #40776f;
+}
+
+.dw-status.pending,
+.admin-status-pending,
+.admin-status-pending_review,
+.admin-status-draft,
+.admin-status-unpaid {
+  background: #fbf4e8;
+  color: #835f2c;
+}
+
+.dw-status.cancelled,
+.admin-status-rejected,
+.admin-status-disabled,
+.admin-status-cancelled,
+.dw-provider-status.rejected {
+  background: #f9eeee;
+  color: #8a4c4c;
+}
+
+.dw-metric-grid.refined article::before,
+.admin-metric-card::before {
+  background: #6b94b0;
+}
+
+.dw-metric-grid.refined article.dw-metric-orange::before,
+.admin-metric-warning::before {
+  background: #c49a62;
+}
+
+.dw-metric-grid.refined article.dw-metric-green::before,
+.admin-metric-success::before {
+  background: #78a7a1;
+}
+
+.dw-metric-grid.refined article.dw-metric-violet::before {
+  background: #8d99a7;
+}
+
+/* Easier schedule controls for doctor workspace. */
+.dw-slot-manager.upgraded .dw-slot-form-card {
+  grid-template-columns: repeat(6, minmax(118px, 1fr));
+  align-items: end;
+  gap: 12px;
+}
+
+.dw-slot-manager.upgraded .dw-slot-form-card > div:first-child,
+.dw-slot-manager.upgraded .dw-slot-date-shortcuts,
+.dw-slot-manager.upgraded .dw-slot-presets,
+.dw-slot-manager.upgraded .dw-slot-copy-row,
+.dw-slot-manager.upgraded .dw-session-buttons,
+.dw-slot-manager.upgraded .dw-inline-warning {
+  grid-column: 1 / -1;
+}
+
+.dw-slot-date-shortcuts,
+.dw-slot-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dw-slot-date-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dw-slot-copy-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  padding: 10px;
+  border: 1px solid #d8e5ee;
+  background: #ffffff;
+}
+
+.dw-slot-copy-row button {
+  width: auto;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid #6b94b0;
+  background: #eef6fa;
+  color: #24465d;
+  font-weight: 750;
+}
+
+.dw-session-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.dw-slot-date-shortcuts button,
+.dw-slot-presets button {
+  width: auto;
+  min-width: 104px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid #cfdbe7;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #345f7c;
+  font-size: 0.875rem;
+  font-weight: 750;
+}
+
+.dw-session-buttons button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid #cfdbe7;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #24465d;
+}
+
+.dw-session-buttons button strong,
+.dw-session-buttons button span {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.dw-session-buttons button span {
+  color: #607082;
+  font-weight: 700;
+}
+
+.dw-slot-date-shortcuts button.active,
+.dw-slot-date-shortcuts button:hover:not(:disabled),
+.dw-slot-presets button:hover:not(:disabled),
+.dw-session-buttons button:hover:not(:disabled) {
+  border-color: #6b94b0;
+  background: #edf4f8;
+  color: #27495f;
+}
+
+.dw-capacity-stepper {
+  display: grid;
+  grid-template-columns: 36px minmax(56px, 1fr) 36px;
+  align-items: center;
+  height: 48px;
+  overflow: hidden;
+  border: 1px solid #d2dbe5;
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.dw-capacity-stepper button {
+  width: 36px;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: #f3f6f8;
+  color: #345f7c;
+  font-size: 1rem;
+}
+
+.dw-capacity-stepper input {
+  height: 100% !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  text-align: center;
+  box-shadow: none !important;
+}
+
+.dw-slot-manager label small {
+  color: #607082;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.dw-schedule-board article button {
+  width: 100%;
+  border-color: #cfdbe7;
+  background: #ffffff;
+  color: #345f7c;
+}
+
+.dw-schedule-board article button:hover:not(:disabled) {
+  border-color: #6b94b0;
+  background: #edf4f8;
+}
+
+.dw-slot-list.upgraded article {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(96px, auto) auto;
+  align-items: center;
+  min-height: 72px;
+  gap: 16px;
+}
+
+.dw-slot-list.upgraded article > div:nth-child(2) {
+  text-align: right;
+}
+
+@media (max-width: 1180px) {
+  .dw-slot-manager.upgraded .dw-slot-form-card {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .dw-slot-manager.upgraded .dw-slot-form-card {
+    grid-template-columns: 1fr;
+  }
+
+  .dw-slot-date-shortcuts button,
+  .dw-slot-presets button {
+    flex: 1 1 120px;
+  }
+
+  .dw-session-buttons {
+    grid-template-columns: 1fr;
+  }
+
+  .dw-slot-copy-row {
+    grid-template-columns: 1fr;
+  }
+
+  .dw-slot-list.upgraded article {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .dw-slot-list.upgraded article > div:nth-child(2) {
+    text-align: left;
+  }
+}
+
+.clinic-avatar-fallback {
+  display: grid;
+  place-items: center;
+  width: 120px;
+  height: 120px;
+  border-radius: 10px;
+  background: #edf4f8;
+  color: #345f7c;
+  font-size: 1.35rem;
+  font-weight: 850;
+}
+
+.clinic-gallery-placeholder {
+  display: grid;
+  place-items: center;
+  min-height: 360px;
+  margin: 22px auto;
+  padding: 34px;
+  background: #eef3f6;
+  color: #334155;
+  text-align: center;
+}
+
+.clinic-gallery-placeholder div {
+  display: grid;
+  place-items: center;
+  width: 86px;
+  height: 86px;
+  margin-bottom: 16px;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #345f7c;
+  font-size: 1.2rem;
+  font-weight: 850;
+  box-shadow: 0 8px 20px rgba(31, 45, 61, 0.08);
+}
+
+.clinic-gallery-placeholder strong {
+  font-size: 1.25rem;
+}
+
+.clinic-gallery-placeholder span {
+  margin-top: 6px;
+  color: #607082;
+}
+.dw-selected-specialties {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.dw-selected-specialties p {
+  margin: 0;
+  color: var(--mh-muted, #5a6b80);
+  font-weight: 700;
+}
+
+.dw-selected-specialties button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid #c8d6e6;
+  border-radius: 8px;
+  background: #f7fafc;
+  color: #17324d;
+  font-weight: 800;
+}
+
+.dw-selected-specialties button b {
+  color: #6b7b8f;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.dw-custom-specialty-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.dw-custom-specialty-row input {
+  min-height: 44px;
+  border: 1px solid #cbd8e6;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
+  color: #14243a;
+  font-weight: 700;
+}
+
+.dw-custom-specialty-row button,
+.dw-unavailability-actions button,
+.dw-unavailability-presets button {
+  border: 1px solid #c9d7e5;
+  border-radius: 8px;
+  background: #fff;
+  color: #17324d;
+  font-weight: 800;
+}
+
+.dw-custom-specialty-row button {
+  min-width: 92px;
+}
+
+.dw-unavailability-panel {
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid #d7e1ec;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(15, 35, 55, 0.06);
+}
+
+.dw-unavailability-panel header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.dw-unavailability-panel header span,
+.dw-unavailability-panel header p,
+.dw-current-unavailability p {
+  color: #5a6b80;
+}
+
+.dw-unavailability-panel header span {
+  display: block;
+  margin-bottom: 4px;
+  color: #17606d;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.dw-unavailability-panel header strong {
+  display: block;
+  color: #102033;
+  font-size: 1.08rem;
+}
+
+.dw-unavailability-panel header p,
+.dw-current-unavailability p {
+  margin: 6px 0 0;
+  line-height: 1.55;
+}
+
+.dw-unavailability-panel header em {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #edf7f5;
+  color: #176056;
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.dw-current-unavailability {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid #d8e6df;
+  border-radius: 8px;
+  background: #f7fbf9;
+}
+
+.dw-current-unavailability strong {
+  color: #17324d;
+}
+
+.dw-unavailability-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.dw-unavailability-presets,
+.dw-unavailability-form .wide,
+.dw-unavailability-actions {
+  grid-column: 1 / -1;
+}
+
+.dw-unavailability-presets {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.dw-unavailability-presets button,
+.dw-unavailability-actions button {
+  min-height: 42px;
+}
+
+.dw-unavailability-form label {
+  display: grid;
+  gap: 7px;
+  color: #2d3c50;
+  font-weight: 900;
+}
+
+.dw-unavailability-form input {
+  min-height: 44px;
+  border: 1px solid #cbd8e6;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
+  color: #14243a;
+  font-weight: 700;
+}
+
+.dw-unavailability-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dw-unavailability-actions button:first-child {
+  border-color: #176d68;
+  background: #176d68;
+  color: #fff;
+}
+
+.dw-facility-public-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid #d7e1ec;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(15, 35, 55, 0.06);
+}
+
+.dw-facility-public-form label {
+  display: grid;
+  gap: 7px;
+  color: #25364a;
+  font-weight: 900;
+}
+
+.dw-facility-public-form .wide,
+.dw-facility-public-actions,
+.dw-facility-public-form .dw-form-alert {
+  grid-column: 1 / -1;
+}
+
+.dw-facility-public-form input,
+.dw-facility-public-form textarea {
+  width: 100%;
+  border: 1px solid #cbd8e6;
+  border-radius: 8px;
+  background: #fff;
+  color: #14243a;
+  font: inherit;
+  font-weight: 700;
+}
+
+.dw-facility-public-form input {
+  min-height: 44px;
+  padding: 0 12px;
+}
+
+.dw-facility-public-form textarea {
+  min-height: 96px;
+  padding: 11px 12px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.dw-facility-public-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dw-facility-public-actions button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid #176d68;
+  border-radius: 8px;
+  background: #176d68;
+  color: #fff;
+  font-weight: 900;
+}
+
+.dw-facility-public-actions span {
+  color: #5a6b80;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .dw-custom-specialty-row,
+  .dw-unavailability-form,
+  .dw-unavailability-presets,
+  .dw-facility-public-form {
+    grid-template-columns: 1fr;
+  }
+
+  .dw-unavailability-panel header {
+    display: grid;
+  }
+}
+
+.dw-slot-manager.upgraded .dw-slot-date-shortcuts {
+  display: none;
+}
+
+.dw-slot-list.upgraded article {
+  grid-template-columns: minmax(260px, 1fr) 128px 72px minmax(132px, 160px) 96px;
+  gap: 12px;
+  align-items: center;
+}
+
+.dw-slot-list.upgraded article > div:first-child {
+  min-width: 0;
+}
+
+.dw-slot-list.upgraded article > div:first-child span {
+  overflow-wrap: anywhere;
+}
+
+.dw-slot-list.upgraded article > div:nth-child(2) {
+  text-align: right;
+}
+
+.dw-slot-list.upgraded article > button {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 12px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+@media (max-width: 980px) {
+  .dw-slot-list.upgraded article {
+    grid-template-columns: minmax(0, 1fr) 96px 72px 112px 84px;
+  }
+}
+
+@media (max-width: 680px) {
+  .dw-slot-list.upgraded article {
+    grid-template-columns: 1fr;
+  }
+
+  .dw-slot-list.upgraded article > div:nth-child(2) {
+    text-align: left;
+  }
+}
+
+.dw-slot-delete-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.36);
+}
+
+.dw-slot-delete-modal {
+  width: min(440px, 100%);
+  border: 1px solid #d5e2f2;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
+  overflow: hidden;
+}
+
+.dw-slot-delete-modal header,
+.dw-slot-delete-modal section,
+.dw-slot-delete-modal footer {
+  padding: 18px 20px;
+}
+
+.dw-slot-delete-modal header {
+  border-bottom: 1px solid #e6eef8;
+}
+
+.dw-slot-delete-modal header span {
+  display: block;
+  margin-bottom: 6px;
+  color: #0b67dc;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.dw-slot-delete-modal h2 {
+  margin: 0;
+  color: #101a2d;
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+
+.dw-slot-delete-modal section strong {
+  display: block;
+  margin-bottom: 10px;
+  color: #0f172a;
+}
+
+.dw-slot-delete-modal section p {
+  margin: 0;
+  color: #5d6b82;
+  line-height: 1.55;
+}
+
+.dw-slot-delete-modal footer {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 10px;
+  border-top: 1px solid #e6eef8;
+  background: #f8fbff;
+}
+
+.dw-slot-delete-modal footer button {
+  min-height: 44px;
+  border: 1px solid #c8d8ec;
+  border-radius: 6px;
+  background: #fff;
+  color: #244260;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.dw-slot-delete-modal footer button.danger {
+  border-color: #dc2626;
+  background: #dc2626;
+  color: #fff;
+}
+
+.dw-slot-delete-modal footer button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.doctor-workspace-shell .dw-dashboard-page.refined {
+  width: 100%;
+  min-height: 100vh;
+  padding: 0;
+}
+
+.doctor-workspace-shell .dw-live-dashboard.refined {
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+  margin: 0;
+  border-radius: 0;
+}
+
+.doctor-workspace-shell .dw-live-dashboard.refined .dw-live-content {
+  padding: 0 32px 36px;
+}
+
+.doctor-workspace-shell .dw-workspace-topbar {
+  margin-right: -32px;
+  margin-left: -32px;
+  padding-right: 32px;
+  padding-left: 32px;
+}
+
+@media (max-width: 760px) {
+  .doctor-workspace-shell .dw-live-dashboard.refined .dw-live-content {
+    padding: 0 14px 28px;
+  }
+
+  .doctor-workspace-shell .dw-workspace-topbar {
+    margin-right: -14px;
+    margin-left: -14px;
+    padding-right: 14px;
+    padding-left: 14px;
+  }
 }

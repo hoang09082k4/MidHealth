@@ -19,9 +19,26 @@ function waitForCurrentUser(timeoutMs = 2500) {
   });
 }
 
+async function getAuthToken(user, options = {}) {
+  let authUser = firebaseAuth.currentUser || user || await waitForCurrentUser();
+  if (!authUser?.getIdToken && user !== firebaseAuth.currentUser) {
+    authUser = firebaseAuth.currentUser || await waitForCurrentUser();
+  }
+
+  let token = '';
+  if (authUser?.getIdToken) {
+    try {
+      token = await authUser.getIdToken(Boolean(options.forceRefresh));
+    } catch {
+      const currentUser = firebaseAuth.currentUser || await waitForCurrentUser();
+      token = currentUser?.getIdToken ? await currentUser.getIdToken(true) : '';
+    }
+  }
+  return token;
+}
+
 async function getAuthHeaders(user, options = {}) {
-  const authUser = user || await waitForCurrentUser();
-  const token = authUser ? await authUser.getIdToken(Boolean(options.forceRefresh)) : '';
+  const token = await getAuthToken(user, options);
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -52,21 +69,39 @@ function stripLocalIds(value) {
 }
 
 export async function createAppointment(user, payload) {
+  const idToken = await getAuthToken(user, { forceRefresh: true });
   const response = await fetch(`${apiBaseUrl}/api/appointments`, {
     method: 'POST',
-    headers: await getAuthHeaders(user),
-    body: JSON.stringify(stripLocalIds(payload)),
+    headers: await getAuthHeaders(user, { forceRefresh: true }),
+    body: JSON.stringify({ ...stripLocalIds(payload), idToken }),
   });
-  return parseResponse(response, 'Khong the dat lich kham.');
+  return parseResponse(response, 'Không thể đặt lịch khám.');
 }
 
 export async function createPayPalOrder(user, appointmentId) {
+  if (!appointmentId) {
+    throw new Error('Không tìm thấy mã lịch khám để tạo thanh toán PayPal.');
+  }
+  const idToken = await getAuthToken(user, { forceRefresh: true });
   const response = await fetch(`${apiBaseUrl}/api/payments/paypal/create-order`, {
     method: 'POST',
-    headers: await getAuthHeaders(user),
-    body: JSON.stringify({ appointmentId }),
+    headers: await getAuthHeaders(user, { forceRefresh: true }),
+    body: JSON.stringify({ appointmentId, idToken }),
   });
-  return parseResponse(response, 'Khong the tao thanh toan PayPal.');
+  return parseResponse(response, 'Không thể tạo thanh toán PayPal.');
+}
+
+export async function createMoMoAtmPayment(user, appointmentId) {
+  if (!appointmentId) {
+    throw new Error('Không tìm thấy mã lịch khám để tạo thanh toán MoMo.');
+  }
+  const idToken = await getAuthToken(user, { forceRefresh: true });
+  const response = await fetch(`${apiBaseUrl}/api/payments/momo/create-atm-payment`, {
+    method: 'POST',
+    headers: await getAuthHeaders(user, { forceRefresh: true }),
+    body: JSON.stringify({ appointmentId, idToken }),
+  });
+  return parseResponse(response, 'Khong the tao thanh toan MoMo ATM.');
 }
 
 export async function listDoctorSlots(doctorId, options = {}) {
@@ -75,7 +110,7 @@ export async function listDoctorSlots(doctorId, options = {}) {
   if (options.days) params.set('days', String(options.days));
   const query = params.toString() ? `?${params.toString()}` : '';
   const response = await fetch(`${apiBaseUrl}/api/doctors/${encodeURIComponent(doctorId)}/slots${query}`);
-  return parseResponse(response, 'Khong the tai khung gio kham.');
+  return parseResponse(response, 'Không thể tải khung giờ khám.');
 }
 
 export async function listHospitalSlots(hospitalId, options = {}) {
@@ -86,7 +121,7 @@ export async function listHospitalSlots(hospitalId, options = {}) {
   if (options.specialtyName) params.set('specialtyName', options.specialtyName);
   const query = params.toString() ? `?${params.toString()}` : '';
   const response = await fetch(`${apiBaseUrl}/api/hospitals/${encodeURIComponent(hospitalId)}/slots${query}`);
-  return parseResponse(response, 'Khong the tai lich kham benh vien.');
+  return parseResponse(response, 'Không thể tải lịch khám bệnh viện.');
 }
 
 export async function listClinicSlots(clinicId, options = {}) {
@@ -97,21 +132,21 @@ export async function listClinicSlots(clinicId, options = {}) {
   if (options.specialtyName) params.set('specialtyName', options.specialtyName);
   const query = params.toString() ? `?${params.toString()}` : '';
   const response = await fetch(`${apiBaseUrl}/api/clinics/${encodeURIComponent(clinicId)}/slots${query}`);
-  return parseResponse(response, 'Khong the tai lich kham phong kham.');
+  return parseResponse(response, 'Không thể tải lịch khám phòng khám.');
 }
 
 export async function listPatientProfiles(user) {
   const response = await fetch(`${apiBaseUrl}/api/patient/profiles`, {
     headers: await getAuthHeaders(user),
   });
-  return parseResponse(response, 'Khong the tai ho so benh nhan.');
+  return parseResponse(response, 'Không thể tải hồ sơ bệnh nhân.');
 }
 
 export async function listAppointments(user) {
   const response = await fetch(`${apiBaseUrl}/api/appointments`, {
     headers: await getAuthHeaders(user),
   });
-  return parseResponse(response, 'Khong the tai lich kham.');
+  return parseResponse(response, 'Không thể tải lịch khám.');
 }
 
 export async function cancelAppointment(user, appointmentId) {
@@ -119,7 +154,7 @@ export async function cancelAppointment(user, appointmentId) {
     method: 'PATCH',
     headers: await getAuthHeaders(user),
   });
-  return parseResponse(response, 'Khong the huy lich kham.');
+  return parseResponse(response, 'Không thể hủy lịch khám.');
 }
 
 export async function savePatientProfile(user, profile) {
@@ -131,5 +166,5 @@ export async function savePatientProfile(user, profile) {
     headers: await getAuthHeaders(user, { forceRefresh: true }),
     body: JSON.stringify({ profile: stripLocalIds(profile) }),
   });
-  return parseResponse(response, 'Khong the luu ho so benh nhan.');
+  return parseResponse(response, 'Không thể lưu hồ sơ bệnh nhân.');
 }

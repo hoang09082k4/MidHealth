@@ -44,6 +44,12 @@ import {
 } from './health_news_service.js';
 import { askGeminiChat, hasGeminiConfig } from './gemini_chat_service.js';
 import {
+  createMoMoAtmPayment,
+  handleMoMoIpn,
+  handleMoMoReturn,
+} from './momo_service.js';
+import {
+  cancelPayPalOrder,
   capturePayPalOrder,
   createPayPalOrder,
   handlePayPalWebhook,
@@ -61,8 +67,11 @@ import { scanMedicalCard } from './card_scan_service.js';
 import {
   getProviderWorkspace,
   getProviderWorkspaceOperations,
+  deleteProviderSlot,
   saveProviderWorkspace,
   saveProviderSlot,
+  updateProviderFacilityDetails,
+  updateProviderUnavailability,
   updateProviderAppointmentStatus,
   updateProviderSlot,
 } from './provider_workspace_service.js';
@@ -173,6 +182,27 @@ async function getUserFromRequest(request) {
   return verifyIdToken(token);
 }
 
+async function getUserFromRequestOrPayload(request, payload = {}) {
+  const headerUser = await getUserFromRequest(request);
+  if (headerUser) return headerUser;
+
+  const bodyToken = typeof payload.idToken === 'string' ? payload.idToken.trim() : '';
+  return bodyToken ? verifyIdToken(bodyToken) : null;
+}
+
+async function ensurePatientAccess(firebaseUser) {
+  let access = await requireRoles(firebaseUser, APP_ROLES.PATIENT);
+  if (!access.ok && access.status === 404) {
+    access = await upsertAppUser(firebaseUser, {
+      authProvider: firebaseUser.providerUserInfo?.[0]?.providerId?.includes('google') ? 'google' : 'password',
+      role: APP_ROLES.PATIENT,
+      markLogin: true,
+      allowPatientIdentityRelink: true,
+    });
+  }
+  return access;
+}
+
 function createTicket(payload) {
   const nextNumber = Math.max(...tickets.map((ticket) => ticket.number), 0) + 1;
   const ticket = {
@@ -218,6 +248,7 @@ const server = http.createServer(async (request, response) => {
       emailOtp: hasOtpConfig ? 'connected' : 'missing-config',
       supabase: hasSupabaseConfig ? 'connected' : 'missing-config',
       paypal: config.paypalClientId && config.paypalClientSecret ? 'connected' : 'missing-config',
+      momo: config.momoPartnerCode && config.momoAccessKey && config.momoSecretKey ? 'connected' : 'missing-config',
       gemini: hasGeminiConfig ? 'connected' : 'missing-config',
     });
     return;
@@ -393,7 +424,7 @@ const server = http.createServer(async (request, response) => {
       const payload = await readBody(request);
       const firebaseUser = await verifyIdToken(payload.idToken);
       if (!firebaseUser) {
-        sendJson(response, 401, { message: 'Token Google khong hop le hoac da het han.' });
+        sendJson(response, 401, { message: 'Token Google không hợp lệ hoặc đã hết hạn.' });
         return;
       }
 
@@ -484,7 +515,7 @@ const server = http.createServer(async (request, response) => {
 
     const firebaseUser = await verifyIdToken(idToken);
     if (!firebaseUser) {
-      sendJson(response, 401, { message: 'Phien dang nhap khong hop le hoac da het han.' });
+      sendJson(response, 401, { message: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.' });
       return;
     }
 
@@ -705,6 +736,50 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === 'PATCH' && url.pathname === '/api/provider/workspace/unavailability') {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Vui lòng đăng nhập để cập nhật lịch nghỉ.' });
+      return;
+    }
+
+    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL]);
+    if (!access.ok) {
+      sendJson(response, access.status, access.data);
+      return;
+    }
+    try {
+      const payload = await readBody(request);
+      const result = await updateProviderUnavailability(user, payload);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Dữ liệu lịch nghỉ không hợp lệ.' });
+    }
+    return;
+  }
+
+  if (request.method === 'PATCH' && url.pathname === '/api/provider/workspace/facility-details') {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Vui lòng đăng nhập để cập nhật trang hiển thị.' });
+      return;
+    }
+
+    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL]);
+    if (!access.ok) {
+      sendJson(response, access.status, access.data);
+      return;
+    }
+    try {
+      const payload = await readBody(request);
+      const result = await updateProviderFacilityDetails(user, payload);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Dữ liệu trang hiển thị không hợp lệ.' });
+    }
+    return;
+  }
+
   if (request.method === 'PATCH' && url.pathname.match(/^\/api\/provider\/workspace\/appointments\/[^/]+$/)) {
     const user = await getUserFromRequest(request);
     if (!user) {
@@ -769,6 +844,28 @@ const server = http.createServer(async (request, response) => {
       sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     } catch {
       sendJson(response, 400, { message: 'Dữ liệu cập nhật khung giờ không hợp lệ.' });
+    }
+    return;
+  }
+
+  if (request.method === 'DELETE' && url.pathname.match(/^\/api\/provider\/workspace\/slots\/[^/]+$/)) {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      sendJson(response, 401, { message: 'Vui lòng đăng nhập để xóa khung giờ.' });
+      return;
+    }
+
+    const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL]);
+    if (!access.ok) {
+      sendJson(response, access.status, access.data);
+      return;
+    }
+    try {
+      const slotId = decodeURIComponent(url.pathname.replace('/api/provider/workspace/slots/', ''));
+      const result = await deleteProviderSlot(user, slotId);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Dữ liệu xóa khung giờ không hợp lệ.' });
     }
     return;
   }
@@ -899,7 +996,7 @@ const server = http.createServer(async (request, response) => {
     const clinicId = decodeURIComponent(url.pathname.replace('/api/clinics/', '').replace('/services', '')).trim();
     const result = await getCatalog();
     const clinic = result.ok ? (result.data.clinics || []).find((item) => item.id === clinicId) : null;
-    sendJson(response, result.ok && clinic ? 200 : result.ok ? 404 : result.status, result.ok && clinic ? { data: clinic.services || [] } : result.ok ? { message: 'Khong tim thay phong kham.' } : result.data);
+    sendJson(response, result.ok && clinic ? 200 : result.ok ? 404 : result.status, result.ok && clinic ? { data: clinic.services || [] } : result.ok ? { message: 'Không tìm thấy phòng khám.' } : result.data);
     return;
   }
 
@@ -907,7 +1004,7 @@ const server = http.createServer(async (request, response) => {
     const clinicId = decodeURIComponent(url.pathname.replace('/api/clinics/', '').replace('/specialties', '')).trim();
     const result = await getCatalog();
     const clinic = result.ok ? (result.data.clinics || []).find((item) => item.id === clinicId) : null;
-    sendJson(response, result.ok && clinic ? 200 : result.ok ? 404 : result.status, result.ok && clinic ? { data: clinic.specialties || [] } : result.ok ? { message: 'Khong tim thay phong kham.' } : result.data);
+    sendJson(response, result.ok && clinic ? 200 : result.ok ? 404 : result.status, result.ok && clinic ? { data: clinic.specialties || [] } : result.ok ? { message: 'Không tìm thấy phòng khám.' } : result.data);
     return;
   }
 
@@ -915,7 +1012,7 @@ const server = http.createServer(async (request, response) => {
     const clinicId = decodeURIComponent(url.pathname.replace('/api/clinics/', '')).trim();
     const result = await getCatalog();
     const clinic = result.ok ? (result.data.clinics || []).find((item) => item.id === clinicId) : null;
-    sendJson(response, result.ok && clinic ? 200 : result.ok ? 404 : result.status, result.ok && clinic ? { data: clinic } : result.ok ? { message: 'Khong tim thay phong kham.' } : result.data);
+    sendJson(response, result.ok && clinic ? 200 : result.ok ? 404 : result.status, result.ok && clinic ? { data: clinic } : result.ok ? { message: 'Không tìm thấy phòng khám.' } : result.data);
     return;
   }
 
@@ -956,7 +1053,7 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/api/patient/profiles') {
     const user = await getUserFromRequest(request);
     if (!user) {
-      sendJson(response, 401, { message: 'Ban can dang nhap de xem ho so benh nhan.' });
+      sendJson(response, 401, { message: 'Bạn cần đăng nhập để xem hồ sơ bệnh nhân.' });
       return;
     }
 
@@ -974,7 +1071,7 @@ const server = http.createServer(async (request, response) => {
     try {
       const user = await getUserFromRequest(request);
       if (!user) {
-        sendJson(response, 401, { message: 'Ban can dang nhap de luu ho so benh nhan.' });
+        sendJson(response, 401, { message: 'Bạn cần đăng nhập để lưu hồ sơ bệnh nhân.' });
         return;
       }
 
@@ -987,7 +1084,7 @@ const server = http.createServer(async (request, response) => {
       const result = await saveMedicalProfile(user, payload);
       sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     } catch {
-      sendJson(response, 400, { message: 'Du lieu ho so benh nhan khong hop le.' });
+      sendJson(response, 400, { message: 'Dữ liệu hồ sơ bệnh nhân không hợp lệ.' });
     }
     return;
   }
@@ -996,7 +1093,7 @@ const server = http.createServer(async (request, response) => {
     try {
       const user = await getUserFromRequest(request);
       if (!user) {
-        sendJson(response, 401, { message: 'Ban can dang nhap de cap nhat ho so benh nhan.' });
+        sendJson(response, 401, { message: 'Bạn cần đăng nhập để cập nhật hồ sơ bệnh nhân.' });
         return;
       }
 
@@ -1016,7 +1113,7 @@ const server = http.createServer(async (request, response) => {
       });
       sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     } catch {
-      sendJson(response, 400, { message: 'Du lieu ho so benh nhan khong hop le.' });
+      sendJson(response, 400, { message: 'Dữ liệu hồ sơ bệnh nhân không hợp lệ.' });
     }
     return;
   }
@@ -1024,7 +1121,7 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/api/appointments') {
     const user = await getUserFromRequest(request);
     if (!user) {
-      sendJson(response, 401, { message: 'Ban can dang nhap de xem lich kham.' });
+      sendJson(response, 401, { message: 'Bạn cần đăng nhập để xem lịch khám.' });
       return;
     }
 
@@ -1041,12 +1138,12 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'POST' && url.pathname === '/api/appointments') {
     try {
       const payload = await readBody(request);
-      const user = await getUserFromRequest(request);
+      const user = await getUserFromRequestOrPayload(request, payload);
       if (!user) {
         sendJson(response, 401, { message: 'Bạn cần đăng nhập bằng tài khoản bệnh nhân để đặt lịch.' });
         return;
       }
-      const access = await requireRoles(user, APP_ROLES.PATIENT);
+      const access = await ensurePatientAccess(user);
       if (!access.ok) {
         sendJson(response, access.status, access.data);
         return;
@@ -1054,7 +1151,7 @@ const server = http.createServer(async (request, response) => {
       const result = await createAppointment(user, payload);
       sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     } catch {
-      sendJson(response, 400, { message: 'Du lieu dat lich khong hop le.' });
+      sendJson(response, 400, { message: 'Dữ liệu đặt lịch không hợp lệ.' });
     }
     return;
   }
@@ -1062,12 +1159,12 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'POST' && url.pathname === '/api/payments/paypal/create-order') {
     try {
       const payload = await readBody(request);
-      const user = await getUserFromRequest(request);
+      const user = await getUserFromRequestOrPayload(request, payload);
       if (!user) {
         sendJson(response, 401, { message: 'Bạn cần đăng nhập bằng tài khoản bệnh nhân để thanh toán.' });
         return;
       }
-      const access = await requireRoles(user, APP_ROLES.PATIENT);
+      const access = await ensurePatientAccess(user);
       if (!access.ok) {
         sendJson(response, access.status, access.data);
         return;
@@ -1075,7 +1172,28 @@ const server = http.createServer(async (request, response) => {
       const result = await createPayPalOrder(user, payload.appointmentId);
       sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     } catch {
-      sendJson(response, 400, { message: 'Du lieu thanh toan khong hop le.' });
+      sendJson(response, 400, { message: 'Dữ liệu thanh toán không hợp lệ.' });
+    }
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/payments/momo/create-atm-payment') {
+    try {
+      const payload = await readBody(request);
+      const user = await getUserFromRequestOrPayload(request, payload);
+      if (!user) {
+        sendJson(response, 401, { message: 'Ban can dang nhap bang tai khoan benh nhan de thanh toan.' });
+        return;
+      }
+      const access = await ensurePatientAccess(user);
+      if (!access.ok) {
+        sendJson(response, access.status, access.data);
+        return;
+      }
+      const result = await createMoMoAtmPayment(user, payload.appointmentId);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'Du lieu thanh toan MoMo khong hop le.' });
     }
     return;
   }
@@ -1084,16 +1202,40 @@ const server = http.createServer(async (request, response) => {
     const orderId = url.searchParams.get('token');
     const result = orderId
       ? await capturePayPalOrder(orderId)
-      : { ok: false, status: 400, data: { message: 'Thieu ma don hang PayPal.' } };
-    const redirectUrl = `${config.frontendUrl}?paypalStatus=${result.ok ? 'success' : 'failed'}`;
+      : { ok: false, status: 400, data: { message: 'Thiếu mã đơn hàng PayPal.' } };
+    const redirectUrl = `${config.frontendUrl}?paymentProvider=paypal&paymentStatus=${result.ok ? 'success' : 'failed'}`;
     response.writeHead(302, { Location: redirectUrl });
     response.end();
     return;
   }
 
   if (request.method === 'GET' && url.pathname === '/api/payments/paypal/cancel') {
-    response.writeHead(302, { Location: `${config.frontendUrl}?paypalStatus=cancelled` });
+    const orderId = url.searchParams.get('token');
+    const appointmentId = url.searchParams.get('appointmentId');
+    const cancelToken = url.searchParams.get('cancelToken');
+    const result = await cancelPayPalOrder(orderId, appointmentId, cancelToken);
+    response.writeHead(302, { Location: `${config.frontendUrl}?paymentProvider=paypal&paymentStatus=${result.ok ? 'cancelled' : 'failed'}` });
     response.end();
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/payments/momo/return') {
+    const orderId = url.searchParams.get('orderId');
+    const result = await handleMoMoReturn(orderId);
+    const status = result.ok ? 'success' : Number(result.data?.resultCode) === 1006 ? 'cancelled' : 'failed';
+    response.writeHead(302, { Location: `${config.frontendUrl}?paymentProvider=momo&paymentStatus=${status}` });
+    response.end();
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/payments/momo/ipn') {
+    try {
+      const payload = await readBody(request);
+      const result = await handleMoMoIpn(payload);
+      sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    } catch {
+      sendJson(response, 400, { message: 'IPN MoMo khong hop le.' });
+    }
     return;
   }
 
@@ -1103,7 +1245,7 @@ const server = http.createServer(async (request, response) => {
       const result = await handlePayPalWebhook(payload, request.headers);
       sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     } catch {
-      sendJson(response, 400, { message: 'Webhook PayPal khong hop le.' });
+      sendJson(response, 400, { message: 'Webhook PayPal không hợp lệ.' });
     }
     return;
   }
@@ -1111,7 +1253,7 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'PATCH' && url.pathname.endsWith('/cancel') && url.pathname.startsWith('/api/appointments/')) {
     const user = await getUserFromRequest(request);
     if (!user) {
-      sendJson(response, 401, { message: 'Ban can dang nhap de huy lich kham.' });
+      sendJson(response, 401, { message: 'Bạn cần đăng nhập để hủy lịch khám.' });
       return;
     }
 
@@ -1191,6 +1333,14 @@ const server = http.createServer(async (request, response) => {
   }
 
   sendJson(response, 404, { message: 'Endpoint không tồn tại' });
+});
+
+server.on('error', (error) => {
+  if (error?.code === 'EADDRINUSE') {
+    console.error(`Cổng ${config.port} đang được sử dụng. Backend MidHealth có thể đã chạy sẵn; hãy dùng instance hiện tại hoặc đặt PORT khác trong .env.`);
+    process.exit(1);
+  }
+  throw error;
 });
 
 server.listen(config.port, () => {

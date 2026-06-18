@@ -341,6 +341,8 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
   const [passwordMessage, setPasswordMessage] = useState('');
   const [isPasswordSaving, setIsPasswordSaving] = useState(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
+  const [cancelConfirmAppointment, setCancelConfirmAppointment] = useState(null);
+  const [isCancellingAppointment, setIsCancellingAppointment] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isProfileSaving, setIsProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
@@ -526,8 +528,13 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
   const handleCancel = async () => {
     const targetAppointment = selectedAppointment || activeAppointment;
     if (!targetAppointment) return;
-    if (!window.confirm('Bạn muốn hủy lịch khám này?')) return;
+    setCancelConfirmAppointment(targetAppointment);
+  };
 
+  const confirmCancelAppointment = async () => {
+    const targetAppointment = cancelConfirmAppointment;
+    if (!targetAppointment) return;
+    setIsCancellingAppointment(true);
     try {
       if (targetAppointment.id && user) {
         await cancelAppointment(user, targetAppointment.id);
@@ -542,8 +549,11 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
         saveLocalAppointments(user, nextAppointments);
         return nextAppointments;
       });
+      setCancelConfirmAppointment(null);
     } catch (error) {
       setProfileError(error.message || 'Không thể hủy lịch khám. Vui lòng thử lại.');
+    } finally {
+      setIsCancellingAppointment(false);
     }
   };
 
@@ -951,24 +961,9 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
                     <div>
                       <span className={activeNotification.read ? 'notification-status read' : 'notification-status'}>{activeNotification.read ? 'Đã đọc' : 'Chưa đọc'}</span>
                       <h3>{activeNotification.title}</h3>
-                      <p>{activeNotification.detailMessage || activeNotification.message}</p>
+                      <p className="notification-detail-compact">{activeNotification.summary || activeNotification.message}</p>
+                      {activeNotification.patientName ? <p className="notification-detail-patient">{activeNotification.patientName}</p> : null}
                     </div>
-                    <div className="notification-detail-summary">
-                      {activeNotification.appointmentCode ? <span><small>Mã phiếu</small><strong>{activeNotification.appointmentCode}</strong></span> : null}
-                      {activeNotification.patientName ? <span><small>Bệnh nhân</small><strong>{activeNotification.patientName}</strong></span> : null}
-                      {activeNotification.schedule ? <span><small>Thời gian</small><strong>{activeNotification.schedule}</strong></span> : null}
-                    </div>
-                    {(activeNotification.sections || []).map((section) => (
-                      <section className="notification-detail-section" key={section.title}>
-                        <h4>{section.title}</h4>
-                        {section.rows.map(([label, value]) => (
-                          <div className="notification-detail-row" key={label}>
-                            <span>{label}</span>
-                            <strong>{value}</strong>
-                          </div>
-                        ))}
-                      </section>
-                    ))}
                     {activeNotification.notes?.length ? (
                       <section className="notification-detail-section note">
                         <h4>Lưu ý</h4>
@@ -1163,9 +1158,10 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
       </section>
 
       {isLogoutConfirmOpen && (
-        <div className="doctor-modal-backdrop">
-          <article className="logout-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="logout-confirm-title">
+        <div className="app-confirm-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !isLoggingOut) setIsLogoutConfirmOpen(false); }}>
+          <article className="app-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="logout-confirm-title">
             <header>
+              <span>MidHealth</span>
               <h2 id="logout-confirm-title">Thông báo</h2>
             </header>
             <section>
@@ -1175,6 +1171,26 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
               <button type="button" disabled={isLoggingOut} onClick={() => setIsLogoutConfirmOpen(false)}>Không</button>
               <button type="button" disabled={isLoggingOut} onClick={confirmLogout}>
                 {isLoggingOut ? 'Đang đăng xuất...' : 'Có'}
+              </button>
+            </footer>
+          </article>
+        </div>
+      )}
+      {cancelConfirmAppointment && (
+        <div className="app-confirm-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !isCancellingAppointment) setCancelConfirmAppointment(null); }}>
+          <article className="app-confirm-modal danger" role="dialog" aria-modal="true" aria-labelledby="cancel-appointment-title">
+            <header>
+              <span>Cần xác nhận</span>
+              <h2 id="cancel-appointment-title">Hủy lịch khám</h2>
+            </header>
+            <section>
+              <p>Bạn muốn hủy lịch khám này?</p>
+              <small>{cancelConfirmAppointment.appointmentCode || cancelConfirmAppointment.doctorName || cancelConfirmAppointment.hospitalName || ''}</small>
+            </section>
+            <footer>
+              <button type="button" disabled={isCancellingAppointment} onClick={() => setCancelConfirmAppointment(null)}>Không hủy</button>
+              <button type="button" className="confirm danger" disabled={isCancellingAppointment} onClick={confirmCancelAppointment}>
+                {isCancellingAppointment ? 'Đang hủy...' : 'Hủy lịch'}
               </button>
             </footer>
           </article>

@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
+import { cancelAppointmentForFailedPayment, expireStalePendingPayments } from './appointment_service.js';
 import { config } from './config.js';
-import { calculateAppointmentPrice } from './pricing.js';
 import { hasSupabaseConfig, supabase } from './supabase.js';
 
 const paypalBaseUrl = config.paypalMode === 'live'
@@ -28,6 +28,30 @@ function paypalAmountFromVnd(vndAmount) {
   return (Math.max(Number(vndAmount) || 0, 0) / rate).toFixed(2);
 }
 
+function withQueryParams(url, params = {}) {
+  const target = new URL(url);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') target.searchParams.set(key, value);
+  });
+  return target.toString();
+}
+
+function paymentTokenSecret() {
+  return config.jwtSecret || config.paypalClientSecret || config.momoSecretKey || 'midhealth-payment-token';
+}
+
+function signPaymentToken(appointmentId) {
+  return crypto.createHmac('sha256', paymentTokenSecret()).update(String(appointmentId || '')).digest('hex');
+}
+
+function isValidPaymentToken(appointmentId, token) {
+  if (!appointmentId || !token) return false;
+  const expected = signPaymentToken(appointmentId);
+  const actualBuffer = Buffer.from(String(token), 'hex');
+  const expectedBuffer = Buffer.from(expected, 'hex');
+  return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
 async function paypalFetch(path, options = {}) {
   const response = await fetch(`${paypalBaseUrl}${path}`, options);
   const data = await response.json().catch(() => ({}));
@@ -51,9 +75,10 @@ async function getAccessToken() {
 }
 
 async function getAppointmentForPayment(appointmentId, ownerProfileId) {
+  if (!appointmentId || !ownerProfileId) return null;
   const { data, error } = await supabase
     .from('appointments')
-    .select('id, owner_profile_id, specialty_text, insurance_used, original_amount, insurance_discount, final_amount, payment_status, clinic_specialties(name)')
+    .select('id, owner_profile_id, final_amount, payment_status')
     .eq('id', appointmentId)
     .eq('owner_profile_id', ownerProfileId)
     .maybeSingle();
@@ -88,43 +113,27 @@ async function upsertPendingPayment({ appointment, paypalOrder }) {
     ? await query.update(paymentRow).eq('id', existing.id).select().single()
     : await query.insert(paymentRow).select().single();
   if (error) throw error;
+  if (!data?.id) throw new Error('Khong the luu giao dich PayPal. Vui long thu lai.');
   return data;
 }
 
 export async function createPayPalOrder(firebaseUser, appointmentId) {
+  if (!appointmentId) return { ok: false, status: 400, data: { message: 'Thieu ma lich kham de thanh toan PayPal.' } };
   const ready = requirePaymentConfig();
   if (!ready.ok) return ready;
-  if (!firebaseUser?.localId) return { ok: false, status: 401, data: { message: 'Ban can dang nhap de thanh toan.' } };
+  if (!firebaseUser?.localId) return { ok: false, status: 401, data: { message: 'Bạn cần đăng nhập để thanh toán.' } };
 
   try {
+    await expireStalePendingPayments();
     const { findOwnerProfile } = await import('./appointment_service.js');
     const owner = await findOwnerProfile(firebaseUser);
-    if (!owner) return { ok: false, status: 401, data: { message: 'Khong tim thay ho so tai khoan.' } };
+    if (!owner?.id) return { ok: false, status: 401, data: { message: 'Khong tim thay ho so tai khoan.' } };
+    if (!owner) return { ok: false, status: 401, data: { message: 'Không tìm thấy hồ sơ tài khoản.' } };
 
     const appointment = await getAppointmentForPayment(appointmentId, owner.id);
-    if (!appointment) return { ok: false, status: 404, data: { message: 'Khong tim thay lich kham.' } };
+    if (!appointment) return { ok: false, status: 404, data: { message: 'Không tìm thấy lịch khám.' } };
     if (appointment.payment_status === 'paid') {
-      return { ok: false, status: 409, data: { message: 'Lich kham nay da thanh toan.' } };
-    }
-
-    const specialtyName = appointment.specialty_text || appointment.clinic_specialties?.name || '';
-    const price = calculateAppointmentPrice({
-      specialtyName,
-      hasStandardInsurance: Boolean(appointment.insurance_used),
-    });
-
-    if (Number(appointment.final_amount) !== price.finalAmount) {
-      await supabase
-        .from('appointments')
-        .update({
-          original_amount: price.originalAmount,
-          insurance_discount: price.insuranceDiscount,
-          final_amount: price.finalAmount,
-        })
-        .eq('id', appointment.id);
-      appointment.original_amount = price.originalAmount;
-      appointment.insurance_discount = price.insuranceDiscount;
-      appointment.final_amount = price.finalAmount;
+      return { ok: false, status: 409, data: { message: 'Lịch khám này đã thanh toán.' } };
     }
 
     const accessToken = await getAccessToken();
@@ -150,8 +159,11 @@ export async function createPayPalOrder(firebaseUser, appointmentId) {
           brand_name: 'midhealth',
           landing_page: 'LOGIN',
           user_action: 'PAY_NOW',
-          return_url: config.paypalReturnUrl,
-          cancel_url: config.paypalCancelUrl,
+          return_url: withQueryParams(config.paypalReturnUrl, { appointmentId: appointment.id }),
+          cancel_url: withQueryParams(config.paypalCancelUrl, {
+            appointmentId: appointment.id,
+            cancelToken: signPaymentToken(appointment.id),
+          }),
         },
       }),
     });
@@ -185,6 +197,16 @@ export async function capturePayPalOrder(orderId) {
   if (!ready.ok) return ready;
 
   try {
+    const { data: existingPayment, error: existingError } = await supabase
+      .from('payments')
+      .select('id, status, appointment_id')
+      .eq('paypal_order_id', orderId)
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (existingPayment?.status === 'paid') {
+      return { ok: true, status: 200, data: { status: 'COMPLETED', alreadyCaptured: true } };
+    }
+
     const accessToken = await getAccessToken();
     const capture = await paypalFetch(`/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {
       method: 'POST',
@@ -205,23 +227,67 @@ export async function capturePayPalOrder(orderId) {
         raw_payload: capture,
       })
       .eq('paypal_order_id', orderId)
+      .neq('status', 'paid')
       .select('appointment_id')
       .maybeSingle();
     if (error) throw error;
 
     if (payment?.appointment_id) {
-      await supabase
-        .from('appointments')
-        .update({ payment_status: status })
-        .eq('id', payment.appointment_id);
+      if (status === 'paid') {
+        await supabase
+          .from('appointments')
+          .update({ payment_status: status })
+          .eq('id', payment.appointment_id)
+          .neq('payment_status', 'paid');
+      } else {
+        await cancelAppointmentForFailedPayment(payment.appointment_id, 'failed');
+      }
     }
 
-    return { ok: true, status: 200, data: capture };
+    return { ok: status === 'paid', status: status === 'paid' ? 200 : 202, data: capture };
   } catch (error) {
-    await supabase
+    const { data: payment } = await supabase
       .from('payments')
       .update({ status: 'failed' })
-      .eq('paypal_order_id', orderId);
+      .eq('paypal_order_id', orderId)
+      .neq('status', 'paid')
+      .select('appointment_id')
+      .maybeSingle();
+    if (payment?.appointment_id) {
+      await cancelAppointmentForFailedPayment(payment.appointment_id, 'failed');
+    }
+    return { ok: false, status: 500, data: { message: error.message } };
+  }
+}
+
+export async function cancelPayPalOrder(orderId, appointmentId = '', cancelToken = '') {
+  const ready = requirePaymentConfig();
+  if (!ready.ok) return ready;
+
+  try {
+    let payment = null;
+    if (orderId) {
+      const { data, error } = await supabase
+        .from('payments')
+        .update({ status: 'failed' })
+        .eq('paypal_order_id', orderId)
+        .neq('status', 'paid')
+        .select('appointment_id')
+        .maybeSingle();
+      if (error) throw error;
+      payment = data;
+    }
+
+    const targetAppointmentId = payment?.appointment_id || appointmentId;
+    if (targetAppointmentId) {
+      if (!payment?.appointment_id && !isValidPaymentToken(targetAppointmentId, cancelToken)) {
+        return { ok: false, status: 401, data: { message: 'Yeu cau huy thanh toan khong hop le.' } };
+      }
+      await cancelAppointmentForFailedPayment(targetAppointmentId, 'failed');
+    }
+
+    return { ok: true, status: 200, data: { cancelled: true, appointmentId: targetAppointmentId || null } };
+  } catch (error) {
     return { ok: false, status: 500, data: { message: error.message } };
   }
 }
@@ -255,17 +321,17 @@ export async function handlePayPalWebhook(payload = {}, headers = {}) {
     return {
       ok: false,
       status: 503,
-      data: { message: 'Backend chua cau hinh PAYPAL_WEBHOOK_ID de xac minh webhook.' },
+      data: { message: 'Backend chưa cấu hình PAYPAL_WEBHOOK_ID để xác minh webhook.' },
     };
   }
 
   try {
     const verified = await verifyPayPalWebhook(headers, payload);
-    if (!verified) return { ok: false, status: 401, data: { message: 'Chu ky webhook PayPal khong hop le.' } };
+    if (!verified) return { ok: false, status: 401, data: { message: 'Chữ ký webhook PayPal không hợp lệ.' } };
 
     const resource = payload.resource || {};
-    const orderId = resource.id || resource.supplementary_data?.related_ids?.order_id;
-    const captureId = resource.supplementary_data?.related_ids?.capture_id || resource.id;
+    const orderId = resource.supplementary_data?.related_ids?.order_id || resource.id;
+    const captureId = resource.supplementary_data?.related_ids?.capture_id || (orderId === resource.id ? null : resource.id);
     const eventType = payload.event_type || '';
     const status = eventType.includes('COMPLETED') || resource.status === 'COMPLETED'
       ? 'paid'
@@ -274,6 +340,16 @@ export async function handlePayPalWebhook(payload = {}, headers = {}) {
         : 'pending';
 
     if (orderId) {
+      const { data: existingPayment, error: existingError } = await supabase
+        .from('payments')
+        .select('id, status, appointment_id')
+        .eq('paypal_order_id', orderId)
+        .maybeSingle();
+      if (existingError) throw existingError;
+      if (!existingPayment?.id || (existingPayment.status === 'paid' && status !== 'paid')) {
+        return { ok: true, status: 200, data: { received: true, ignored: true } };
+      }
+
       const { data: payment } = await supabase
         .from('payments')
         .update({
@@ -282,15 +358,19 @@ export async function handlePayPalWebhook(payload = {}, headers = {}) {
           paid_at: status === 'paid' ? new Date().toISOString() : null,
           raw_payload: payload,
         })
-        .eq('paypal_order_id', orderId)
+        .eq('id', existingPayment.id)
         .select('appointment_id')
         .maybeSingle();
 
       if (payment?.appointment_id) {
-        await supabase
-          .from('appointments')
-          .update({ payment_status: status })
-          .eq('id', payment.appointment_id);
+        if (status === 'failed') {
+          await cancelAppointmentForFailedPayment(payment.appointment_id, 'failed');
+        } else {
+          await supabase
+            .from('appointments')
+            .update({ payment_status: status })
+            .eq('id', payment.appointment_id);
+        }
       }
     }
 

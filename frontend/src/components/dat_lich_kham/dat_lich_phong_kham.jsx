@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from '../phieu_kham/phieu_kham_dien_tu';
-import { createAppointment, listAppointments, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
+import { createAppointment, listAppointments, listClinicSlots, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
 import { mergeAppointments, readLocalAppointments, saveLocalAppointment } from '../../lib/local_appointments';
 import { useReferenceData } from '../../lib/reference_data';
 import {
@@ -15,7 +15,7 @@ const CANVAS_FONT = 'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
 function anh_phong_kham(path) {
   if (!path) return '';
-  if (/^(https?:)?\/\//.test(path) || path.startsWith('/')) return path;
+  if (/^(https?:)?\/\//.test(path) || path.startsWith('/') || path.startsWith('data:image/')) return path;
   return `/image_phong_kham/${path}`;
 }
 
@@ -23,6 +23,28 @@ function lay_ten_tat(name = '') {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return 'BN';
   return parts.slice(-2).map((part) => part[0]).join('').toUpperCase();
+}
+
+function mo_ta_phong_kham(clinic) {
+  const specialties = (clinic.specialties || []).slice(0, 3).join(', ');
+  const specialtyText = specialties ? ` tiếp nhận ${specialties}` : ' tiếp nhận đặt khám theo lịch hẹn';
+  const addressText = clinic.address ? ` tại ${clinic.address}` : '';
+  return `${clinic.name} là phòng khám${specialtyText}${addressText}. Người bệnh có thể chọn dịch vụ, ngày khám, khung giờ và chuẩn bị hồ sơ trước khi đến khám.`;
+}
+
+function phu_de_phong_kham(clinic) {
+  const subtitle = String(clinic.subtitle || '').trim();
+  if (subtitle && !/đối tác midhealth/i.test(subtitle)) return subtitle;
+  const specialties = (clinic.specialties || []).slice(0, 2).join(', ');
+  return specialties ? `Phòng khám ${specialties}` : 'Phòng khám trên MidHealth';
+}
+
+function gio_lam_viec_mac_dinh() {
+  return [
+    { label: 'Thứ 2 - Thứ 6', time: '07:30 - 17:00' },
+    { label: 'Thứ 7', time: '07:30 - 11:30' },
+    { label: 'Chủ nhật', time: 'Theo lịch hẹn' },
+  ];
 }
 
 function gia_tri_ngay(date = new Date()) {
@@ -66,41 +88,6 @@ function slot_chua_qua_gio(slot) {
   if (slot.date < todayValue) return false;
   if (slot.date > todayValue) return true;
   return String(slot.startTime).slice(0, 5) > gio_hien_tai();
-}
-
-function cong_phut(time, minutes) {
-  const [hour, minute] = String(time).split(':').map(Number);
-  const date = new Date(2000, 0, 1, hour, minute + minutes);
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-}
-
-function tao_lich_phong_kham_tinh(clinicId, monthDate) {
-  const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
-  const times = ['07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '17:00', '17:30', '18:00', '18:30'];
-  const slots = [];
-
-  Array.from({ length: daysInMonth }, (_, index) => {
-    const date = new Date(monthDate.getFullYear(), monthDate.getMonth(), index + 1);
-    if (date.getDay() === 0) return;
-    const dateValue = gia_tri_ngay(date);
-    times.forEach((start) => {
-      const end = cong_phut(start, 30);
-      slots.push({
-        id: `static-clinic-${clinicId}-${dateValue}-${start}`,
-        clinicId,
-        date: dateValue,
-        startTime: start,
-        endTime: end,
-        label: `${start} - ${end}`,
-        session: start < '12:00' ? 'morning' : 'afternoon',
-        capacity: 4,
-        bookedCount: 0,
-        status: 'available',
-      });
-    });
-  });
-
-  return slots.filter(slot_chua_qua_gio);
 }
 
 function chuyen_ho_so_tu_api(profile) {
@@ -550,13 +537,24 @@ function TrangDatLichPhongKham({ clinic, initialScreen = 'detail', user, onBackH
   const [warning, setWarning] = useState('');
   const fileInputRef = useRef(null);
 
-  const serviceOptions = useMemo(() => (clinic.services || []).map((service) => ({
-    id: service.id,
-    name: service.name,
-    description: service.description || 'Dịch vụ khám tại phòng khám',
-    fee: service.fee || 'Thanh toán tại phòng khám',
-    specialtyId: service.specialtyId,
-  })), [clinic.services]);
+  const serviceOptions = useMemo(() => {
+    const explicitServices = (clinic.services || []).map((service) => ({
+      id: service.id,
+      name: service.name,
+      description: service.description || 'Dịch vụ khám tại phòng khám',
+      fee: service.fee || 'Thanh toán tại phòng khám',
+      specialtyId: service.specialtyId,
+    }));
+    if (explicitServices.length) return explicitServices;
+
+    return (clinic.specialties || []).map((specialty, index) => ({
+      id: `fallback-service-${index}-${specialty}`,
+      name: `Khám ${specialty}`,
+      description: `Khám và tư vấn chuyên khoa ${String(specialty).toLowerCase()} tại ${clinic.name}`,
+      fee: 'Thanh toán tại phòng khám',
+      specialtyId: '',
+    }));
+  }, [clinic.name, clinic.services, clinic.specialties]);
 
   const specialtyOptions = useMemo(() => (clinic.specialties || []).map((specialty) => ({
     name: specialty,
@@ -580,6 +578,10 @@ function TrangDatLichPhongKham({ clinic, initialScreen = 'detail', user, onBackH
       alt: `${clinic.name} ${index + 1}`,
     }));
   }, [clinic]);
+  const clinicAvatar = anh_phong_kham(clinic.avatar);
+  const clinicSubtitle = phu_de_phong_kham(clinic);
+  const clinicIntro = clinic.intro || mo_ta_phong_kham(clinic);
+  const clinicHours = (clinic.hours || []).length ? clinic.hours : gio_lam_viec_mac_dinh();
 
   useEffect(() => {
     onScreenChange?.(screen);
@@ -736,11 +738,44 @@ function TrangDatLichPhongKham({ clinic, initialScreen = 'detail', user, onBackH
       return () => {};
     }
 
-    setIsLoadingSlots(false);
+    let isMounted = true;
+    setIsLoadingSlots(true);
     setSlotError('');
-    setClinicSlots(tao_lich_phong_kham_tinh(clinic.id, calendarMonth));
+    setClinicSlots([]);
 
-    return () => {};
+    const daysInMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
+    listClinicSlots(clinic.id, {
+      fromDate: gia_tri_ngay(calendarMonth),
+      days: daysInMonth,
+      serviceName: selectedService?.name,
+      specialtyName: selectedSpecialty?.name,
+    })
+      .then((slots) => {
+        if (!isMounted) return;
+        const usableSlots = (Array.isArray(slots) ? slots : []).filter(slot_chua_qua_gio);
+        setClinicSlots(usableSlots);
+        setSelectedDate((current) => (
+          current && usableSlots.some((slot) => slot.date === current.value && slot_chua_qua_gio(slot))
+            ? current
+            : null
+        ));
+        setSelectedTime(null);
+        if (!usableSlots.length) setSlotError('Phòng khám chưa mở khung giờ cho lựa chọn này.');
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+        setClinicSlots([]);
+        setSelectedDate(null);
+        setSelectedTime(null);
+        setSlotError(error.message || 'Không thể tải lịch khám phòng khám.');
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingSlots(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, [clinic.id, selectedService, selectedSpecialty, specialtyOptions.length, calendarMonth]);
 
   const resetAfterStep = (stepKey) => {
@@ -1113,10 +1148,12 @@ function TrangDatLichPhongKham({ clinic, initialScreen = 'detail', user, onBackH
         <div className="breadcrumb">Trang chủ <span>/</span> Phòng khám</div>
         <button className="favorite-button hospital-favorite" type="button">♡ Yêu thích</button>
         <div className="hospital-title-row">
-          <img src={anh_phong_kham(clinic.avatar)} alt={clinic.name} />
+          {clinicAvatar
+            ? <img src={clinicAvatar} alt={clinic.name} />
+            : <div className="hospital-profile-avatar clinic-avatar-fallback">{lay_ten_tat(clinic.name)}</div>}
           <div>
             <h1>{clinic.name}</h1>
-            <p>{clinic.subtitle}</p>
+            <p>{clinicSubtitle}</p>
             <button type="button" onClick={openClinicMap}>◆ Địa chỉ</button>
           </div>
         </div>
@@ -1137,17 +1174,24 @@ function TrangDatLichPhongKham({ clinic, initialScreen = 'detail', user, onBackH
           <button className="gallery-count" type="button" onClick={() => setGalleryIndex(0)}>📷 {clinicImages.length}</button>
         </div>
       )}
+      {!clinicImages.length && (
+        <div className="clinic-gallery-placeholder">
+          <div>{lay_ten_tat(clinic.name)}</div>
+          <strong>{clinic.name}</strong>
+          <span>{clinic.address || 'Địa chỉ đang cập nhật'}</span>
+        </div>
+      )}
       <button className="hospital-detail-book" type="button" disabled={!serviceOptions.length} onClick={() => setScreen('booking')}>Đặt khám ngay</button>
       {!serviceOptions.length && <p className="hospital-empty-options">Hiện chưa có phòng khám phù hợp.</p>}
       <section className="hospital-info-grid" id="clinic-info">
         <article>
           <h2>Giới thiệu</h2>
-          <div className={isIntroExpanded ? 'hospital-intro expanded' : 'hospital-intro'}><p>{clinic.intro}</p></div>
+          <div className={isIntroExpanded ? 'hospital-intro expanded' : 'hospital-intro'}><p>{clinicIntro}</p></div>
           <button type="button" onClick={() => setIsIntroExpanded((value) => !value)}>{isIntroExpanded ? 'Thu gọn' : '...Xem thêm'} <i className={`ui-chevron ${isIntroExpanded ? 'up' : 'down'}`} aria-hidden="true" /></button>
         </article>
         <article>
           <h2>Giờ làm việc</h2>
-          <dl>{(clinic.hours || []).map((item) => <div key={item.label}><dt>{item.label}</dt><dd>{item.time}</dd></div>)}</dl>
+          <dl>{clinicHours.map((item) => <div key={item.label}><dt>{item.label}</dt><dd>{item.time}</dd></div>)}</dl>
         </article>
       </section>
       <section className="hospital-info-grid" id="clinic-services">

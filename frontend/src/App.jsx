@@ -22,6 +22,7 @@ const MucTinYTe = lazy(() => import('./components/tin_y_te/tin_y_te'));
 
 const HEALTH_BASE_PATH = '/tin-tuc';
 const HEALTH_PATH_ALIASES = ['/tin-tuc', '/tin-y-te', '/tin-tu'];
+const DOCTOR_WORKSPACE_BASE_PATH = '/danh-cho-bac-si';
 const DEFAULT_HEALTH_CATEGORY = 'suc-khoe-tong-quat';
 const PUBLIC_INFO_SLUGS = new Set([
   'gioi-thieu',
@@ -123,13 +124,25 @@ function PageLoading() {
   return <div className="page-loading" role="status">Đang tải...</div>;
 }
 
+function paymentResultFromParams(params) {
+  const legacyProvider = params.has('paypalStatus') ? 'paypal' : params.has('momoStatus') ? 'momo' : '';
+  const status = params.get('paymentStatus') || params.get('paypalStatus') || params.get('momoStatus') || '';
+  const provider = params.get('paymentProvider') || legacyProvider;
+  return status ? { provider, status } : null;
+}
+
 function routeFromLocation() {
-  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  let path = window.location.pathname.replace(/\/+$/, '') || '/';
   const params = new URLSearchParams(window.location.search);
+  const paymentResult = paymentResultFromParams(params);
   const bookingMatch = path.match(/^\/dat-kham\/([^/]+)\/([^/]+)(?:\/([^/]+))?$/);
   const bookingOverviewMatch = path.match(/^\/dat-kham\/([^/]+)$/);
   const publicInfoMatch = path.match(/^\/thong-tin\/([^/]+)$/);
   const placeTypeParam = params.get('noi-kham') || params.get('placeType') || '';
+
+  if (paymentResult) {
+    return { page: 'payment-result', paymentResult };
+  }
 
   if (path === '/admin' || path.startsWith('/admin/')) {
     return { page: 'admin' };
@@ -176,27 +189,20 @@ function routeFromLocation() {
     return { page: 'public-info', infoSlug: publicInfoMatch[1] };
   }
 
-  const doctorWorkspaceMatch = path.match(/^\/bacsi(?:\/([^/]+))?$/);
-  if (doctorWorkspaceMatch) {
-    const routePart = doctorWorkspaceMatch[1] || '';
-    return {
-      page: 'doctor-workspace',
-      workspace: {
-        basePath: '/bacsi',
-        requireAuth: true,
-        screen: WORKSPACE_SCREEN_PATHS[routePart] || 'work',
-        section: WORKSPACE_SCREEN_PATHS[routePart] ? 'tong-quan' : routePart || 'tong-quan',
-      },
-    };
+  const legacyWorkspaceMatch = path.match(/^\/(?:doi-tac-y-te|bacsi)(?:\/([^/]+))?$/);
+  if (legacyWorkspaceMatch) {
+    const canonicalPath = `${DOCTOR_WORKSPACE_BASE_PATH}${legacyWorkspaceMatch[1] ? `/${legacyWorkspaceMatch[1]}` : ''}`;
+    window.history.replaceState({}, '', canonicalPath);
+    path = canonicalPath;
   }
 
-  const workspaceMatch = path.match(/^\/(?:danh-cho-bac-si|doi-tac-y-te)(?:\/([^/]+))?$/);
+  const workspaceMatch = path.match(/^\/danh-cho-bac-si(?:\/([^/]+))?$/);
   if (workspaceMatch) {
     const routePart = workspaceMatch[1] || '';
     return {
       page: 'doctor-workspace',
       workspace: {
-        basePath: '/danh-cho-bac-si',
+        basePath: DOCTOR_WORKSPACE_BASE_PATH,
         requireAuth: false,
         screen: WORKSPACE_SCREEN_PATHS[routePart] || (routePart ? 'work' : 'landing'),
         section: WORKSPACE_SCREEN_PATHS[routePart] ? 'tong-quan' : routePart || 'tong-quan',
@@ -317,6 +323,41 @@ function healthRouteToUrl(route) {
   const params = new URLSearchParams();
   params.set('category', category);
   return `${HEALTH_BASE_PATH}?${params.toString()}`;
+}
+
+function PaymentResultPage({ result, onViewAppointments, onBookHospital, onHome }) {
+  const providerName = result?.provider === 'momo' ? 'MoMo' : 'PayPal';
+  const status = result?.status || 'failed';
+  const isSuccess = status === 'success';
+  const isCancelled = status === 'cancelled';
+  const title = isSuccess
+    ? 'Thanh toán thành công'
+    : isCancelled
+      ? 'Thanh toán đã hủy'
+      : 'Thanh toán chưa thành công';
+  const message = isSuccess
+    ? `MidHealth đã ghi nhận thanh toán qua ${providerName}. Lịch khám của bạn đã được xác nhận.`
+    : isCancelled
+      ? `Bạn đã hủy thanh toán qua ${providerName}. Lịch vừa tạo đã được hủy và khung giờ được mở lại.`
+      : `Giao dịch ${providerName} chưa hoàn tất. Lịch vừa tạo đã được hủy để tránh giữ chỗ khi chưa thanh toán.`;
+
+  return (
+    <section className="payment-result-page">
+      <article className={`payment-result-card ${isSuccess ? 'success' : isCancelled ? 'cancelled' : 'failed'}`}>
+        <div className="payment-result-mark">{isSuccess ? '✓' : '!'}</div>
+        <h1>{title}</h1>
+        <p>{message}</p>
+        <div className="payment-result-actions">
+          {isSuccess ? (
+            <button type="button" onClick={onViewAppointments}>Xem lịch khám</button>
+          ) : (
+            <button type="button" onClick={onBookHospital}>Đặt lại lịch</button>
+          )}
+          <button type="button" onClick={onHome}>Về trang chủ</button>
+        </div>
+      </article>
+    </section>
+  );
 }
 
 function App() {
@@ -516,8 +557,8 @@ function App() {
   };
 
   const showDoctorWorkspace = () => {
-    pushUrl('/danh-cho-bac-si');
-    setAppRoute({ page: 'doctor-workspace', workspace: { basePath: '/danh-cho-bac-si', requireAuth: false, screen: 'landing', section: 'tong-quan' } });
+    pushUrl(DOCTOR_WORKSPACE_BASE_PATH);
+    setAppRoute({ page: 'doctor-workspace', workspace: { basePath: DOCTOR_WORKSPACE_BASE_PATH, requireAuth: false, screen: 'landing', section: 'tong-quan' } });
     setIsAuthPage(false);
     setSelectedDoctor(null);
     setSelectedHospital(null);
@@ -625,6 +666,13 @@ function App() {
               showHome();
             }}
           />
+        ) : appRoute.page === 'payment-result' ? (
+          <PaymentResultPage
+            result={appRoute.paymentResult}
+            onViewAppointments={() => showPatientAccount('lich_kham')}
+            onBookHospital={() => showBookingOverview('hospital')}
+            onHome={showHome}
+          />
         ) : selectedDoctor ? (
           <TrangDatLichBacSi
             doctor={selectedDoctor}
@@ -700,7 +748,7 @@ function App() {
           <TrangChuLamViec
             initialScreen={appRoute.workspace?.screen || 'landing'}
             initialSection={appRoute.workspace?.section || 'tong-quan'}
-            basePath={appRoute.workspace?.basePath || '/danh-cho-bac-si'}
+            basePath={appRoute.workspace?.basePath || DOCTOR_WORKSPACE_BASE_PATH}
             requireAuth={Boolean(appRoute.workspace?.requireAuth)}
             onBackHome={showHome}
           />

@@ -186,10 +186,6 @@ function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value || '');
 }
 
-function isDuplicateKeyError(error) {
-  return error?.code === '23505' || /duplicate key value/i.test(error?.message || '');
-}
-
 async function requireSupabase() {
   if (!hasSupabaseConfig) {
     return {
@@ -202,17 +198,56 @@ async function requireSupabase() {
 }
 
 export async function findOwnerProfile(firebaseUser) {
-  if (!firebaseUser?.localId) return null;
-  const query = supabase
-    .from('patient_profiles')
-    .select('*')
-    .eq('firebase_uid', firebaseUser.localId);
+  const firebaseUid = clean(firebaseUser?.localId || firebaseUser?.uid);
+  if (!firebaseUid) return null;
 
-  const { data, error } = await query
+  const lookups = [['firebase_uid', firebaseUid]];
+  const { data: appUser, error: appUserError } = await supabase
+    .from('app_users')
+    .select('id, email')
+    .eq('firebase_uid', firebaseUid)
     .maybeSingle();
+  if (appUserError) throw appUserError;
 
-  if (error) throw error;
-  return data || null;
+  if (appUser?.id) lookups.push(['app_user_id', appUser.id]);
+  const email = normalizeEmail(firebaseUser?.email || appUser?.email || '');
+  if (email) lookups.push(['email', email]);
+
+  for (const [column, value] of lookups) {
+    const { data, error } = await supabase
+      .from('patient_profiles')
+      .select('*')
+      .eq(column, value)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data?.id) continue;
+
+    const shouldRelink = data.firebase_uid !== firebaseUid
+      || (appUser?.id && data.app_user_id !== appUser.id)
+      || data.role !== 'patient'
+      || data.status !== 'active';
+    if (!shouldRelink) return data;
+
+    const { data: linkedProfile, error: relinkError } = await supabase
+      .from('patient_profiles')
+      .update({
+        firebase_uid: firebaseUid,
+        app_user_id: appUser?.id || data.app_user_id || null,
+        role: 'patient',
+        status: 'active',
+        last_login_at: new Date().toISOString(),
+      })
+      .eq('id', data.id)
+      .select()
+      .single();
+    if (relinkError) throw relinkError;
+    return linkedProfile || data;
+  }
+
+  return null;
 }
 
 async function findExistingOwnerProfile({ firebaseUid, appUserId, email }) {
@@ -252,7 +287,7 @@ async function ensureOwnerProfile(firebaseUser, profile = {}) {
     markLogin: true,
     allowPatientIdentityRelink: true,
   });
-  if (!accountResult.ok) throw new Error(accountResult.data?.message || 'Khong the luu tai khoan.');
+  if (!accountResult.ok) throw new Error(accountResult.data?.message || 'Không thể lưu tài khoản.');
 
   const ownerRow = {
     firebase_uid: firebaseUser.localId,
@@ -440,196 +475,6 @@ async function lookupDoctor(payload = {}) {
   return payload.doctorName ? lookupByName('doctors', 'full_name', payload.doctorName) : null;
 }
 
-function addMinutes(time, minutes) {
-  const [hour, minute] = String(time).split(':').map(Number);
-  const date = new Date(2000, 0, 1, hour, minute + minutes, 0);
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:00`;
-}
-
-function futureDateValue(offsetDays) {
-  const date = new Date();
-  date.setDate(date.getDate() + offsetDays);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function isDoctorWorkingTime(time) {
-  const value = formatTime(time);
-  return (value >= '07:30' && value < '11:30') || (value >= '13:30' && value < '17:00') || (value >= '17:30' && value < '19:00');
-}
-
-function doctorScheduleSeed(doctorId = '') {
-  return String(doctorId).split('').reduce((total, char) => total + char.charCodeAt(0), 0);
-}
-
-function buildNaturalSlotTimes(doctorId, dateValueText) {
-  const seed = doctorScheduleSeed(`${doctorId}-${dateValueText}`);
-  const date = new Date(`${dateValueText}T00:00:00`);
-  const day = date.getDay();
-  if ((seed + day) % 9 === 0) return [];
-
-  const morningPool = ['07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00'];
-  const afternoonPool = ['13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30'];
-  const eveningPool = ['17:30', '18:00', '18:30'];
-  const useMorning = day !== 0 && seed % 3 !== 0;
-  const useAfternoon = day !== 6 || seed % 2 === 0;
-  const useEvening = seed % 5 === 0;
-  const slots = [];
-
-  const takeSlots = (pool, count, offset) => pool.filter((_, index) => (index + offset) % 2 === 0).slice(0, count);
-  if (useMorning) slots.push(...takeSlots(morningPool, 4 + (seed % 2), seed));
-  if (useAfternoon) slots.push(...takeSlots(afternoonPool, 4 + (seed % 3), seed + 1));
-  if (useEvening) slots.push(...eveningPool.slice(0, 2));
-
-  return slots.slice(0, 12).map((start) => ({
-    start_time: `${start}:00`,
-    end_time: addMinutes(`${start}:00`, 15),
-  }));
-}
-
-async function ensureFutureDoctorSlots(doctorId, fromDate, days) {
-  const { data: doctor, error: doctorError } = await supabase
-    .from('doctors')
-    .select('id, facility_id, specialty_id, is_active')
-    .eq('id', doctorId)
-    .eq('is_active', true)
-    .maybeSingle();
-  if (doctorError) throw doctorError;
-  if (!doctor) return;
-
-  const from = /^\d{4}-\d{2}-\d{2}$/.test(String(fromDate)) && String(fromDate) >= todayDateValue()
-    ? String(fromDate)
-    : todayDateValue();
-  const base = new Date(`${from}T00:00:00`);
-  const dates = Array.from({ length: Math.min(Math.max(Number(days) || 7, 1), 14) }, (_, index) => {
-    const date = new Date(base);
-    date.setDate(base.getDate() + index);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  });
-  const rows = [];
-
-  await cleanupDuplicateDoctorSlots(doctor.id, dates[0], dates[dates.length - 1]);
-  const existing = await fetchDoctorSlotRows(doctor.id, dates[0], dates[dates.length - 1], 'slot_date, start_time');
-  const existingKeys = new Set((existing || []).map((slot) => `${slot.slot_date}|${formatTime(slot.start_time)}`));
-  dates.forEach((slot_date) => {
-    buildNaturalSlotTimes(doctor.id, slot_date).forEach(({ start_time, end_time }) => {
-      const key = `${slot_date}|${formatTime(start_time)}`;
-      if (existingKeys.has(key)) return;
-      rows.push({
-        facility_id: doctor.facility_id,
-        doctor_id: doctor.id,
-        specialty_id: doctor.specialty_id,
-        slot_date,
-        start_time,
-        end_time,
-        capacity: 1,
-        booked_count: 0,
-        is_active: true,
-      });
-    });
-  });
-
-  if (!rows.length) return;
-  const { error } = await supabase.from('appointment_slots').insert(rows);
-  if (error && !isDuplicateKeyError(error)) throw error;
-}
-
-async function ensureFutureHospitalSlots(facilityId, options = {}) {
-  const from = /^\d{4}-\d{2}-\d{2}$/.test(String(options.fromDate || '')) && String(options.fromDate) >= todayDateValue()
-    ? String(options.fromDate)
-    : todayDateValue();
-  const days = Math.min(Math.max(Number(options.days) || 31, 1), 62);
-  const base = new Date(`${from}T00:00:00`);
-  const dates = Array.from({ length: days }, (_, index) => {
-    const date = new Date(base);
-    date.setDate(base.getDate() + index);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  });
-
-  const times = ['07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '13:00', '13:30', '14:00', '14:30', '15:00'];
-  const rows = [];
-  const existing = await fetchHospitalSlotRows(facilityId, dates[0], dates[dates.length - 1], 'slot_date, start_time, specialty_id, service_id');
-  const existingKeys = new Set((existing || []).map((slot) => [
-    slot.slot_date,
-    formatTime(slot.start_time),
-    slot.specialty_id || '',
-    slot.service_id || '',
-  ].join('|')));
-
-  dates.forEach((slotDate) => {
-    const day = new Date(`${slotDate}T00:00:00`).getDay();
-    if (day === 0) return;
-    times.forEach((start) => {
-      const key = [slotDate, start, options.specialtyId || '', options.serviceId || ''].join('|');
-      if (existingKeys.has(key)) return;
-      rows.push({
-        facility_id: facilityId,
-        specialty_id: options.specialtyId || null,
-        service_id: options.serviceId || null,
-        slot_date: slotDate,
-        start_time: `${start}:00`,
-        end_time: addMinutes(`${start}:00`, 30),
-        capacity: 8,
-        booked_count: 0,
-        is_active: true,
-      });
-    });
-  });
-
-  if (!rows.length) return;
-  const { error } = await supabase.from('appointment_slots').insert(rows);
-  if (error && !isDuplicateKeyError(error)) throw error;
-}
-
-async function ensureFutureClinicSlots(facilityId, options = {}) {
-  const from = /^\d{4}-\d{2}-\d{2}$/.test(String(options.fromDate || '')) && String(options.fromDate) >= todayDateValue()
-    ? String(options.fromDate)
-    : todayDateValue();
-  const days = Math.min(Math.max(Number(options.days) || 31, 1), 62);
-  const base = new Date(`${from}T00:00:00`);
-  const dates = Array.from({ length: days }, (_, index) => {
-    const date = new Date(base);
-    date.setDate(base.getDate() + index);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  });
-
-  const times = ['07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '17:00', '17:30', '18:00', '18:30'];
-  const rows = [];
-  const existing = await fetchHospitalSlotRows(facilityId, dates[0], dates[dates.length - 1], 'slot_date, start_time, specialty_id, service_id');
-  const existingKeys = new Set((existing || []).map((slot) => [
-    slot.slot_date,
-    formatTime(slot.start_time),
-    slot.specialty_id || '',
-    slot.service_id || '',
-  ].join('|')));
-
-  dates.forEach((slotDate) => {
-    const day = new Date(`${slotDate}T00:00:00`).getDay();
-    if (day === 0) return;
-    times.forEach((start) => {
-      const key = [slotDate, start, options.specialtyId || '', options.serviceId || ''].join('|');
-      if (existingKeys.has(key)) return;
-      rows.push({
-        facility_id: facilityId,
-        specialty_id: options.specialtyId || null,
-        service_id: options.serviceId || null,
-        slot_date: slotDate,
-        start_time: `${start}:00`,
-        end_time: addMinutes(`${start}:00`, 30),
-        capacity: 4,
-        booked_count: 0,
-        is_active: true,
-      });
-    });
-  });
-
-  if (!rows.length) return;
-  const { error } = await supabase.from('appointment_slots').insert(rows);
-  if (error && !isDuplicateKeyError(error)) throw error;
-}
-
 async function fetchHospitalSlotRows(facilityId, fromDate, toDate, columns) {
   const pageSize = 1000;
   const rows = [];
@@ -661,7 +506,7 @@ export async function listHospitalSlots(hospitalId, options = {}) {
 
   try {
     if (!isUuid(hospitalId)) {
-      return { ok: false, status: 400, data: { message: 'Benh vien khong hop le.' } };
+      return { ok: false, status: 400, data: { message: 'Bệnh viện không hợp lệ.' } };
     }
 
     const fromDate = /^\d{4}-\d{2}-\d{2}$/.test(String(options.fromDate || '')) ? options.fromDate : todayDateValue();
@@ -680,17 +525,10 @@ export async function listHospitalSlots(hospitalId, options = {}) {
       .eq('is_active', true)
       .maybeSingle();
     if (facilityError) throw facilityError;
-    if (!facility) return { ok: false, status: 404, data: { message: 'Khong tim thay benh vien.' } };
+    if (!facility) return { ok: false, status: 404, data: { message: 'Không tìm thấy bệnh viện.' } };
 
     const specialty = options.specialtyName ? await lookupByName('clinic_specialties', 'name', options.specialtyName) : null;
     const service = options.serviceName ? await lookupFacilityService(hospitalId, options.serviceName) : null;
-    await ensureFutureHospitalSlots(hospitalId, {
-      fromDate,
-      days,
-      specialtyId: specialty?.id || null,
-      serviceId: service?.id || null,
-    });
-
     const rows = await fetchHospitalSlotRows(
       hospitalId,
       fromDate,
@@ -733,7 +571,7 @@ export async function listClinicSlots(clinicId, options = {}) {
 
   try {
     if (!isUuid(clinicId)) {
-      return { ok: false, status: 400, data: { message: 'Phong kham khong hop le.' } };
+      return { ok: false, status: 400, data: { message: 'Phòng khám không hợp lệ.' } };
     }
 
     const fromDate = /^\d{4}-\d{2}-\d{2}$/.test(String(options.fromDate || '')) ? options.fromDate : todayDateValue();
@@ -752,17 +590,10 @@ export async function listClinicSlots(clinicId, options = {}) {
       .eq('is_active', true)
       .maybeSingle();
     if (facilityError) throw facilityError;
-    if (!facility) return { ok: false, status: 404, data: { message: 'Khong tim thay phong kham.' } };
+    if (!facility) return { ok: false, status: 404, data: { message: 'Không tìm thấy phòng khám.' } };
 
     const specialty = options.specialtyName ? await lookupByName('clinic_specialties', 'name', options.specialtyName) : null;
     const service = options.serviceName ? await lookupFacilityService(clinicId, options.serviceName) : null;
-    await ensureFutureClinicSlots(clinicId, {
-      fromDate,
-      days,
-      specialtyId: specialty?.id || null,
-      serviceId: service?.id || null,
-    });
-
     const rows = await fetchHospitalSlotRows(
       clinicId,
       fromDate,
@@ -823,43 +654,13 @@ async function fetchDoctorSlotRows(doctorId, fromDate, toDate, columns) {
   return rows;
 }
 
-async function cleanupDuplicateDoctorSlots(doctorId, fromDate, toDate) {
-  const slots = await fetchDoctorSlotRows(doctorId, fromDate, toDate, 'id, slot_date, start_time, booked_count, created_at');
-  const byTime = new Map();
-
-  slots.forEach((slot) => {
-    const key = `${slot.slot_date}|${formatTime(slot.start_time)}`;
-    const current = byTime.get(key) || [];
-    current.push(slot);
-    byTime.set(key, current);
-  });
-
-  const duplicateIds = [];
-  byTime.forEach((items) => {
-    if (items.length < 2) return;
-    const sorted = [...items].sort((a, b) => {
-      if ((b.booked_count || 0) !== (a.booked_count || 0)) return (b.booked_count || 0) - (a.booked_count || 0);
-      return String(a.created_at || '').localeCompare(String(b.created_at || ''));
-    });
-    sorted.slice(1).forEach((slot) => {
-      if ((slot.booked_count || 0) === 0) duplicateIds.push(slot.id);
-    });
-  });
-
-  for (let index = 0; index < duplicateIds.length; index += 200) {
-    const chunk = duplicateIds.slice(index, index + 200);
-    const { error } = await supabase.from('appointment_slots').delete().in('id', chunk);
-    if (error) throw error;
-  }
-}
-
 export async function listDoctorSlots(doctorId, options = {}) {
   const ready = await requireSupabase();
   if (!ready.ok) return ready;
 
   try {
     if (!isUuid(doctorId)) {
-      return { ok: false, status: 400, data: { message: 'Bac si khong hop le.' } };
+      return { ok: false, status: 400, data: { message: 'Bác sĩ không hợp lệ.' } };
     }
 
     const fromDate = /^\d{4}-\d{2}-\d{2}$/.test(String(options.fromDate || '')) ? options.fromDate : todayDateValue();
@@ -869,8 +670,6 @@ export async function listDoctorSlots(doctorId, options = {}) {
       date.setDate(date.getDate() + days - 1);
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     })();
-
-    await ensureFutureDoctorSlots(doctorId, fromDate, days);
 
     const data = (await fetchDoctorSlotRows(
       doctorId,
@@ -882,24 +681,16 @@ export async function listDoctorSlots(doctorId, options = {}) {
     const uniqueSlots = new Map();
     (data || [])
       .filter((slot) => (slot.booked_count || 0) < (slot.capacity || 1))
-      .filter((slot) => isDoctorWorkingTime(slot.start_time))
       .filter((slot) => isFutureSlotTime(slot.slot_date, slot.start_time))
       .forEach((slot) => {
         const key = `${slot.slot_date}|${formatTime(slot.start_time)}`;
         if (!uniqueSlots.has(key)) uniqueSlots.set(key, slot);
       });
 
-    const compactByDate = new Map();
-    Array.from(uniqueSlots.values()).forEach((slot) => {
-      const current = compactByDate.get(slot.slot_date) || [];
-      if (current.length < 12) current.push(slot);
-      compactByDate.set(slot.slot_date, current);
-    });
-
     return {
       ok: true,
       status: 200,
-      data: Array.from(compactByDate.values()).flat()
+      data: Array.from(uniqueSlots.values())
         .map((slot) => ({
           id: slot.id,
           doctorId: slot.doctor_id,
@@ -939,6 +730,153 @@ async function releaseAppointmentSlot(slotId) {
   if (!slotId) return;
   const { error } = await supabase.rpc('release_appointment_slot', { slot_id: slotId });
   if (error) throw error;
+}
+
+export async function cancelAppointmentForFailedPayment(appointmentId, paymentStatus = 'failed') {
+  const ready = await requireSupabase();
+  if (!ready.ok) return ready;
+  if (!isUuid(appointmentId)) {
+    return { ok: false, status: 400, data: { message: 'Ma lich kham khong hop le.' } };
+  }
+
+  try {
+    const { data: existing, error: lookupError } = await supabase
+      .from('appointments')
+      .select('id, status, payment_status, appointment_slot_id, doctor_id, facility_id, patient_name, patient_phone, appointment_date, appointment_time, appointment_time_text, queue_tickets(appointment_code, queue_number)')
+      .eq('id', appointmentId)
+      .maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!existing) return { ok: false, status: 404, data: { message: 'Khong tim thay lich kham.' } };
+    if (existing.payment_status === 'paid') {
+      return { ok: false, status: 409, data: { message: 'Lich kham da thanh toan nen khong the huy tu dong.' } };
+    }
+    if (existing.status === 'completed') {
+      return { ok: false, status: 409, data: { message: 'Lich kham da hoan tat nen khong the huy tu dong.' } };
+    }
+
+    const shouldReleaseSlot = existing.status !== 'cancelled' && existing.appointment_slot_id;
+    const { data, error } = await supabase
+      .from('appointments')
+      .update({ status: 'cancelled', payment_status: paymentStatus })
+      .eq('id', appointmentId)
+      .neq('payment_status', 'paid')
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+
+    await supabase
+      .from('queue_tickets')
+      .update({ status: 'cancelled' })
+      .eq('appointment_id', appointmentId);
+
+    if (shouldReleaseSlot) {
+      await releaseAppointmentSlot(existing.appointment_slot_id);
+    }
+
+    await logProviderAppointmentNotification({
+      eventType: 'appointment_cancelled_by_payment',
+      appointment: { ...existing, ...(data || {}), status: 'cancelled' },
+      ticket: Array.isArray(existing.queue_tickets) ? existing.queue_tickets[0] : existing.queue_tickets,
+    });
+
+    return { ok: true, status: 200, data: data || existing };
+  } catch (error) {
+    return { ok: false, status: 500, data: { message: error.message } };
+  }
+}
+
+export async function expireStalePendingPayments(maxAgeMinutes = Number(config.paymentPendingExpiryMinutes || 15)) {
+  const ready = await requireSupabase();
+  if (!ready.ok) return ready;
+
+  const minutes = Math.max(Number(maxAgeMinutes) || 15, 1);
+  const expiredBefore = new Date(Date.now() - minutes * 60 * 1000).toISOString();
+
+  try {
+    const { data: payments, error } = await supabase
+      .from('payments')
+      .select('id, appointment_id, status')
+      .eq('status', 'pending')
+      .lt('created_at', expiredBefore)
+      .limit(50);
+    if (error) throw error;
+
+    for (const payment of payments || []) {
+      if (!payment.appointment_id) continue;
+      await supabase
+        .from('payments')
+        .update({ status: 'failed' })
+        .eq('id', payment.id)
+        .eq('status', 'pending');
+      await cancelAppointmentForFailedPayment(payment.appointment_id, 'failed');
+    }
+
+    return { ok: true, status: 200, data: { expired: payments?.length || 0 } };
+  } catch (error) {
+    return { ok: false, status: 500, data: { message: error.message } };
+  }
+}
+
+async function findProviderWorkspaceForAppointment(appointment = {}) {
+  let query = supabase
+    .from('provider_workspaces')
+    .select('id, mode, provider_role, email')
+    .eq('status', 'approved')
+    .order('updated_at', { ascending: false })
+    .limit(1);
+
+  if (appointment.doctor_id) {
+    query = query.eq('linked_doctor_id', appointment.doctor_id);
+  } else if (appointment.facility_id) {
+    query = query.eq('linked_facility_id', appointment.facility_id);
+  } else {
+    return null;
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data?.[0] || null;
+}
+
+async function logProviderAppointmentNotification({ eventType, appointment, ticket = null, owner = null, firebaseUser = null }) {
+  try {
+    const workspace = await findProviderWorkspaceForAppointment(appointment);
+    if (!workspace?.id) return;
+
+    const appointmentTime = appointment.appointment_time_text || formatTime(appointment.appointment_time);
+    const patientName = appointment.patient_name || '';
+    const appointmentCode = ticket?.appointment_code || '';
+    const eventMessages = {
+      appointment_received: 'Patient booked a new appointment.',
+      appointment_cancelled_by_patient: 'Patient cancelled appointment.',
+      appointment_cancelled_by_payment: 'Appointment was cancelled because payment was not completed.',
+    };
+
+    await supabase
+      .from('provider_workspace_events')
+      .insert({
+        workspace_id: workspace.id,
+        actor_firebase_uid: firebaseUser?.localId || firebaseUser?.uid || null,
+        actor_email: normalizeEmail(owner?.email || firebaseUser?.email || '') || null,
+        actor_role: 'patient',
+        event_type: eventType,
+        entity_type: 'appointment',
+        entity_id: appointment.id,
+        message: eventMessages[eventType] || 'Appointment notification.',
+        metadata: {
+          appointmentId: appointment.id,
+          appointmentCode,
+          queueNumber: ticket?.queue_number || null,
+          patientName,
+          patientPhone: appointment.patient_phone || '',
+          appointmentDate: appointment.appointment_date || '',
+          appointmentTime,
+          status: appointment.status || '',
+        },
+      });
+  } catch {
+    // Provider notifications must not block booking or cancellation.
+  }
 }
 
 function mapAppointmentResponse(appointment, ticket, input = {}) {
@@ -1026,6 +964,10 @@ export async function createAppointment(firebaseUser, payload = {}) {
     const service = facility?.id && payload.serviceName
       ? await lookupFacilityService(facility.id, payload.serviceName)
       : null;
+    const requestedType = payload.type || (payload.hospitalId || payload.facilityId ? 'hospital' : payload.clinicId ? 'clinic' : '');
+    if (['hospital', 'clinic'].includes(requestedType) && !facility?.id) {
+      return { ok: false, status: 404, data: { message: 'Khong tim thay co so y te de dat lich. Vui long tai lai trang va thu lai.' } };
+    }
 
     const appointmentDate = payload.dateValue || payload.appointmentDate || payload.date;
     const appointmentTime = clean(payload.time || payload.appointmentTime);
@@ -1036,6 +978,13 @@ export async function createAppointment(firebaseUser, payload = {}) {
       specialtyName: payload.department || payload.specialtyName,
       hasStandardInsurance,
     });
+    if (payload.finalAmount !== undefined && Math.round(Number(payload.finalAmount)) !== price.finalAmount) {
+      return {
+        ok: false,
+        status: 409,
+        data: { message: 'So tien thanh toan khong khop voi gia dat kham hien tai. Vui long tai lai trang va thu lai.' },
+      };
+    }
     if (!appointmentDate || !appointmentTime || !parsedAppointmentTime || !patientName) {
       return { ok: false, status: 400, data: { message: 'Thiếu ngày khám, giờ khám hoặc tên bệnh nhân.' } };
     }
@@ -1055,24 +1004,6 @@ export async function createAppointment(firebaseUser, payload = {}) {
 
     let appointmentSlot = null;
     if (doctor?.id || facility?.id) {
-      if (doctor?.id) {
-        await ensureFutureDoctorSlots(doctor.id, appointmentDate, 1);
-      } else if (facility?.type === 'hospital') {
-        await ensureFutureHospitalSlots(facility.id, {
-          fromDate: appointmentDate,
-          days: 1,
-          specialtyId: specialty?.id || null,
-          serviceId: service?.id || null,
-        });
-      } else if (facility?.type === 'clinic') {
-        await ensureFutureClinicSlots(facility.id, {
-          fromDate: appointmentDate,
-          days: 1,
-          specialtyId: specialty?.id || null,
-          serviceId: service?.id || null,
-        });
-      }
-
       let slots = [];
       let slotError = null;
 
@@ -1110,14 +1041,14 @@ export async function createAppointment(firebaseUser, payload = {}) {
       if (slotError) throw slotError;
       appointmentSlot = (slots || [])
         .filter((slot) => !doctor?.id || slot.doctor_id === doctor.id)
-        .filter((slot) => doctor?.id || slot.facility_id === facility.id)
+        .filter((slot) => doctor?.id || !facility?.id || slot.facility_id === facility.id)
         .filter((slot) => !specialty?.id || !slot.specialty_id || slot.specialty_id === specialty.id)
         .filter((slot) => !service?.id || !slot.service_id || slot.service_id === service.id)[0] || null;
 
       if (appointmentSlot && (appointmentSlot.booked_count || 0) >= (appointmentSlot.capacity || 1)) {
         return { ok: false, status: 409, data: { message: 'Khung gio nay da het cho. Vui long chon khung gio khac.' } };
       }
-      if (!appointmentSlot && ['hospital', 'clinic'].includes(facility?.type)) {
+      if (!appointmentSlot) {
         return { ok: false, status: 409, data: { message: 'Khung gio nay khong con kha dung. Vui long chon khung gio khac.' } };
       }
     }
@@ -1197,6 +1128,14 @@ export async function createAppointment(firebaseUser, payload = {}) {
       .single();
     if (ticketError) throw ticketError;
 
+    await logProviderAppointmentNotification({
+      eventType: 'appointment_received',
+      appointment,
+      ticket,
+      owner,
+      firebaseUser,
+    });
+
     try {
       await sendAppointmentEmail({ firebaseUser, owner, appointment, ticket, input: payload });
     } catch {
@@ -1269,7 +1208,7 @@ export async function cancelAppointment(firebaseUser, appointmentId) {
   const ready = await requireSupabase();
   if (!ready.ok) return ready;
   if (!isUuid(appointmentId)) {
-    return { ok: false, status: 400, data: { message: 'Ma lich kham khong hop le.' } };
+    return { ok: false, status: 400, data: { message: 'Mã lịch khám không hợp lệ.' } };
   }
 
   try {
@@ -1278,19 +1217,19 @@ export async function cancelAppointment(firebaseUser, appointmentId) {
 
     const { data: existing, error: lookupError } = await supabase
       .from('appointments')
-      .select('id, status, appointment_slot_id')
+      .select('id, status, appointment_slot_id, doctor_id, facility_id, patient_name, patient_phone, appointment_date, appointment_time, appointment_time_text, queue_tickets(appointment_code, queue_number)')
       .eq('id', appointmentId)
       .eq('owner_profile_id', owner.id)
       .maybeSingle();
     if (lookupError) throw lookupError;
     if (!existing) {
-      return { ok: false, status: 404, data: { message: 'Khong tim thay lich kham.' } };
+      return { ok: false, status: 404, data: { message: 'Không tìm thấy lịch khám.' } };
     }
     if (existing.status === 'cancelled') {
       return { ok: true, status: 200, data: existing };
     }
     if (existing.status === 'completed') {
-      return { ok: false, status: 409, data: { message: 'Lich kham da hoan tat nen khong the huy.' } };
+      return { ok: false, status: 409, data: { message: 'Lịch khám đã hoàn tất nên không thể hủy.' } };
     }
 
     const { data, error } = await supabase
@@ -1325,6 +1264,14 @@ export async function cancelAppointment(firebaseUser, appointmentId) {
     if (data.appointment_slot_id) {
       await releaseAppointmentSlot(data.appointment_slot_id);
     }
+
+    await logProviderAppointmentNotification({
+      eventType: 'appointment_cancelled_by_patient',
+      appointment: { ...existing, ...data, status: 'cancelled' },
+      ticket: Array.isArray(existing.queue_tickets) ? existing.queue_tickets[0] : existing.queue_tickets,
+      owner,
+      firebaseUser,
+    });
 
     return { ok: true, status: 200, data };
   } catch (error) {

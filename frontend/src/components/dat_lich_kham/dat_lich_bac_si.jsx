@@ -6,7 +6,7 @@ import {
   kiem_tra_bhyt,
   kiem_tra_ngay_sinh,
 } from '../../data/du_lieu_ho_so';
-import { createAppointment, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
+import { createAppointment, listDoctorSlots, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
 import { saveLocalAppointment } from '../../lib/local_appointments';
 import { doctorImageName, doctorImagePath } from '../../lib/doctor_images';
 import { useReferenceData } from '../../lib/reference_data';
@@ -52,36 +52,6 @@ function formatDateDisplay(value) {
 function formatDateLabel(value) {
   const date = new Date(`${value}T00:00:00`);
   return `${DAY_LABELS[date.getDay()]}, ${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function addMinutes(time, minutes) {
-  const [hour, minute] = time.split(':').map(Number);
-  const date = new Date(2000, 0, 1, hour, minute + minutes);
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-}
-
-function fallbackSlots(doctorId, fromDate, days = DAYS_LOOKAHEAD) {
-  const slots = [];
-  Array.from({ length: days }).forEach((_, index) => {
-    const date = addDays(fromDate, index);
-    const seed = `${doctorId || 'doctor'}-${date}`.split('').reduce((total, char) => total + char.charCodeAt(0), 0);
-    const base = seed % 2 === 0
-      ? ['07:30', '08:30', '09:30', '10:30', '13:30', '14:30', '15:30', '16:30']
-      : ['08:00', '09:00', '10:00', '11:00', '14:00', '15:00', '16:00'];
-    base.slice(0, 10).forEach((start) => {
-      const end = addMinutes(start, 15);
-      slots.push({
-        id: `fallback-${doctorId}-${date}-${start}`,
-        doctorId,
-        date,
-        startTime: start,
-        endTime: end,
-        label: `${start}-${end}`,
-        session: start < '12:00' ? 'morning' : start < '17:30' ? 'afternoon' : 'evening',
-      });
-    });
-  });
-  return slots;
 }
 
 function isFutureSlot(slot, now = new Date()) {
@@ -406,9 +376,29 @@ function TrangDatLichBacSi({ doctor, initialScreen = 'detail', user, onBackHome,
   }, []);
 
   useEffect(() => {
-    setIsSlotLoading(false);
+    let isMounted = true;
+    setIsSlotLoading(true);
     setSlotMessage('');
-    setRawSlots(fallbackSlots(doctor.id, rangeStart));
+    setRawSlots([]);
+
+    listDoctorSlots(doctor.id, { fromDate: rangeStart, days: DAYS_LOOKAHEAD })
+      .then((slots) => {
+        if (!isMounted) return;
+        setRawSlots(Array.isArray(slots) ? slots : []);
+        setSlotMessage((slots || []).length ? '' : 'Bác sĩ chưa mở khung giờ khám cho giai đoạn này.');
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+        setRawSlots([]);
+        setSlotMessage(error.message || 'Không thể tải lịch khám của bác sĩ.');
+      })
+      .finally(() => {
+        if (isMounted) setIsSlotLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, [doctor.id, rangeStart]);
 
   useEffect(() => {
