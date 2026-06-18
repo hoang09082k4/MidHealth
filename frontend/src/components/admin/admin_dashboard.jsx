@@ -3,6 +3,9 @@ import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebas
 import { firebaseAuth } from '../../lib/firebase';
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
+const adminApiBaseUrl = typeof window !== 'undefined' && window.location.hostname === 'midhealth.vercel.app'
+  ? window.location.origin
+  : apiBaseUrl;
 const emptyArticleForm = {
   id: '',
   title: '',
@@ -74,7 +77,7 @@ function normalizeText(value = '') {
 }
 
 async function adminRequest(path, token, options = {}) {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await fetch(`${adminApiBaseUrl}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
