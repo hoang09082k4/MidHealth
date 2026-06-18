@@ -16,6 +16,60 @@ function normalizeKey(value = '') {
   return String(value || '').trim().toLowerCase();
 }
 
+const bootstrapAdminEmails = new Set(
+  (process.env.ADMIN_EMAILS || 'admin@gmail.com')
+    .split(',')
+    .map((email) => normalizeKey(email))
+    .filter(Boolean),
+);
+
+function firebaseUid(firebaseUser = {}) {
+  return clean(firebaseUser.localId || firebaseUser.uid);
+}
+
+function firebaseEmail(firebaseUser = {}) {
+  return normalizeKey(firebaseUser.email);
+}
+
+function isBootstrapAdmin(firebaseUser = {}) {
+  return bootstrapAdminEmails.has(firebaseEmail(firebaseUser));
+}
+
+async function ensureBootstrapAdmin(firebaseUser = {}) {
+  if (!hasSupabaseConfig || !isBootstrapAdmin(firebaseUser)) return;
+
+  const uid = firebaseUid(firebaseUser);
+  const email = firebaseEmail(firebaseUser);
+  if (!uid || !email) return;
+
+  const row = {
+    firebase_uid: uid,
+    email,
+    full_name: clean(firebaseUser.displayName) || 'MidHealth Admin',
+    avatar_url: clean(firebaseUser.photoUrl || firebaseUser.photoURL) || null,
+    role: 'admin',
+    status: 'active',
+    auth_provider: firebaseUser.providerUserInfo?.[0]?.providerId?.includes('google') ? 'google' : 'password',
+    email_verified: Boolean(firebaseUser.emailVerified),
+    last_login_at: new Date().toISOString(),
+  };
+
+  const { data: existing, error: lookupError } = await supabase
+    .from('app_users')
+    .select('id')
+    .or(`firebase_uid.eq.${uid},email.eq.${email}`)
+    .limit(1)
+    .maybeSingle();
+
+  if (lookupError) throw lookupError;
+
+  const result = existing?.id
+    ? await supabase.from('app_users').update(row).eq('id', existing.id)
+    : await supabase.from('app_users').insert(row);
+
+  if (result.error) throw result.error;
+}
+
 function slugify(value = '') {
   return String(value)
     .normalize('NFD')
@@ -236,6 +290,7 @@ async function countRows(table, queryBuilder = null) {
 }
 
 async function fetchAdminAccount(firebaseUser) {
+  await ensureBootstrapAdmin(firebaseUser);
   return requireRoles(firebaseUser, APP_ROLES.ADMIN, {
     message: 'Tài khoản không có quyền admin.',
   });
