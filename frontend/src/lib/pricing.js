@@ -48,12 +48,18 @@ export function formatCurrency(value = 0) {
   }).format(Number(value) || 0);
 }
 
+export function parseCurrencyAmount(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const digits = String(value || '').replace(/[^\d]/g, '');
+  return digits ? Number(digits) : 0;
+}
+
 export function specialtyBasePrice(specialtyName) {
   return specialtyPriceByName[normalizeVietnamese(specialtyName)] || 180000;
 }
 
-export function calculateAppointmentPrice(specialtyName, hasStandardInsurance = false) {
-  const originalAmount = specialtyBasePrice(specialtyName);
+export function calculateAppointmentPrice(specialtyName, hasStandardInsurance = false, baseAmount) {
+  const originalAmount = Math.max(Number(baseAmount) || specialtyBasePrice(specialtyName), 0);
   const insuranceDiscount = hasStandardInsurance
     ? Math.round(originalAmount * STANDARD_HEALTH_INSURANCE_RATE)
     : 0;

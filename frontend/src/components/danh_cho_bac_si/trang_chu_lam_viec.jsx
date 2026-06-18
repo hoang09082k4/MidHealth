@@ -162,11 +162,12 @@ async function getProviderWorkspaceApi() {
 async function verifyProviderAccount(authUser) {
   if (!authUser) return null;
   const token = await authUser.getIdToken(true);
-  const response = await fetch(`${apiBaseUrl}/api/auth/me?portal=provider`, {
+  const response = await fetch(`${apiBaseUrl}/api/auth/me?portal=provider&optional=1`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.message || 'Tài khoản không thuộc cổng dành cho bác sĩ.');
+  if (data.data?.allowed === false) return null;
   return data.data;
 }
 

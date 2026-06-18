@@ -3,7 +3,7 @@ import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } fro
 import { createAppointment, createMoMoAtmPayment, createPayPalOrder, listAppointments, listHospitalSlots, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
 import { mergeAppointments, readLocalAppointments } from '../../lib/local_appointments';
 import { useReferenceData } from '../../lib/reference_data';
-import { calculateAppointmentPrice, formatCurrency } from '../../lib/pricing';
+import { calculateAppointmentPrice, formatCurrency, normalizeVietnamese, parseCurrencyAmount } from '../../lib/pricing';
 import {
   chuan_hoa_bhyt,
   chuan_hoa_cmnd_cccd,
@@ -13,11 +13,16 @@ import {
 } from '../../data/du_lieu_ho_so';
 
 const CANVAS_FONT = 'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+const ASSET_PATH_LIMIT = 2048;
 
 function anh_benh_vien(path) {
-  if (!path) return '';
-  if (/^(https?:)?\/\//.test(path) || path.startsWith('/') || path.startsWith('data:image/')) return path;
-  return `/image_benh_vien/${path}`;
+  const value = String(path || '').trim();
+  if (!value) return '';
+  if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(value)) return value;
+  if (/^data:?image/i.test(value)) return '';
+  if (value.length > ASSET_PATH_LIMIT && !/^(https?:)?\/\//i.test(value)) return '';
+  if (/^(https?:)?\/\//i.test(value) || value.startsWith('/')) return value;
+  return `/image_benh_vien/${value.replace(/^\/+/, '')}`;
 }
 
 function gio_lam_viec_mac_dinh() {
@@ -206,11 +211,21 @@ function lay_dich_vu_benh_vien(hospital) {
 }
 
 function lay_chuyen_khoa_benh_vien(hospital) {
+  const services = hospital.services || [];
   return (hospital.specialties || []).map((specialty) => ({
     name: specialty,
     description: `Khám và tư vấn chuyên khoa ${specialty.toLowerCase()} tại ${hospital.name}`,
-    price: calculateAppointmentPrice(specialty, false).originalAmount,
+    price: gia_kham_chuyen_khoa_benh_vien(specialty, services),
   }));
+}
+
+function gia_kham_chuyen_khoa_benh_vien(specialtyName, services = []) {
+  const normalizedSpecialty = normalizeVietnamese(specialtyName).toLowerCase();
+  const matchedService = services.find((service) => {
+    const serviceName = normalizeVietnamese(service?.name || '').toLowerCase();
+    return serviceName === `kham ${normalizedSpecialty}` || serviceName.includes(normalizedSpecialty);
+  });
+  return parseCurrencyAmount(matchedService?.fee) || calculateAppointmentPrice(specialtyName, false).originalAmount;
 }
 
 function gia_tri_ngay(date = new Date()) {
@@ -708,7 +723,7 @@ function BuocDatKham({ step, unlockedStep, onStepClick }) {
 
 function ThongTinDatKham({ service, specialty, date, time, patient, note = '', attachments = [] }) {
   const hasStandardInsurance = service?.name === 'BHYT thường';
-  const price = calculateAppointmentPrice(specialty?.name, hasStandardInsurance);
+  const price = calculateAppointmentPrice(specialty?.name, hasStandardInsurance, specialty?.price);
 
   return (
     <aside className="hospital-booking-summary detailed">
@@ -1354,7 +1369,7 @@ function TrangDatLichBenhVien({ hospital, initialScreen = 'detail', user, onBack
         throw new Error('Thông tin đặt khám chưa đầy đủ. Vui lòng chọn lại dịch vụ, chuyên khoa, ngày giờ và hồ sơ bệnh nhân.');
       }
 
-      const displayedPrice = calculateAppointmentPrice(selectedSpecialty.name, hasStandardInsurance);
+      const displayedPrice = calculateAppointmentPrice(selectedSpecialty.name, hasStandardInsurance, selectedSpecialty.price);
       const nextAppointment = await createAppointment(user, {
         type: 'hospital',
         hospitalId,
@@ -1521,7 +1536,7 @@ function TrangDatLichBenhVien({ hospital, initialScreen = 'detail', user, onBack
                     {specialtyOptions.length > 0 ? specialtyOptions.map((specialty) => (
                       <button className={selectedSpecialty?.name === specialty.name ? 'hospital-option-card selected' : 'hospital-option-card'} key={specialty.name} type="button" onClick={() => chooseWithResetConfirm(2, selectedSpecialty?.name !== specialty.name, () => setSelectedSpecialty(specialty))}>
                         <span><strong>{specialty.name}</strong><small>{specialty.description}</small></span>
-                        <b className="hospital-option-price">{formatCurrency(calculateAppointmentPrice(specialty.name, hasStandardInsurance).finalAmount)}</b>
+                        <b className="hospital-option-price">{formatCurrency(calculateAppointmentPrice(specialty.name, hasStandardInsurance, specialty.price).finalAmount)}</b>
                         <i />
                       </button>
                     )) : <p className="hospital-empty-options">Bệnh viện này chưa có chuyên khoa đặt khám trên hệ thống.</p>}
@@ -1710,7 +1725,7 @@ function TrangDatLichBenhVien({ hospital, initialScreen = 'detail', user, onBack
                     <h3>Phương thức thanh toán</h3>
                     <div className="hospital-payment-total">
                       <span>Số tiền thanh toán</span>
-                      <strong>{formatCurrency(calculateAppointmentPrice(selectedSpecialty?.name, hasStandardInsurance).finalAmount)}</strong>
+                      <strong>{formatCurrency(calculateAppointmentPrice(selectedSpecialty?.name, hasStandardInsurance, selectedSpecialty?.price).finalAmount)}</strong>
                     </div>
                     <div className="hospital-insurance-list">
                       <button

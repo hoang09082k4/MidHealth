@@ -20732,9 +20732,12 @@ button.dw-midhealth-brand {
 }
 
 .dw-slot-manager label small {
+  display: block;
+  margin-top: 6px;
   color: #607082;
   font-size: 0.78rem;
   font-weight: 650;
+  line-height: 1.35;
 }
 
 .dw-schedule-board article button {
@@ -21069,6 +21072,113 @@ button.dw-midhealth-brand {
   resize: vertical;
 }
 
+.dw-structured-field {
+  display: grid;
+  gap: 12px;
+}
+
+.dw-structured-field > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dw-structured-field > header strong {
+  color: #25364a;
+  font-weight: 900;
+}
+
+.dw-structured-field > header button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid #cbd8e6;
+  border-radius: 8px;
+  background: #f7fbff;
+  color: #176d68;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.dw-structured-list {
+  display: grid;
+  gap: 10px;
+}
+
+.dw-hours-row,
+.dw-service-row,
+.dw-image-row {
+  display: grid;
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid #d7e1ec;
+  border-radius: 8px;
+  background: #f8fbfe;
+}
+
+.dw-hours-row {
+  grid-template-columns: minmax(180px, 0.8fr) minmax(260px, 1.2fr) 38px;
+}
+
+.dw-service-row {
+  grid-template-columns: minmax(190px, 0.9fr) minmax(260px, 1.4fr) minmax(150px, 0.7fr) 38px;
+}
+
+.dw-image-row {
+  grid-template-columns: minmax(0, 1fr) 38px;
+}
+
+.dw-hours-row label,
+.dw-service-row label,
+.dw-image-row label {
+  min-width: 0;
+  color: #52657b;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.dw-hours-row > button,
+.dw-service-row > button,
+.dw-image-row > button {
+  width: 38px;
+  height: 38px;
+  border: 1px solid #d4dee9;
+  border-radius: 8px;
+  background: #fff;
+  color: #8b2f39;
+  font-size: 1.2rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dw-structured-field small {
+  color: #6b7c91;
+  font-weight: 700;
+}
+
+.dw-gallery-upload-box {
+  margin-top: 0;
+  min-height: 138px;
+}
+
+.dw-gallery-file-list {
+  margin-top: 0;
+}
+
+.dw-gallery-file-list figure > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.dw-facility-public-form button:disabled,
+.dw-facility-public-form input:disabled,
+.dw-facility-public-form textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
 .dw-facility-public-actions {
   display: flex;
   align-items: center;
@@ -21101,6 +21211,19 @@ button.dw-midhealth-brand {
 
   .dw-unavailability-panel header {
     display: grid;
+  }
+
+  .dw-structured-field > header,
+  .dw-hours-row,
+  .dw-service-row,
+  .dw-image-row {
+    grid-template-columns: 1fr;
+  }
+
+  .dw-hours-row > button,
+  .dw-service-row > button,
+  .dw-image-row > button {
+    width: 100%;
   }
 }
 

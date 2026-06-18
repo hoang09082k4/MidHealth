@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import BieuTuongLogo from '../dung_chung/bieu_tuong_logo';
 
 const STATUS_BADGES = {
@@ -53,6 +53,10 @@ const TIME_OPTIONS = Array.from({ length: 49 }, (_, index) => {
   const minute = String(totalMinutes % 60).padStart(2, '0');
   return `${hour}:${minute}`;
 });
+
+const FACILITY_GALLERY_LIMIT = 5;
+const FACILITY_GALLERY_MAX_SIZE = 15 * 1024 * 1024;
+const FACILITY_GALLERY_TYPES = new Set(['image/png', 'image/jpeg']);
 
 const UNAVAILABILITY_PRESETS = [
   { label: '3 ngày', days: 2 },
@@ -171,6 +175,30 @@ function buildSlotRanges(startTime, endTime, durationMinutes) {
     cursor += duration;
   }
   return ranges;
+}
+
+function normalizeText(value = '') {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .trim();
+}
+
+function digitsOnly(value = '') {
+  return String(value || '').replace(/[^\d]/g, '');
+}
+
+function findServiceFeeForSpecialty(services = [], specialty) {
+  const normalizedSpecialty = normalizeText(specialty?.name || '');
+  if (!normalizedSpecialty) return '';
+  const service = (services || []).find((item) => {
+    const serviceName = normalizeText(item?.name || '');
+    return item?.specialtyId === specialty?.id || serviceName === `kham ${normalizedSpecialty}` || serviceName.includes(normalizedSpecialty);
+  });
+  return digitsOnly(service?.fee || '');
 }
 
 function getMetrics(operations, workspace) {
@@ -579,6 +607,7 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onUpdateSlot, onTogg
     startTime: '07:30',
     endTime: '08:00',
     capacity: '1',
+    consultationFee: '',
   });
   const [copyTargetDate, setCopyTargetDate] = useState(() => dateValueFromOffset(1));
   const [durationMinutes, setDurationMinutes] = useState(30);
@@ -602,8 +631,10 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onUpdateSlot, onTogg
   });
   const canManageSlots = workspace?.status === 'approved' && operations?.linked && onSaveSlot;
   const selectedSpecialtyId = slotForm.specialtyId || facilitySpecialties[0]?.id || '';
+  const selectedSpecialty = facilitySpecialties.find((specialty) => specialty.id === selectedSpecialtyId) || facilitySpecialties[0] || null;
+  const isHospitalWorkspace = workspace?.mode === 'hospital';
   const slotSetupBlocked = isFacilityWorkspace && canManageSlots && !facilitySpecialties.length;
-  const canSubmitSlot = canManageSlots && !slotSetupBlocked && (!isFacilityWorkspace || selectedSpecialtyId);
+  const canSubmitSlot = canManageSlots && !slotSetupBlocked && (!isFacilityWorkspace || selectedSpecialtyId) && (!isHospitalWorkspace || Number(digitsOnly(slotForm.consultationFee)) > 0);
   const lockedReason = workspace?.status !== 'approved'
     ? 'Hồ sơ cần được admin duyệt trước khi mở giờ khám.'
     : !operations?.linked
@@ -619,6 +650,17 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onUpdateSlot, onTogg
       capacity: workspace?.mode === 'doctor' ? '1' : current.capacity || '1',
     }));
   }, [workspace?.mode]);
+
+  useEffect(() => {
+    if (!isHospitalWorkspace || !selectedSpecialty) return;
+    setSlotForm((current) => {
+      if (current.consultationFee) return current;
+      return {
+        ...current,
+        consultationFee: findServiceFeeForSpecialty(operations?.services || [], selectedSpecialty),
+      };
+    });
+  }, [isHospitalWorkspace, operations?.services, selectedSpecialty?.id]);
 
   useEffect(() => {
     if (!slotForm.date || copyTargetDate > slotForm.date) return;
@@ -689,6 +731,7 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onUpdateSlot, onTogg
           startTime: range.startTime,
           endTime: range.endTime,
           capacity: Number(slotForm.capacity) || 1,
+          consultationFee: isHospitalWorkspace ? digitsOnly(slotForm.consultationFee) : undefined,
         });
       }
       const sessionLabel = groups.find((group) => group.session === session)?.label || '';
@@ -707,6 +750,10 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onUpdateSlot, onTogg
       setMessage('Vui lòng nhập đầy đủ ngày, giờ bắt đầu, giờ kết thúc và số lượt khám.');
       return;
     }
+    if (isHospitalWorkspace && Number(digitsOnly(slotForm.consultationFee)) <= 0) {
+      setMessage('Vui lòng nhập tiền khám chưa tính bảo hiểm y tế cho chuyên khoa bệnh viện.');
+      return;
+    }
     const ranges = buildSlotRanges(slotForm.startTime, slotForm.endTime, durationMinutes);
     if (!ranges.length) {
       setMessage('Khung giờ kết thúc phải lớn hơn giờ bắt đầu và đủ thời lượng đã chọn.');
@@ -722,6 +769,7 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onUpdateSlot, onTogg
           startTime: slotForm.startTime,
           endTime: slotForm.endTime,
           capacity: Number(slotForm.capacity) || 1,
+          consultationFee: isHospitalWorkspace ? digitsOnly(slotForm.consultationFee) : undefined,
         });
         setEditingSlotId('');
         setMessage('Đã cập nhật khung giờ.');
@@ -734,6 +782,7 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onUpdateSlot, onTogg
           startTime: range.startTime,
           endTime: range.endTime,
           capacity: Number(slotForm.capacity) || 1,
+          consultationFee: isHospitalWorkspace ? digitsOnly(slotForm.consultationFee) : undefined,
         });
       }
       setMessage(ranges.length === 1 ? 'Đã lưu 1 khung giờ.' : `Đã tạo ${ranges.length} khung giờ.`);
@@ -766,6 +815,7 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onUpdateSlot, onTogg
           startTime: slot.startTime,
           endTime: slot.endTime,
           capacity: Number(slot.capacity) || 1,
+          consultationFee: isHospitalWorkspace ? digitsOnly(slot.consultationFee || slot.fee || findServiceFeeForSpecialty(operations?.services || [], { id: slot.specialtyId, name: slot.specialtyName }) || slotForm.consultationFee) : undefined,
         });
       }
       setMessage(`Đã sao chép ${sourceSlots.length} khung giờ từ ${displayDate(slotForm.date)} sang ${displayDate(copyTargetDate)}.`);
@@ -797,6 +847,7 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onUpdateSlot, onTogg
       startTime: slot.startTime,
       endTime: slot.endTime,
       capacity: String(slot.capacity || 1),
+      consultationFee: isHospitalWorkspace ? digitsOnly(slot.consultationFee || slot.fee || findServiceFeeForSpecialty(operations?.services || [], { id: slot.specialtyId, name: slot.specialtyName })) : '',
     });
     const minutes = Math.max(15, timeToMinutes(slot.endTime) - timeToMinutes(slot.startTime));
     setDurationMinutes(DURATION_OPTIONS.some((option) => option.value === minutes) ? minutes : 30);
@@ -919,11 +970,40 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onUpdateSlot, onTogg
           {isFacilityWorkspace && facilitySpecialties.length ? (
             <label>
               Chuyên khoa
-              <select value={selectedSpecialtyId} onChange={(event) => setSlotForm({ ...slotForm, specialtyId: event.target.value })} disabled={!canManageSlots || !facilitySpecialties.length} required>
+              <select
+                value={selectedSpecialtyId}
+                onChange={(event) => {
+                  const nextSpecialty = facilitySpecialties.find((specialty) => specialty.id === event.target.value);
+                  setSlotForm({
+                    ...slotForm,
+                    specialtyId: event.target.value,
+                    consultationFee: isHospitalWorkspace ? findServiceFeeForSpecialty(operations?.services || [], nextSpecialty) : slotForm.consultationFee,
+                  });
+                }}
+                disabled={!canManageSlots || !facilitySpecialties.length}
+                required
+              >
                 {facilitySpecialties.map((specialty) => (
                   <option value={specialty.id} key={specialty.id}>{specialty.name}</option>
                 ))}
               </select>
+            </label>
+          ) : null}
+          {isHospitalWorkspace ? (
+            <label className="dw-slot-fee-field">
+              Tiền khám chưa BHYT
+              <input
+                type="number"
+                min="1000"
+                step="1000"
+                inputMode="numeric"
+                value={slotForm.consultationFee}
+                onChange={(event) => setSlotForm({ ...slotForm, consultationFee: digitsOnly(event.target.value) })}
+                placeholder="Ví dụ: 180000"
+                disabled={!canManageSlots}
+                required
+              />
+              <small>Giá này dùng để bệnh nhân thanh toán trước; BHYT thường sẽ tính giảm sau.</small>
             </label>
           ) : null}
           <label>
@@ -1099,42 +1179,96 @@ function AppointmentsPanel({ workspace, operations, onAppointmentStatusChange, o
   );
 }
 
-function hoursToText(hours = []) {
-  return (hours || []).map((item) => `${item.label || ''} | ${item.time || ''}`.trim()).join('\n');
+const EMPTY_HOUR = { label: '', time: '' };
+const EMPTY_SERVICE = { name: '', description: '', fee: '' };
+
+function displayFileSize(bytes = 0) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
-function servicesToText(services = []) {
-  return (services || []).map((item) => [item.name, item.description, item.fee].filter(Boolean).join(' | ')).join('\n');
+function galleryImageName(value = '', index = 0) {
+  const source = String(value || '');
+  if (source.startsWith('data:image/')) return `Ảnh ${index + 1}`;
+  const lastPart = source.split('/').filter(Boolean).pop() || `Ảnh ${index + 1}`;
+  return decodeURIComponent(lastPart.split('?')[0]).slice(0, 80) || `Ảnh ${index + 1}`;
 }
 
-function parseHoursText(value = '') {
-  return String(value || '')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [label = '', time = ''] = line.split('|').map((item) => item.trim());
-      return { label, time };
+function readImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({
+      id: `${file.name}_${file.size}_${file.lastModified}`,
+      url: String(reader.result || ''),
+      name: file.name,
+      size: file.size,
+    });
+    reader.onerror = () => reject(new Error(`Không thể đọc ảnh ${file.name}.`));
+    reader.readAsDataURL(file);
+  });
+}
+
+function hydrateHours(hours = []) {
+  const rows = (hours || [])
+    .map((item) => ({
+      label: item?.label || '',
+      time: item?.time || '',
+    }))
+    .filter((item) => item.label || item.time);
+
+  return rows.length ? rows : [{ ...EMPTY_HOUR }];
+}
+
+function hydrateServices(services = []) {
+  const rows = (services || [])
+    .map((item) => ({
+      name: item?.name || '',
+      description: item?.description || '',
+      fee: item?.fee || '',
+    }))
+    .filter((item) => item.name || item.description || item.fee);
+
+  return rows.length ? rows : [{ ...EMPTY_SERVICE }];
+}
+
+function hydrateImages(images = []) {
+  const rows = (images || [])
+    .map((url, index) => {
+      const value = String(url || '').trim();
+      return {
+        id: `saved_${index}_${value.slice(0, 32)}`,
+        url: value,
+        name: galleryImageName(value, index),
+        size: 0,
+      };
     })
+    .filter((item) => item.url);
+
+  return rows;
+}
+
+function serializeHours(hours = []) {
+  return hours
+    .map((item) => ({
+      label: String(item.label || '').trim(),
+      time: String(item.time || '').trim(),
+    }))
     .filter((item) => item.label || item.time);
 }
 
-function parseServicesText(value = '') {
-  return String(value || '')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [name = '', description = '', fee = ''] = line.split('|').map((item) => item.trim());
-      return { name, description, fee };
-    })
+function serializeServices(services = []) {
+  return services
+    .map((item) => ({
+      name: String(item.name || '').trim(),
+      description: String(item.description || '').trim(),
+      fee: String(item.fee || '').trim(),
+    }))
     .filter((item) => item.name);
 }
 
-function parseImagesText(value = '') {
-  return String(value || '')
-    .split('\n')
-    .map((line) => line.trim())
+function serializeImages(images = []) {
+  return images
+    .map((item) => String(item.url || '').trim())
     .filter(Boolean);
 }
 
@@ -1145,21 +1279,23 @@ function ServicePanel({ workspace, operations, onSaveFacilityDetails, getStatusL
     subtitle: '',
     intro: '',
     phone: '',
-    hoursText: '',
-    servicesText: '',
-    imagesText: '',
+    hours: [{ ...EMPTY_HOUR }],
+    services: [{ ...EMPTY_SERVICE }],
+    images: [],
   });
+  const galleryInputRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [isDraggingGallery, setIsDraggingGallery] = useState(false);
 
   useEffect(() => {
     setForm({
       subtitle: linkedFacility.subtitle || '',
       intro: linkedFacility.intro || '',
       phone: linkedFacility.phone || '',
-      hoursText: hoursToText(operations?.hours || linkedFacility.hours || []),
-      servicesText: servicesToText(operations?.services || linkedFacility.services || []),
-      imagesText: (operations?.images || linkedFacility.images || []).join('\n'),
+      hours: hydrateHours(operations?.hours || linkedFacility.hours || []),
+      services: hydrateServices(operations?.services || linkedFacility.services || []),
+      images: hydrateImages(operations?.images || linkedFacility.images || []),
     });
   }, [linkedFacility.id, linkedFacility.subtitle, linkedFacility.intro, linkedFacility.phone, operations?.hours, operations?.services, operations?.images]);
 
@@ -1180,6 +1316,83 @@ function ServicePanel({ workspace, operations, onSaveFacilityDetails, getStatusL
 
   const canSave = workspace?.status === 'approved' && operations?.linked && onSaveFacilityDetails;
 
+  const updateHour = (index, patch) => {
+    setForm((current) => ({
+      ...current,
+      hours: current.hours.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)),
+    }));
+  };
+
+  const updateService = (index, patch) => {
+    setForm((current) => ({
+      ...current,
+      services: current.services.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)),
+    }));
+  };
+
+  const removeRow = (field, index, emptyRow) => {
+    setForm((current) => {
+      const nextRows = current[field].filter((_, itemIndex) => itemIndex !== index);
+      return { ...current, [field]: nextRows.length ? nextRows : [{ ...emptyRow }] };
+    });
+  };
+
+  const removeGalleryImage = (imageId) => {
+    setForm((current) => ({
+      ...current,
+      images: current.images.filter((image) => image.id !== imageId),
+    }));
+  };
+
+  const handleGalleryFiles = async (fileList) => {
+    if (!canSave) return;
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+
+    const currentImages = form.images || [];
+    const remainingSlots = FACILITY_GALLERY_LIMIT - currentImages.length;
+    if (remainingSlots <= 0) {
+      setMessage(`Chỉ được tải tối đa ${FACILITY_GALLERY_LIMIT} ảnh thư viện.`);
+      return;
+    }
+
+    const accepted = [];
+    const rejected = [];
+    const existingKeys = new Set(currentImages.map((image) => image.id));
+    files.forEach((file) => {
+      const key = `${file.name}_${file.size}_${file.lastModified}`;
+      if (!FACILITY_GALLERY_TYPES.has(file.type)) {
+        rejected.push(`${file.name}: sai định dạng`);
+        return;
+      }
+      if (file.size > FACILITY_GALLERY_MAX_SIZE) {
+        rejected.push(`${file.name}: quá 15MB`);
+        return;
+      }
+      if (existingKeys.has(key)) {
+        rejected.push(`${file.name}: đã chọn`);
+        return;
+      }
+      if (accepted.length >= remainingSlots) {
+        rejected.push(`${file.name}: vượt quá ${FACILITY_GALLERY_LIMIT} ảnh`);
+        return;
+      }
+      accepted.push(file);
+      existingKeys.add(key);
+    });
+
+    try {
+      const nextImages = await Promise.all(accepted.map(readImageFile));
+      setForm((current) => ({
+        ...current,
+        images: [...current.images, ...nextImages].slice(0, FACILITY_GALLERY_LIMIT),
+      }));
+      setMessage(rejected.length ? `Một số ảnh không được thêm: ${rejected.join('; ')}.` : '');
+    } catch (error) {
+      setMessage(error.message || 'Không thể tải ảnh thư viện.');
+    }
+  };
+
   const save = async (event) => {
     event.preventDefault();
     if (!canSave) return;
@@ -1190,9 +1403,9 @@ function ServicePanel({ workspace, operations, onSaveFacilityDetails, getStatusL
         subtitle: form.subtitle,
         intro: form.intro,
         phone: form.phone,
-        hours: parseHoursText(form.hoursText),
-        services: parseServicesText(form.servicesText),
-        images: parseImagesText(form.imagesText),
+        hours: serializeHours(form.hours),
+        services: serializeServices(form.services),
+        images: serializeImages(form.images),
       });
       setMessage('Đã cập nhật thông tin hiển thị trên trang bệnh nhân.');
     } catch (error) {
@@ -1224,18 +1437,107 @@ function ServicePanel({ workspace, operations, onSaveFacilityDetails, getStatusL
           Giới thiệu
           <textarea value={form.intro} onChange={(event) => setForm({ ...form, intro: event.target.value })} rows={5} placeholder="Mô tả cơ sở, thế mạnh chuyên môn, quy trình tiếp nhận..." disabled={!canSave} />
         </label>
-        <label className="wide">
-          Giờ làm việc
-          <textarea value={form.hoursText} onChange={(event) => setForm({ ...form, hoursText: event.target.value })} rows={4} placeholder={'Thứ 2 - Thứ 6 | 07:30 - 17:00\nThứ 7 | 07:30 - 11:30\nChủ nhật | Theo lịch hẹn'} disabled={!canSave} />
-        </label>
-        <label className="wide">
-          Dịch vụ đặt khám
-          <textarea value={form.servicesText} onChange={(event) => setForm({ ...form, servicesText: event.target.value })} rows={5} placeholder={'Khám Lao - bệnh phổi | Tư vấn và khám chuyên khoa hô hấp | Theo bảng giá\nKhám tổng quát | Khám ban đầu và tư vấn sức khỏe | Theo bảng giá'} disabled={!canSave} />
-        </label>
-        <label className="wide">
-          Ảnh thư viện
-          <textarea value={form.imagesText} onChange={(event) => setForm({ ...form, imagesText: event.target.value })} rows={3} placeholder="Mỗi dòng một URL ảnh hoặc data:image. Ảnh đại diện chính chỉnh ở mục Hồ sơ." disabled={!canSave} />
-        </label>
+        <section className="dw-structured-field wide">
+          <header>
+            <strong>Giờ làm việc</strong>
+            <button type="button" onClick={() => setForm((current) => ({ ...current, hours: [...current.hours, { ...EMPTY_HOUR }] }))} disabled={!canSave}>+ Thêm khung giờ</button>
+          </header>
+          <div className="dw-structured-list">
+            {form.hours.map((item, index) => (
+              <div className="dw-hours-row" key={`hour-${index}`}>
+                <label>
+                  Ngày hoặc buổi
+                  <input value={item.label} onChange={(event) => updateHour(index, { label: event.target.value })} placeholder="Thứ 2 - Thứ 6" disabled={!canSave} />
+                </label>
+                <label>
+                  Thời gian
+                  <input value={item.time} onChange={(event) => updateHour(index, { time: event.target.value })} placeholder="07:30 - 17:00 hoặc Theo lịch hẹn" disabled={!canSave} />
+                </label>
+                <button type="button" onClick={() => removeRow('hours', index, EMPTY_HOUR)} disabled={!canSave} aria-label="Xóa khung giờ">×</button>
+              </div>
+            ))}
+          </div>
+        </section>
+        <section className="dw-structured-field wide">
+          <header>
+            <strong>Dịch vụ đặt khám</strong>
+            <button type="button" onClick={() => setForm((current) => ({ ...current, services: [...current.services, { ...EMPTY_SERVICE }] }))} disabled={!canSave}>+ Thêm dịch vụ</button>
+          </header>
+          <div className="dw-structured-list">
+            {form.services.map((item, index) => (
+              <div className="dw-service-row" key={`service-${index}`}>
+                <label>
+                  Tên dịch vụ
+                  <input value={item.name} onChange={(event) => updateService(index, { name: event.target.value })} placeholder="Khám tổng quát" disabled={!canSave} />
+                </label>
+                <label>
+                  Mô tả
+                  <input value={item.description} onChange={(event) => updateService(index, { description: event.target.value })} placeholder="Khám ban đầu và tư vấn sức khỏe" disabled={!canSave} />
+                </label>
+                <label>
+                  Chi phí
+                  <input value={item.fee} onChange={(event) => updateService(index, { fee: event.target.value })} placeholder="Theo bảng giá hoặc 300.000đ" disabled={!canSave} />
+                </label>
+                <button type="button" onClick={() => removeRow('services', index, EMPTY_SERVICE)} disabled={!canSave} aria-label="Xóa dịch vụ">×</button>
+              </div>
+            ))}
+          </div>
+        </section>
+        <section className="dw-structured-field wide">
+          <header>
+            <strong>Ảnh thư viện</strong>
+          </header>
+          <button
+            className={[
+              'hospital-upload-box',
+              'dw-gallery-upload-box',
+              isDraggingGallery ? 'dragging' : '',
+              form.images.length >= FACILITY_GALLERY_LIMIT ? 'full' : '',
+            ].filter(Boolean).join(' ')}
+            disabled={!canSave || form.images.length >= FACILITY_GALLERY_LIMIT}
+            type="button"
+            onClick={() => galleryInputRef.current?.click()}
+            onDragEnter={(event) => { event.preventDefault(); setIsDraggingGallery(true); }}
+            onDragLeave={(event) => { event.preventDefault(); setIsDraggingGallery(false); }}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              setIsDraggingGallery(false);
+              handleGalleryFiles(event.dataTransfer.files);
+            }}
+          >
+            <span>&#9633;</span>
+            <strong>{form.images.length >= FACILITY_GALLERY_LIMIT ? 'Đã đủ 5 ảnh' : 'Chọn tập tin'}</strong>
+            <em>hoặc kéo & thả tối đa {FACILITY_GALLERY_LIMIT} ảnh</em>
+            <small>Size thấp hơn 15MB, định dạng file png, jpg.</small>
+          </button>
+          <input
+            accept="image/png,image/jpeg"
+            hidden
+            multiple
+            ref={galleryInputRef}
+            type="file"
+            onChange={(event) => {
+              handleGalleryFiles(event.target.files);
+              event.target.value = '';
+            }}
+          />
+          {form.images.length ? (
+            <div className="hospital-file-list dw-gallery-file-list">
+              {form.images.map((image) => (
+                <figure key={image.id}>
+                  <img src={image.url} alt={image.name} />
+                  <figcaption>
+                    <strong>{image.name}</strong>
+                    <small>{image.size ? displayFileSize(image.size) : 'Ảnh đã lưu'}</small>
+                  </figcaption>
+                  <button type="button" aria-label={`Xóa ${image.name}`} onClick={() => removeGalleryImage(image.id)} disabled={!canSave}>×</button>
+                </figure>
+              ))}
+            </div>
+          ) : null}
+          <small>Ảnh đại diện chính chỉnh ở mục Hồ sơ.</small>
+        </section>
         {message ? <p className={message.includes('Đã') ? 'dw-form-alert neutral' : 'dw-form-alert'}>{message}</p> : null}
         <div className="dw-facility-public-actions">
           <button type="submit" disabled={!canSave || busy}>{busy ? 'Đang lưu...' : 'Cập nhật trang bệnh nhân'}</button>

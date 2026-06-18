@@ -23,6 +23,23 @@ function clean(value) {
   return typeof value === 'string' ? value.trim() : value;
 }
 
+function digitsOnly(value = '') {
+  return String(value || '').replace(/[^\d]/g, '');
+}
+
+function formatVndAmount(value) {
+  const amount = Number(digitsOnly(value));
+  if (!amount || amount < 0) return '';
+  return `${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(amount)} đ`;
+}
+
+function hasConsultationFeePayload(payload = {}) {
+  return payload.consultationFee !== undefined
+    || payload.consultation_fee !== undefined
+    || payload.fee !== undefined
+    || payload.feeText !== undefined;
+}
+
 function normalizeEmail(email = '') {
   return clean(email).toLowerCase();
 }
@@ -577,7 +594,7 @@ async function resolveFacilitySlotSpecialty(facilityId, payload = {}) {
     if (!requestedName) return { error: 'Cơ sở này chưa có chuyên khoa được duyệt. Hãy cập nhật hồ sơ và cho admin duyệt lại.', specialties };
     const specialty = await findOrCreateSpecialty(requestedName);
     await syncFacilitySpecialties(facilityId, requestedName);
-    return { specialtyId: specialty.id, specialties: await listFacilitySpecialties(facilityId) };
+    return { specialtyId: specialty.id, specialtyName: specialty.name, specialties: await listFacilitySpecialties(facilityId) };
   }
 
   const match = specialties.find((item) => (
@@ -594,7 +611,27 @@ async function resolveFacilitySlotSpecialty(facilityId, payload = {}) {
     };
   }
 
-  return { specialtyId: match.id, specialties };
+  return { specialtyId: match.id, specialtyName: match.name, specialties };
+}
+
+async function syncHospitalConsultationFee(facilityId, specialty, feeValue) {
+  if (!isUuid(facilityId) || !isUuid(specialty?.id)) return;
+  const feeText = formatVndAmount(feeValue);
+  if (!feeText) return;
+
+  const name = `Khám ${specialty.name || 'chuyên khoa'}`;
+  const { error } = await supabase
+    .from('facility_services')
+    .upsert({
+      facility_id: facilityId,
+      specialty_id: specialty.id,
+      name,
+      description: `Khám và tư vấn chuyên khoa ${String(specialty.name || '').toLowerCase()} tại bệnh viện.`,
+      fee_text: feeText,
+      is_active: true,
+      sort_order: 0,
+    }, { onConflict: 'facility_id,name' });
+  if (error) throw error;
 }
 
 async function syncProviderCatalogLink(workspaceRow) {
@@ -1434,6 +1471,12 @@ export async function saveProviderSlot(firebaseUser, payload = {}) {
     if (facilitySpecialty.error) {
       return { ok: false, status: 400, data: { message: facilitySpecialty.error, specialties: facilitySpecialty.specialties || [] } };
     }
+    if (workspace.mode === 'hospital') {
+      await syncHospitalConsultationFee(linkedFacility.id, {
+        id: facilitySpecialty.specialtyId,
+        name: facilitySpecialty.specialtyName || clean(payload.specialtyName || payload.specialty),
+      }, payload.consultationFee || payload.consultation_fee || payload.fee || payload.feeText);
+    }
 
     const baseRow = {
       facility_id: workspace.mode === 'doctor' ? linkedDoctor.facility_id || null : linkedFacility.id,
@@ -1517,6 +1560,7 @@ export async function saveProviderSlot(firebaseUser, payload = {}) {
         endTime,
         capacity,
         specialtyId: facilitySpecialty.specialtyId || '',
+        consultationFee: workspace.mode === 'hospital' ? formatVndAmount(payload.consultationFee || payload.consultation_fee || payload.fee || payload.feeText) : '',
       },
     });
     return { ok: true, status: existing?.id ? 200 : 201, data: mapSlotForProvider(saveResult.data) };
@@ -1587,6 +1631,7 @@ export async function updateProviderSlot(firebaseUser, slotId, payload = {}) {
   if (formatTime(nextEndTime) <= formatTime(nextStartTime)) {
     return { ok: false, status: 400, data: { message: 'Gio ket thuc phai sau gio bat dau.' } };
   }
+  let resolvedSpecialtyForFee = null;
   if (isFacilityWorkspace && (
     payload.specialtyId !== undefined
     || payload.specialty_id !== undefined
@@ -1600,6 +1645,18 @@ export async function updateProviderSlot(firebaseUser, slotId, payload = {}) {
       return { ok: false, status: 400, data: { message: facilitySpecialty.error, specialties: facilitySpecialty.specialties || [] } };
     }
     patch.specialty_id = facilitySpecialty.specialtyId || null;
+    resolvedSpecialtyForFee = {
+      id: facilitySpecialty.specialtyId,
+      name: facilitySpecialty.specialtyName || clean(payload.specialtyName || payload.specialty),
+    };
+  }
+
+  if (workspace?.mode === 'hospital' && hasConsultationFeePayload(payload)) {
+    const feeSpecialty = resolvedSpecialtyForFee || {
+      id: patch.specialty_id !== undefined ? patch.specialty_id : slot.specialtyId,
+      name: slot.specialtyName || clean(payload.specialtyName || payload.specialty),
+    };
+    await syncHospitalConsultationFee(linkedFacility?.id, feeSpecialty, payload.consultationFee || payload.consultation_fee || payload.fee || payload.feeText);
   }
 
   if (!Object.keys(patch).length) return { ok: true, status: 200, data: slot };

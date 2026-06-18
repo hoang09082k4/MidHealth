@@ -67,10 +67,11 @@ async function postApi(path, payload) {
 
 async function verifyProviderPortal(user) {
   const token = await user.getIdToken(true);
-  const response = await fetch(`${apiBaseUrl}/api/auth/me?portal=provider`, {
+  const response = await fetch(`${apiBaseUrl}/api/auth/me?portal=provider&optional=1`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await response.json().catch(() => ({}));
+  if (data.data?.allowed === false) throw new Error('PORTAL_ACCESS_DENIED');
   if (!response.ok) throw new Error(data.message || 'Tài khoản không có quyền truy cập workspace bác sĩ.');
   return data.data;
 }
