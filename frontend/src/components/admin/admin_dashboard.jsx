@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { firebaseAuth } from '../../lib/firebase';
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
@@ -158,7 +158,7 @@ function AuditEventList({ events = [] }) {
 }
 
 export default function AdminDashboard({ onBackHome }) {
-  const [authReady] = useState(true);
+  const [authReady, setAuthReady] = useState(false);
   const [adminUser, setAdminUser] = useState(null);
   const [backendToken, setBackendToken] = useState('');
   const [adminChecked, setAdminChecked] = useState(false);
@@ -235,6 +235,41 @@ export default function AdminDashboard({ onBackHome }) {
         || String(a.displayName || '').localeCompare(String(b.displayName || ''), 'vi'));
   }, [catalogItems, catalogKeyword, catalogKindFilter]);
 
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
+      if (!active) return;
+      if (!user) {
+        setAdminUser(null);
+        setBackendToken('');
+        setAuthReady(true);
+        return;
+      }
+
+      try {
+        const idToken = await user.getIdToken(true);
+        if (!active) return;
+        setBackendToken(idToken);
+        setAdminUser({
+          email: user.email || '',
+          displayName: user.displayName || user.email || '',
+        });
+        setEmail(user.email || '');
+      } catch {
+        if (!active) return;
+        setBackendToken('');
+        setAdminUser(null);
+      } finally {
+        if (active) setAuthReady(true);
+      }
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
   async function loadDashboard() {
     if (!backendToken) return;
     setLoading(true);
@@ -285,6 +320,7 @@ export default function AdminDashboard({ onBackHome }) {
   const canLogin = !loading && !validateAdminEmail(email) && Boolean(password);
 
   async function handleLogout() {
+    await signOut(firebaseAuth).catch(() => {});
     setBackendToken('');
     setAdminUser(null);
     setDashboard(null);
