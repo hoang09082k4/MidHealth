@@ -117,8 +117,7 @@ export async function fetchReferenceData() {
       ethnicGroups: withFallback(data.ethnicGroups, fallbackReferenceData.ethnicGroups),
       occupations: withFallback(data.occupations, fallbackReferenceData.occupations),
     };
-  } catch (error) {
-    console.error(error);
+  } catch {
     return fallbackReferenceData;
   }
 }

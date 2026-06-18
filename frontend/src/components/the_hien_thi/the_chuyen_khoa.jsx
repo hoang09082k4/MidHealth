@@ -1,6 +1,17 @@
 import { useState } from 'react';
 
 const SPECIALTY_PREVIEW_LIMIT = 6;
+const ASSET_PATH_LIMIT = 2048;
+
+function resolveAssetPath(prefix, value = '') {
+  const path = String(value || '').trim();
+  if (!path) return '';
+  if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(path)) return path;
+  if (/^data:?image/i.test(path)) return '';
+  if (path.length > ASSET_PATH_LIMIT && !/^(https?:)?\/\//i.test(path)) return '';
+  if (/^(https?:)?\/\//i.test(path) || path.startsWith('/')) return path;
+  return `${String(prefix || '').replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+}
 
 function TheChuyenKhoa({ specialties = [], onSelectSpecialty }) {
   const visibleSpecialties = specialties.filter((specialty) => !/ti[eê]m\s*ch[uủ]ng/i.test(specialty.name || ''));
@@ -22,14 +33,14 @@ function TheChuyenKhoa({ specialties = [], onSelectSpecialty }) {
       </div>
 
       <div className="specialty-grid">
-        {displayedSpecialties.map((specialty) => (
+        {displayedSpecialties.map((specialty, index) => (
           <a
             className="specialty-item"
             href="#specialty-search"
-            key={specialty.name}
+            key={specialty.id || `${specialty.name}-${index}`}
             onClick={(event) => handleSelect(event, specialty)}
           >
-            <img src={`/images_chuyen_khoa/${specialty.image}`} alt={specialty.name} />
+            <img src={resolveAssetPath('/images_chuyen_khoa', specialty.image)} alt={specialty.name} />
             <span>{specialty.name}</span>
           </a>
         ))}

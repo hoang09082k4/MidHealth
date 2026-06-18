@@ -258,7 +258,7 @@ function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onBookHospital, onB
       <section className="content-section" id="doctor">
         <TieuDeMuc title="Đặt khám bác sĩ" subtitle="Phiếu khám điện tử kèm số thứ tự và thời gian của bạn được xác nhận." />
         <div className="horizontal-list doctor-list">
-          {featuredDoctors.map((doctor) => <TheBacSi doctor={doctor} key={doctor.name} onBook={onBookDoctor} />)}
+          {featuredDoctors.map((doctor, index) => <TheBacSi doctor={doctor} key={doctor.id || `${doctor.name}-${index}`} onBook={onBookDoctor} />)}
         </div>
         <HanhDongMuc onAction={() => onOpenBookingOverview?.('doctor')} />
       </section>

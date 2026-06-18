@@ -46,7 +46,7 @@ function inferDoctorSpecialty(name = '') {
 }
 
 function inferDoctorNotice(name = '') {
-  if (name.includes('Lâm Việt Trung') || name.includes('LÃ¢m Viá»‡t Trung')) {
+  if (name.includes('Lâm Việt Trung')) {
     return 'Bác sĩ Lâm Việt Trung nghỉ ngày 20/10 đến 26/10, 27/10 làm lại bình thường. Nếu bệnh nhân bận việc không đến khám được vui lòng hủy lịch khám đã đặt và đặt lại ngày khác.';
   }
   return '';

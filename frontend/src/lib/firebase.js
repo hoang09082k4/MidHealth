@@ -1,11 +1,9 @@
 import { initializeApp } from 'firebase/app';
-import { getAnalytics, isSupported } from 'firebase/analytics';
 import {
   getAuth,
   getRedirectResult,
   GoogleAuthProvider,
   signInWithRedirect,
-  signInWithPopup,
 } from 'firebase/auth';
 
 const firebaseConfig = {
@@ -23,16 +21,11 @@ export const firebaseAuth = getAuth(firebaseApp);
 export const googleProvider = new GoogleAuthProvider();
 
 if (typeof window !== 'undefined') {
-  isSupported().then((supported) => {
-    if (supported) {
-      getAnalytics(firebaseApp);
-    }
-  });
-}
-
-export function signInWithGoogle() {
-  googleProvider.setCustomParameters({ prompt: 'select_account' });
-  return signInWithPopup(firebaseAuth, googleProvider);
+  import('firebase/analytics')
+    .then(({ getAnalytics, isSupported }) => isSupported().then((supported) => {
+      if (supported) getAnalytics(firebaseApp);
+    }))
+    .catch(() => {});
 }
 
 export function signInWithGoogleRedirect() {

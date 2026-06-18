@@ -12,6 +12,7 @@ const BOOKING_TABS = [
 
 const PAGE_SIZE = 8;
 const DOCTOR_PAGE_SIZE = 12;
+const ASSET_PATH_LIMIT = 2048;
 
 const TAB_CONTENT = {
   doctor: {
@@ -29,9 +30,13 @@ const TAB_CONTENT = {
 };
 
 function duong_dan_anh(prefix, path = '') {
-  if (!path) return '';
-  if (/^(https?:)?\/\//.test(path) || path.startsWith('/') || path.startsWith('data:image/')) return path;
-  return `${prefix}/${path}`;
+  const value = String(path || '').trim();
+  if (!value) return '';
+  if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(value)) return value;
+  if (/^data:?image/i.test(value)) return '';
+  if (value.length > ASSET_PATH_LIMIT && !/^(https?:)?\/\//i.test(value)) return '';
+  if (/^(https?:)?\/\//i.test(value) || value.startsWith('/')) return value;
+  return `${String(prefix || '').replace(/\/+$/, '')}/${value.replace(/^\/+/, '')}`;
 }
 
 function bo_dau(value = '') {
@@ -51,9 +56,7 @@ function ten_ngan_bac_si(name = '') {
 }
 
 function duong_dan_anh_bac_si(path = '') {
-  if (!path) return '';
-  if (/^(https?:)?\/\//.test(path) || path.startsWith('/')) return path;
-  return `/image_doctor/${path}`;
+  return duong_dan_anh('/image_doctor', path);
 }
 
 function BookingTabIcon({ name }) {

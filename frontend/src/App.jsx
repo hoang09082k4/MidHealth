@@ -38,15 +38,6 @@ const PUBLIC_INFO_SLUGS = new Set([
 ]);
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
 
-async function isPatientSession(user) {
-  if (!user) return false;
-  const token = await user.getIdToken();
-  const response = await fetch(`${apiBaseUrl}/api/auth/me?portal=patient`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  return response.ok;
-}
-
 function healthPathMatch(path) {
   return HEALTH_PATH_ALIASES.find((basePath) => path === basePath || path.startsWith(`${basePath}/`)) || '';
 }
@@ -369,8 +360,12 @@ function App() {
   const [selectedSpecialty, setSelectedSpecialty] = useState(null);
   const [user, setUser] = useState(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isChatbotReady, setIsChatbotReady] = useState(false);
   const [catalog, setCatalog] = useState(fallbackCatalog);
   const [appRoute, setAppRoute] = useState(routeFromLocation);
+  const isHealthPage = appRoute.page === 'health';
+  const isDoctorWorkspacePage = appRoute.page === 'doctor-workspace';
+  const isAdminPage = appRoute.page === 'admin';
 
   useEffect(() => {
     const previousScrollRestoration = window.history.scrollRestoration;
@@ -392,20 +387,12 @@ function App() {
   useEffect(() => {
     let active = true;
     const unsubscribe = onAuthStateChanged(firebaseAuth, async (currentUser) => {
-      if (!currentUser) {
-        if (active) {
-          setUser(null);
-          setIsAuthReady(true);
-        }
-        return;
+      if (active) {
+        setUser(currentUser || null);
+        setIsAuthReady(true);
       }
-      try {
-        const allowed = await isPatientSession(currentUser);
-        if (active) setUser(allowed ? currentUser : null);
-      } catch {
-        if (active) setUser(null);
-      } finally {
-        if (active) setIsAuthReady(true);
+      if (!currentUser) {
+        return;
       }
     });
 
@@ -430,6 +417,32 @@ function App() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (isDoctorWorkspacePage || isAdminPage) {
+      setIsChatbotReady(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const showChatbot = () => {
+      if (!cancelled) setIsChatbotReady(true);
+    };
+
+    if ('requestIdleCallback' in window) {
+      const idleId = window.requestIdleCallback(showChatbot, { timeout: 2500 });
+      return () => {
+        cancelled = true;
+        window.cancelIdleCallback(idleId);
+      };
+    }
+
+    const timerId = window.setTimeout(showChatbot, 1200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timerId);
+    };
+  }, [isDoctorWorkspacePage, isAdminPage]);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -635,10 +648,6 @@ function App() {
     setAppRoute(route);
   };
 
-  const isHealthPage = appRoute.page === 'health';
-  const isDoctorWorkspacePage = appRoute.page === 'doctor-workspace';
-  const isAdminPage = appRoute.page === 'admin';
-
   return (
     <ReferenceDataProvider>
     <div className={`site-shell${isHealthPage ? ' health-news-shell' : ''}${isDoctorWorkspacePage ? ' doctor-workspace-shell' : ''}${isAdminPage ? ' admin-site-shell' : ''}`} id="home">
@@ -783,7 +792,7 @@ function App() {
           onOpenHealthNews={showHealthNews}
         />
       ) : null}
-      {!isDoctorWorkspacePage && !isAdminPage ? (
+      {!isDoctorWorkspacePage && !isAdminPage && isChatbotReady ? (
         <Suspense fallback={null}>
           <ChatbotAI user={user} />
         </Suspense>

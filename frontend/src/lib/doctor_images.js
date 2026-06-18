@@ -12,6 +12,17 @@ const DOCTOR_FALLBACK_IMAGES = [
   'e51eb8bfbe903fce6681.jpg',
   'f7698cf68ad90b8752c8.jpg',
 ];
+const ASSET_PATH_LIMIT = 2048;
+
+function resolveAssetPath(prefix, value = '') {
+  const path = String(value || '').trim();
+  if (!path) return '';
+  if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(path)) return path;
+  if (/^data:?image/i.test(path)) return '';
+  if (path.length > ASSET_PATH_LIMIT && !/^(https?:)?\/\//i.test(path)) return '';
+  if (/^(https?:)?\/\//i.test(path) || path.startsWith('/')) return path;
+  return `${String(prefix || '').replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+}
 
 function stableIndex(value = '') {
   const key = String(value || 'doctor');
@@ -23,11 +34,11 @@ function stableIndex(value = '') {
 }
 
 export function doctorImageName(doctor = {}) {
-  if (doctor.image) return String(doctor.image).replace(/^\/image_doctor\//, '');
+  if (doctor.image) return String(doctor.image).trim().replace(/^\/image_doctor\//, '');
   return DOCTOR_FALLBACK_IMAGES[stableIndex(doctor.id || doctor.name || doctor.initials)];
 }
 
 export function doctorImagePath(doctor = {}) {
   const image = doctorImageName(doctor);
-  return image.startsWith('/') ? image : `/image_doctor/${image}`;
+  return resolveAssetPath('/image_doctor', image);
 }

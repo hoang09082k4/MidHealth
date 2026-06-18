@@ -1,15 +1,24 @@
-function duong_dan_anh(path) {
+const ASSET_PATH_LIMIT = 2048;
+
+function resolveAssetPath(prefix, value = '') {
+  const path = String(value || '').trim();
   if (!path) return '';
-  if (/^(https?:)?\/\//.test(path) || path.startsWith('/')) return path;
-  return `/image_benh_vien/${path}`;
+  if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(path)) return path;
+  if (/^data:?image/i.test(path)) return '';
+  if (path.length > ASSET_PATH_LIMIT && !/^(https?:)?\/\//i.test(path)) return '';
+  if (/^(https?:)?\/\//i.test(path) || path.startsWith('/')) return path;
+  return `${String(prefix || '').replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
 }
 
 function TheBenhVien({ hospital, onBook }) {
+  const backgroundImage = resolveAssetPath('/image_benh_vien', hospital.background);
+  const avatarImage = resolveAssetPath('/image_benh_vien', hospital.avatar);
+
   return (
     <article className="hospital-card" onClick={() => onBook?.(hospital)}>
-      <div className="hospital-cover" style={{ backgroundImage: `url("${duong_dan_anh(hospital.background)}")` }}>
+      <div className="hospital-cover" style={backgroundImage ? { backgroundImage: `url("${backgroundImage}")` } : undefined}>
         <div className="hospital-logo">
-          {hospital.avatar ? <img src={duong_dan_anh(hospital.avatar)} alt={hospital.name} /> : hospital.logo}
+          {avatarImage ? <img src={avatarImage} alt={hospital.name} /> : hospital.logo}
         </div>
       </div>
       <div className="hospital-content">

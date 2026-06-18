@@ -1,4 +1,6 @@
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
+const catalogCacheKey = 'midhealth_catalog_cache_v1';
+const catalogCacheTtlMs = 5 * 60 * 1000;
 
 export const fallbackCatalog = {
   doctors: [],
@@ -36,7 +38,39 @@ function cleanFacilitySpecialties(items = []) {
   }));
 }
 
+function normalizeCatalog(data = {}) {
+  return {
+    doctors: data.doctors || [],
+    hospitals: cleanFacilitySpecialties(data.hospitals || []),
+    clinics: cleanFacilitySpecialties(data.clinics || []),
+    specialties: cleanSpecialtyList(data.specialties || []),
+  };
+}
+
+function readCatalogCache() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const cached = JSON.parse(window.sessionStorage.getItem(catalogCacheKey) || 'null');
+    if (!cached?.savedAt || Date.now() - cached.savedAt > catalogCacheTtlMs) return null;
+    return normalizeCatalog(cached.data || {});
+  } catch {
+    return null;
+  }
+}
+
+function writeCatalogCache(data) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(catalogCacheKey, JSON.stringify({ savedAt: Date.now(), data }));
+  } catch {
+    // Storage can be unavailable in private mode; catalog still works without cache.
+  }
+}
+
 export async function fetchCatalog() {
+  const cached = readCatalogCache();
+  if (cached) return cached;
+
   const response = await fetch(`${apiBaseUrl}/api/catalog`);
   const result = await response.json();
 
@@ -44,10 +78,7 @@ export async function fetchCatalog() {
     throw new Error(result.message || 'Không thể tải dữ liệu danh mục.');
   }
 
-  return {
-    doctors: result.data?.doctors || [],
-    hospitals: cleanFacilitySpecialties(result.data?.hospitals || []),
-    clinics: cleanFacilitySpecialties(result.data?.clinics || []),
-    specialties: cleanSpecialtyList(result.data?.specialties || []),
-  };
+  const catalog = normalizeCatalog(result.data || {});
+  writeCatalogCache(catalog);
+  return catalog;
 }

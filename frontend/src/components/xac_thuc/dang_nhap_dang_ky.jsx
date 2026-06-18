@@ -10,7 +10,6 @@ import { savePatientProfile } from '../../lib/appointments';
 import {
   firebaseAuth,
   getGoogleRedirectResult,
-  signInWithGoogle,
   signInWithGoogleRedirect,
 } from '../../lib/firebase';
 import { useReferenceData } from '../../lib/reference_data';
@@ -217,11 +216,12 @@ async function goi_api_nhan_dien(payload) {
 
 async function xac_minh_cong_benh_nhan(user, { allowIncomplete = false } = {}) {
   const token = await user.getIdToken(true);
-  const query = allowIncomplete ? '?portal=patient&allowIncomplete=1' : '?portal=patient';
+  const query = allowIncomplete ? '?portal=patient&allowIncomplete=1&optional=1' : '?portal=patient&optional=1';
   const response = await fetch(`${apiBaseUrl}/api/auth/me${query}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await response.json().catch(() => ({}));
+  if (data.data?.allowed === false) throw new Error(data.message || 'PORTAL_ACCESS_DENIED');
   if (!response.ok) throw new Error(data.message || 'Tài khoản không thuộc cổng bệnh nhân.');
   return data.data;
 }
@@ -739,8 +739,8 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
     setIsLoading(true);
 
     try {
-      const credential = await signInWithGoogle();
-      await xu_ly_google_credential(credential, mode);
+      sessionStorage.setItem(GOOGLE_AUTH_MODE_KEY, mode);
+      await signInWithGoogleRedirect();
       return;
 
       if (mode === 'signup-entry') {

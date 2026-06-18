@@ -12,11 +12,16 @@ import {
 } from '../../data/du_lieu_ho_so';
 
 const CANVAS_FONT = 'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+const ASSET_PATH_LIMIT = 2048;
 
 function anh_phong_kham(path) {
-  if (!path) return '';
-  if (/^(https?:)?\/\//.test(path) || path.startsWith('/') || path.startsWith('data:image/')) return path;
-  return `/image_phong_kham/${path}`;
+  const value = String(path || '').trim();
+  if (!value) return '';
+  if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(value)) return value;
+  if (/^data:?image/i.test(value)) return '';
+  if (value.length > ASSET_PATH_LIMIT && !/^(https?:)?\/\//i.test(value)) return '';
+  if (/^(https?:)?\/\//i.test(value) || value.startsWith('/')) return value;
+  return `/image_phong_kham/${value.replace(/^\/+/, '')}`;
 }
 
 function lay_ten_tat(name = '') {

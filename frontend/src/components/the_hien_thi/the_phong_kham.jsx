@@ -1,11 +1,17 @@
-function anh_phong_kham(path) {
+const ASSET_PATH_LIMIT = 2048;
+
+function resolveAssetPath(prefix, value = '') {
+  const path = String(value || '').trim();
   if (!path) return '';
-  if (/^(https?:)?\/\//.test(path) || path.startsWith('/')) return path;
-  return `/image_phong_kham/${path}`;
+  if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(path)) return path;
+  if (/^data:?image/i.test(path)) return '';
+  if (path.length > ASSET_PATH_LIMIT && !/^(https?:)?\/\//i.test(path)) return '';
+  if (/^(https?:)?\/\//i.test(path) || path.startsWith('/')) return path;
+  return `${String(prefix || '').replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
 }
 
 function ThePhongKham({ clinic, onBook }) {
-  const imageSrc = anh_phong_kham(clinic.avatar || clinic.image || clinic.logo || clinic.banner);
+  const imageSrc = resolveAssetPath('/image_phong_kham', clinic.avatar || clinic.image || clinic.logo || clinic.banner);
 
   return (
     <article className="clinic-card" onClick={() => onBook?.(clinic)}>
