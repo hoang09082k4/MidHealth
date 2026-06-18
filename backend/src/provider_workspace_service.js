@@ -247,7 +247,7 @@ async function findLinkedDoctor(workspace) {
   if (workspace.linkedDoctorId && isUuid(workspace.linkedDoctorId)) {
     const { data, error } = await supabase
       .from('doctors')
-      .select('id, full_name, title, specialty_id, facility_id, workplace_text, medical_facilities(name, address)')
+      .select('id, full_name, title, specialty_id, facility_id, workplace_text, unavailable_note, notice, medical_facilities(name, address)')
       .eq('id', workspace.linkedDoctorId)
       .maybeSingle();
     if (error) throw error;
@@ -259,7 +259,7 @@ async function findLinkedDoctor(workspace) {
   const specialtyRow = specialty ? await findSpecialtyByName(specialty) : null;
   let query = supabase
     .from('doctors')
-    .select('id, full_name, title, specialty_id, facility_id, workplace_text, medical_facilities(name, address)')
+    .select('id, full_name, title, specialty_id, facility_id, workplace_text, unavailable_note, notice, medical_facilities(name, address)')
     .eq('is_active', true)
     .limit(1);
 
@@ -308,13 +308,34 @@ function facilityLabelForMode(mode) {
   return mode === 'hospital' ? 'bệnh viện' : 'phòng khám';
 }
 
+function facilityDisplayTypeForMode(mode) {
+  return mode === 'hospital' ? 'Bệnh viện' : 'Phòng khám';
+}
+
+function buildFacilitySubtitle(workspace) {
+  const typeLabel = facilityDisplayTypeForMode(workspace.mode);
+  const specialties = parseSpecialtyNames(workspace.specialty).slice(0, 2).join(', ');
+  return specialties ? `${typeLabel} ${specialties}` : `${typeLabel} trên MidHealth`;
+}
+
+function buildFacilityIntro(workspace) {
+  const typeLabel = facilityDisplayTypeForMode(workspace.mode).toLowerCase();
+  const specialties = parseSpecialtyNames(workspace.specialty);
+  const specialtyText = specialties.length
+    ? ` tiếp nhận ${specialties.join(', ')}`
+    : ' tiếp nhận đặt khám theo lịch hẹn';
+  const addressText = workspace.clinicAddress ? ` tại ${workspace.clinicAddress}` : '';
+  const phoneText = workspace.ownerPhone ? ` Người bệnh có thể đặt lịch trực tuyến hoặc liên hệ ${workspace.ownerPhone} khi cần hỗ trợ.` : '';
+  return `${workspace.clinicName} là ${typeLabel}${specialtyText}${addressText}. Hồ sơ được MidHealth ghi nhận để người bệnh đặt lịch, chọn khung giờ và chuẩn bị thông tin trước khi đến khám.${phoneText}`;
+}
+
 async function findLinkedFacility(workspace) {
   if (!workspace || !['clinic', 'hospital'].includes(workspace.mode)) return null;
 
   if (workspace.linkedFacilityId && isUuid(workspace.linkedFacilityId)) {
     const { data, error } = await supabase
       .from('medical_facilities')
-      .select('id, name, address, type')
+      .select('id, name, subtitle, intro, address, type, avatar_url, background_url, phone, hotline')
       .eq('id', workspace.linkedFacilityId)
       .maybeSingle();
     if (error) throw error;
@@ -327,7 +348,7 @@ async function findLinkedFacility(workspace) {
 
   const { data, error } = await supabase
     .from('medical_facilities')
-    .select('id, name, address, type')
+    .select('id, name, subtitle, intro, address, type, avatar_url, background_url, phone, hotline')
     .eq('type', facilityType)
     .ilike('name', `%${clinicName}%`)
     .limit(1)
@@ -371,6 +392,26 @@ function parseSpecialtyNames(value = '') {
   ));
 }
 
+function isDateValue(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+}
+
+function displayDateValue(value) {
+  if (!isDateValue(value)) return '';
+  const [year, month, day] = String(value).split('-');
+  return `${day}/${month}/${year}`;
+}
+
+function buildDoctorUnavailableNotice({ startDate, endDate, reason }) {
+  const startText = displayDateValue(startDate);
+  const endText = displayDateValue(endDate);
+  const reasonText = clean(reason);
+  const rangeText = startDate === endDate
+    ? `ngày ${startText}`
+    : `từ ngày ${startText} đến hết ngày ${endText}`;
+  return `Bác sĩ tạm nghỉ ${rangeText}${reasonText ? `: ${reasonText}` : '.'}`;
+}
+
 async function syncFacilitySpecialties(facilityId, specialtyText = '') {
   if (!isUuid(facilityId)) return [];
   const names = parseSpecialtyNames(specialtyText);
@@ -382,7 +423,7 @@ async function syncFacilitySpecialties(facilityId, specialtyText = '') {
     rows.push({
       facility_id: facilityId,
       specialty_id: specialty.id,
-      description: `Chuyen khoa ${name} do co so dang ky tren MidHealth.`,
+      description: `Chuyên khoa ${name} do cơ sở đăng ký trên MidHealth.`,
       sort_order: index,
     });
   }
@@ -391,7 +432,74 @@ async function syncFacilitySpecialties(facilityId, specialtyText = '') {
     .from('facility_specialties')
     .upsert(rows, { onConflict: 'facility_id,specialty_id' });
   if (error) throw error;
+
+  const current = await listFacilitySpecialties(facilityId);
+  const nextIds = new Set(rows.map((row) => row.specialty_id));
+  const staleRows = current.filter((item) => item.id && !nextIds.has(item.id));
+  for (const stale of staleRows) {
+    const { error: deleteError } = await supabase
+      .from('facility_specialties')
+      .delete()
+      .eq('facility_id', facilityId)
+      .eq('specialty_id', stale.id);
+    if (deleteError) throw deleteError;
+  }
+
   return rows;
+}
+
+async function ensureFacilityHours(facilityId) {
+  if (!isUuid(facilityId)) return;
+  const { data: existing, error: lookupError } = await supabase
+    .from('facility_hours')
+    .select('id')
+    .eq('facility_id', facilityId)
+    .limit(1);
+  if (lookupError) throw lookupError;
+  if (existing?.length) return;
+
+  const rows = [
+    { facility_id: facilityId, label: 'Thứ 2 - Thứ 6', time_text: '07:30 - 17:00', sort_order: 0 },
+    { facility_id: facilityId, label: 'Thứ 7', time_text: '07:30 - 11:30', sort_order: 1 },
+    { facility_id: facilityId, label: 'Chủ nhật', time_text: 'Theo lịch hẹn', sort_order: 2 },
+  ];
+  const { error } = await supabase.from('facility_hours').insert(rows);
+  if (error) throw error;
+}
+
+async function ensureFacilityServices(facilityId, specialtyText = '') {
+  if (!isUuid(facilityId)) return;
+  const specialties = await listFacilitySpecialties(facilityId);
+  const fallbackNames = parseSpecialtyNames(specialtyText);
+  const serviceSources = specialties.length
+    ? specialties
+    : fallbackNames.map((name) => ({ id: null, name }));
+  const rows = serviceSources.map((specialty, index) => ({
+    facility_id: facilityId,
+    specialty_id: isUuid(specialty.id) ? specialty.id : null,
+    name: `Khám ${specialty.name || 'tổng quát'}`,
+    description: `Dịch vụ khám và tư vấn ${String(specialty.name || 'tổng quát').toLowerCase()} tại cơ sở.`,
+    fee_text: 'Theo bảng giá phòng khám',
+    is_active: true,
+    sort_order: index,
+  }));
+
+  if (!rows.length) {
+    rows.push({
+      facility_id: facilityId,
+      specialty_id: null,
+      name: 'Khám tổng quát',
+      description: 'Dịch vụ khám và tư vấn tổng quát tại cơ sở.',
+      fee_text: 'Theo bảng giá phòng khám',
+      is_active: true,
+      sort_order: 0,
+    });
+  }
+
+  const { error } = await supabase
+    .from('facility_services')
+    .upsert(rows, { onConflict: 'facility_id,name' });
+  if (error) throw error;
 }
 
 async function listFacilitySpecialties(facilityId) {
@@ -410,13 +518,63 @@ async function listFacilitySpecialties(facilityId) {
     .filter((item) => item.id && item.name);
 }
 
+async function listFacilityHours(facilityId) {
+  if (!isUuid(facilityId)) return [];
+  const { data, error } = await supabase
+    .from('facility_hours')
+    .select('label, time_text, sort_order')
+    .eq('facility_id', facilityId)
+    .order('sort_order', { ascending: true });
+  if (error) throw error;
+  return (data || []).map((row) => ({
+    label: row.label || '',
+    time: row.time_text || '',
+  })).filter((item) => item.label || item.time);
+}
+
+async function listFacilityServices(facilityId) {
+  if (!isUuid(facilityId)) return [];
+  const { data, error } = await supabase
+    .from('facility_services')
+    .select('id, specialty_id, name, description, fee_text, sort_order, is_active')
+    .eq('facility_id', facilityId)
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true });
+  if (error) throw error;
+  return (data || []).map((row) => ({
+    id: row.id,
+    specialtyId: row.specialty_id || '',
+    name: row.name || '',
+    description: row.description || '',
+    fee: row.fee_text || '',
+  })).filter((item) => item.name);
+}
+
+async function listFacilityImages(facilityId) {
+  if (!isUuid(facilityId)) return [];
+  const { data, error } = await supabase
+    .from('facility_images')
+    .select('image_url, sort_order')
+    .eq('facility_id', facilityId)
+    .order('sort_order', { ascending: true });
+  if (error) throw error;
+  return (data || []).map((row) => row.image_url).filter(Boolean);
+}
+
+function cleanListItems(items, mapper, limit = 12) {
+  return (Array.isArray(items) ? items : [])
+    .map(mapper)
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
 async function resolveFacilitySlotSpecialty(facilityId, payload = {}) {
   const specialties = await listFacilitySpecialties(facilityId);
   const requestedId = clean(payload.specialtyId || payload.specialty_id);
   const requestedName = clean(payload.specialtyName || payload.specialty);
 
   if (!specialties.length) {
-    if (!requestedName) return { error: 'Co so nay chua co chuyen khoa duoc duyet. Hay cap nhat ho so va cho admin duyet lai.', specialties };
+    if (!requestedName) return { error: 'Cơ sở này chưa có chuyên khoa được duyệt. Hãy cập nhật hồ sơ và cho admin duyệt lại.', specialties };
     const specialty = await findOrCreateSpecialty(requestedName);
     await syncFacilitySpecialties(facilityId, requestedName);
     return { specialtyId: specialty.id, specialties: await listFacilitySpecialties(facilityId) };
@@ -430,8 +588,8 @@ async function resolveFacilitySlotSpecialty(facilityId, payload = {}) {
   if (!match) {
     return {
       error: requestedId || requestedName
-        ? 'Chuyen khoa khong thuoc co so nay hoac chua duoc duyet.'
-        : 'Vui long chon chuyen khoa tiep nhan cho khung gio.',
+        ? 'Chuyên khoa không thuộc cơ sở này hoặc chưa được duyệt.'
+        : 'Vui lòng chọn chuyên khoa tiếp nhận cho khung giờ.',
       specialties,
     };
   }
@@ -453,7 +611,7 @@ async function syncProviderCatalogLink(workspaceRow) {
       specialty_id: specialty.id,
       workplace_text: workspace.clinicName || 'Bác sĩ độc lập trên MidHealth',
       avatar_url: workspace.imageUrl || null,
-      intro: `Hồ sơ đối tác MidHealth của ${workspace.ownerName}.`,
+      intro: `Hồ sơ chuyên môn của ${workspace.ownerName} trên MidHealth.`,
       is_active: active,
     };
 
@@ -479,17 +637,17 @@ async function syncProviderCatalogLink(workspaceRow) {
   }
 
   const facilityType = facilityTypeForMode(workspace.mode);
-  const facilityLabel = facilityLabelForMode(workspace.mode);
   const existingFacility = workspace.linkedFacilityId ? null : await findLinkedFacility(workspace);
   const facilityRow = {
     type: facilityType,
     name: workspace.clinicName,
-    subtitle: workspace.mode === 'hospital' ? 'Bệnh viện đối tác MidHealth' : 'Phòng khám đối tác MidHealth',
-    intro: `Hồ sơ ${facilityLabel} đối tác MidHealth: ${workspace.clinicName}.`,
+    subtitle: existingFacility?.subtitle || buildFacilitySubtitle(workspace),
+    intro: existingFacility?.intro || buildFacilityIntro(workspace),
     address: workspace.clinicAddress,
-    avatar_url: workspace.imageUrl || null,
-    phone: workspace.ownerPhone || null,
-    hotline: workspace.ownerPhone || null,
+    avatar_url: workspace.imageUrl || existingFacility?.avatar_url || null,
+    background_url: existingFacility?.background_url || null,
+    phone: workspace.ownerPhone || existingFacility?.phone || null,
+    hotline: workspace.ownerPhone || existingFacility?.hotline || null,
     is_active: active,
   };
 
@@ -512,6 +670,8 @@ async function syncProviderCatalogLink(workspaceRow) {
   if (result.error) throw result.error;
 
   await syncFacilitySpecialties(result.data.id, workspace.specialty);
+  await ensureFacilityHours(result.data.id);
+  await ensureFacilityServices(result.data.id, workspace.specialty);
 
   return { linked_doctor_id: null, linked_facility_id: result.data.id };
 }
@@ -542,6 +702,7 @@ function mapAppointmentForProvider(appointment) {
       : 'low';
   return {
     id: appointment.id,
+    appointmentSlotId: appointment.appointment_slot_id || '',
     time: appointmentTime,
     date: appointmentDate,
     patientName: appointment.patient_name,
@@ -551,12 +712,12 @@ function mapAppointmentForProvider(appointment) {
     paymentStatus: appointment.payment_status,
     riskLevel,
     riskReason: riskLevel === 'high'
-      ? 'Da ghi nhan khong den'
+      ? 'Đã ghi nhận không đến'
       : isUnpaidConfirmed
-        ? 'Da xac nhan nhung chua thanh toan'
+        ? 'Đã xác nhận nhưng chưa thanh toán'
         : isPendingSoon
-          ? 'Lich sap toi nhung chua xac nhan'
-          : 'Rui ro thap',
+          ? 'Lịch sắp tới nhưng chưa xác nhận'
+          : 'Rủi ro thấp',
     insuranceUsed: Boolean(appointment.insurance_used),
     ticketCode: ticket?.ticket_code || '',
     appointmentCode: ticket?.appointment_code || '',
@@ -573,6 +734,7 @@ function mapSlotForProvider(slot) {
     id: slot.id,
     specialtyId: slot.specialty_id || '',
     specialtyName: slot.clinic_specialties?.name || '',
+    serviceId: slot.service_id || '',
     date: slot.slot_date,
     startTime: formatTime(slot.start_time),
     endTime: formatTime(slot.end_time),
@@ -582,6 +744,12 @@ function mapSlotForProvider(slot) {
     isActive: Boolean(slot.is_active),
     session: formatTime(slot.start_time) < '12:00' ? 'morning' : formatTime(slot.start_time) < '17:30' ? 'afternoon' : 'evening',
   };
+}
+
+async function releaseAppointmentSlot(slotId) {
+  if (!isUuid(slotId)) return;
+  const { error } = await supabase.rpc('release_appointment_slot', { slot_id: slotId });
+  if (error) throw error;
 }
 
 function validateWorkspacePayload(payload = {}) {
@@ -829,6 +997,9 @@ export async function getProviderWorkspaceOperations(firebaseUser) {
       ? await getSpecialtyNameById(linkedDoctor.specialty_id)
       : '';
     const facilitySpecialties = linkedFacility ? await listFacilitySpecialties(linkedFacility.id) : [];
+    const facilityHours = linkedFacility ? await listFacilityHours(linkedFacility.id) : [];
+    const facilityServices = linkedFacility ? await listFacilityServices(linkedFacility.id) : [];
+    const facilityImages = linkedFacility ? await listFacilityImages(linkedFacility.id) : [];
     const today = todayDateValue();
     const toDate = futureDateValue(13);
     let appointmentQuery = supabase
@@ -849,7 +1020,7 @@ export async function getProviderWorkspaceOperations(firebaseUser) {
 
     let slotQuery = supabase
       .from('appointment_slots')
-      .select('id, specialty_id, slot_date, start_time, end_time, capacity, booked_count, is_active, clinic_specialties(id, name)')
+      .select('id, specialty_id, service_id, slot_date, start_time, end_time, capacity, booked_count, is_active, clinic_specialties(id, name)')
       .gte('slot_date', today)
       .lte('slot_date', toDate)
       .order('slot_date', { ascending: true })
@@ -858,7 +1029,7 @@ export async function getProviderWorkspaceOperations(firebaseUser) {
 
     slotQuery = workspace.mode === 'doctor'
       ? slotQuery.eq('doctor_id', linkedDoctor.id)
-      : slotQuery.eq('facility_id', linkedFacility.id);
+      : slotQuery.eq('facility_id', linkedFacility.id).is('doctor_id', null);
 
     const { data: slotRows, error: slotError } = await slotQuery;
     if (slotError) throw slotError;
@@ -898,13 +1069,23 @@ export async function getProviderWorkspaceOperations(firebaseUser) {
           title: linkedDoctor.title || '',
           workplace: linkedDoctor.workplace_text || linkedDoctor.medical_facilities?.name || '',
           specialty: linkedDoctorSpecialtyName || workspace.specialty || '',
+          unavailableNote: linkedDoctor.unavailable_note || '',
+          notice: linkedDoctor.unavailable_note || linkedDoctor.notice || '',
         } : null,
         linkedFacility: linkedFacility ? {
           id: linkedFacility.id,
           name: linkedFacility.name,
+          subtitle: linkedFacility.subtitle || '',
+          intro: linkedFacility.intro || '',
           address: linkedFacility.address || '',
           type: linkedFacility.type,
+          avatarUrl: linkedFacility.avatar_url || '',
+          backgroundUrl: linkedFacility.background_url || '',
+          phone: linkedFacility.phone || linkedFacility.hotline || '',
           specialties: facilitySpecialties,
+          hours: facilityHours,
+          services: facilityServices,
+          images: facilityImages,
         } : null,
         summary: {
           todayAppointments: todayAppointments.length,
@@ -920,7 +1101,12 @@ export async function getProviderWorkspaceOperations(firebaseUser) {
         specialties: linkedDoctor
           ? [{ id: linkedDoctor.specialty_id || '', name: linkedDoctorSpecialtyName || workspace.specialty || '' }].filter((item) => item.id || item.name)
           : facilitySpecialties,
-        services: [],
+        unavailability: linkedDoctor ? {
+          notice: linkedDoctor.unavailable_note || '',
+        } : null,
+        services: facilityServices,
+        hours: facilityHours,
+        images: facilityImages,
         report: Array.from(reportByDate.values()).slice(0, 14),
         activity,
       },
@@ -928,6 +1114,225 @@ export async function getProviderWorkspaceOperations(firebaseUser) {
   } catch (error) {
     return { ok: false, status: 500, data: { message: error.message } };
   }
+}
+
+export async function updateProviderFacilityDetails(firebaseUser, payload = {}) {
+  const workspaceResult = await getProviderWorkspace(firebaseUser);
+  if (!workspaceResult.ok) return workspaceResult;
+
+  const workspace = workspaceResult.data;
+  if (!workspace) {
+    return { ok: false, status: 404, data: { message: 'Chưa có hồ sơ workspace.' } };
+  }
+  if (!['clinic', 'hospital'].includes(workspace.mode)) {
+    return { ok: false, status: 400, data: { message: 'Chức năng này chỉ áp dụng cho phòng khám hoặc bệnh viện.' } };
+  }
+  if (workspace.status !== 'approved') {
+    return { ok: false, status: 403, data: { message: 'Hồ sơ cần được duyệt trước khi cập nhật trang hiển thị.' } };
+  }
+
+  const linkedFacility = await findLinkedFacility(workspace);
+  if (!linkedFacility?.id) {
+    return { ok: false, status: 409, data: { message: 'Workspace chưa liên kết với phòng khám/bệnh viện trong catalog.' } };
+  }
+
+  const subtitle = clean(payload.subtitle);
+  const intro = clean(payload.intro);
+  const phone = clean(payload.phone);
+  const avatarUrl = clean(payload.avatarUrl);
+  const backgroundUrl = clean(payload.backgroundUrl);
+  const hours = cleanListItems(payload.hours, (item) => {
+    const label = clean(item?.label);
+    const time = clean(item?.time || item?.timeText);
+    return label || time ? { label, time } : null;
+  }, 8);
+  const services = cleanListItems(payload.services, (item) => {
+    const name = clean(item?.name);
+    if (!name) return null;
+    return {
+      id: clean(item?.id),
+      specialtyId: clean(item?.specialtyId || item?.specialty_id),
+      name,
+      description: clean(item?.description),
+      fee: clean(item?.fee || item?.feeText || item?.fee_text),
+    };
+  }, 20);
+  const images = cleanListItems(payload.images, (item) => clean(typeof item === 'string' ? item : item?.url || item?.imageUrl), 8);
+
+  const facilityPatch = {
+    subtitle: subtitle || buildFacilitySubtitle(workspace),
+    intro: intro || buildFacilityIntro(workspace),
+    phone: phone || workspace.ownerPhone || null,
+    hotline: phone || workspace.ownerPhone || null,
+  };
+  if (avatarUrl) facilityPatch.avatar_url = avatarUrl;
+  if (backgroundUrl) facilityPatch.background_url = backgroundUrl;
+
+  const { error: facilityError } = await supabase
+    .from('medical_facilities')
+    .update(facilityPatch)
+    .eq('id', linkedFacility.id);
+  if (facilityError) return { ok: false, status: 500, data: { message: facilityError.message } };
+
+  if (hours.length) {
+    const { error: deleteHourError } = await supabase
+      .from('facility_hours')
+      .delete()
+      .eq('facility_id', linkedFacility.id);
+    if (deleteHourError) return { ok: false, status: 500, data: { message: deleteHourError.message } };
+
+    const { error: hourError } = await supabase
+      .from('facility_hours')
+      .insert(hours.map((item, index) => ({
+        facility_id: linkedFacility.id,
+        label: item.label || `Khung giờ ${index + 1}`,
+        time_text: item.time || 'Theo lịch hẹn',
+        sort_order: index,
+      })));
+    if (hourError) return { ok: false, status: 500, data: { message: hourError.message } };
+  }
+
+  if (services.length) {
+    const { error: deactivateError } = await supabase
+      .from('facility_services')
+      .update({ is_active: false })
+      .eq('facility_id', linkedFacility.id);
+    if (deactivateError) return { ok: false, status: 500, data: { message: deactivateError.message } };
+
+    const { error: serviceError } = await supabase
+      .from('facility_services')
+      .upsert(services.map((item, index) => ({
+        facility_id: linkedFacility.id,
+        specialty_id: isUuid(item.specialtyId) ? item.specialtyId : null,
+        name: item.name,
+        description: item.description || `Dịch vụ ${item.name} tại cơ sở.`,
+        fee_text: item.fee || 'Theo bảng giá cơ sở',
+        is_active: true,
+        sort_order: index,
+      })), { onConflict: 'facility_id,name' });
+    if (serviceError) return { ok: false, status: 500, data: { message: serviceError.message } };
+  }
+
+  const { error: deleteImageError } = await supabase
+    .from('facility_images')
+    .delete()
+    .eq('facility_id', linkedFacility.id);
+  if (deleteImageError) return { ok: false, status: 500, data: { message: deleteImageError.message } };
+  if (images.length) {
+    const { error: imageError } = await supabase
+      .from('facility_images')
+      .insert(images.map((imageUrl, index) => ({
+        facility_id: linkedFacility.id,
+        image_url: imageUrl,
+        sort_order: index,
+      })));
+    if (imageError) return { ok: false, status: 500, data: { message: imageError.message } };
+  }
+
+  await logProviderWorkspaceEvent({
+    workspaceId: workspace.id,
+    actor: firebaseUser,
+    actorRole: workspace.providerRole || workspace.mode,
+    eventType: 'facility_details_updated',
+    entityType: 'medical_facility',
+    entityId: linkedFacility.id,
+    message: 'Facility public details updated.',
+    metadata: { hours: hours.length, services: services.length, images: images.length },
+  });
+
+  return {
+    ok: true,
+    status: 200,
+    data: {
+      facilityId: linkedFacility.id,
+      subtitle: facilityPatch.subtitle,
+      intro: facilityPatch.intro,
+      phone: facilityPatch.phone || '',
+      hours: await listFacilityHours(linkedFacility.id),
+      services: await listFacilityServices(linkedFacility.id),
+      images: await listFacilityImages(linkedFacility.id),
+    },
+  };
+}
+
+export async function updateProviderUnavailability(firebaseUser, payload = {}) {
+  const workspaceResult = await getProviderWorkspace(firebaseUser);
+  if (!workspaceResult.ok) return workspaceResult;
+
+  const workspace = workspaceResult.data;
+  if (!workspace) {
+    return { ok: false, status: 404, data: { message: 'Chưa có hồ sơ workspace.' } };
+  }
+  if (workspace.mode !== 'doctor') {
+    return { ok: false, status: 400, data: { message: 'Chức năng nghỉ chỉ áp dụng cho hồ sơ bác sĩ.' } };
+  }
+  if (workspace.status !== 'approved') {
+    return { ok: false, status: 403, data: { message: 'Hồ sơ cần được duyệt trước khi cập nhật lịch nghỉ.' } };
+  }
+
+  const linkedDoctor = await findLinkedDoctor(workspace);
+  if (!linkedDoctor?.id) {
+    return { ok: false, status: 409, data: { message: 'Workspace chưa liên kết với hồ sơ bác sĩ trong catalog.' } };
+  }
+
+  const enabled = payload.enabled !== false;
+  const startDate = clean(payload.startDate || payload.fromDate);
+  const endDate = clean(payload.endDate || payload.toDate);
+  const reason = clean(payload.reason);
+  let unavailableNote = null;
+
+  if (enabled) {
+    if (!isDateValue(startDate) || !isDateValue(endDate)) {
+      return { ok: false, status: 400, data: { message: 'Vui lòng chọn ngày bắt đầu và ngày kết thúc hợp lệ.' } };
+    }
+    if (startDate > endDate) {
+      return { ok: false, status: 400, data: { message: 'Ngày kết thúc phải sau hoặc bằng ngày bắt đầu.' } };
+    }
+    unavailableNote = buildDoctorUnavailableNotice({ startDate, endDate, reason });
+  }
+
+  const { data, error } = await supabase
+    .from('doctors')
+    .update({ unavailable_note: unavailableNote })
+    .eq('id', linkedDoctor.id)
+    .select('id, unavailable_note')
+    .single();
+  if (error) {
+    return { ok: false, status: 500, data: { message: error.message } };
+  }
+
+  if (enabled) {
+    const { error: slotError } = await supabase
+      .from('appointment_slots')
+      .update({ is_active: false })
+      .eq('doctor_id', linkedDoctor.id)
+      .eq('booked_count', 0)
+      .gte('slot_date', startDate)
+      .lte('slot_date', endDate);
+    if (slotError) {
+      return { ok: false, status: 500, data: { message: slotError.message } };
+    }
+  }
+
+  await logProviderWorkspaceEvent({
+    workspaceId: workspace.id,
+    actor: firebaseUser,
+    actorRole: workspace.providerRole || 'doctor',
+    eventType: enabled ? 'doctor_unavailability_saved' : 'doctor_unavailability_cleared',
+    entityType: 'doctor',
+    entityId: linkedDoctor.id,
+    message: enabled ? 'Doctor saved unavailable period.' : 'Doctor cleared unavailable period.',
+    metadata: { startDate, endDate, reason },
+  });
+
+  return {
+    ok: true,
+    status: 200,
+    data: {
+      doctorId: data.id,
+      notice: data.unavailable_note || '',
+    },
+  };
 }
 
 export async function updateProviderAppointmentStatus(firebaseUser, appointmentId, status) {
@@ -964,6 +1369,14 @@ export async function updateProviderAppointmentStatus(firebaseUser, appointmentI
       .update({ status: ticketStatus })
       .eq('appointment_id', appointmentId);
     if (ticketError) return { ok: false, status: 500, data: { message: ticketError.message } };
+  }
+
+  if (status === 'cancelled' && appointment.status !== 'cancelled' && appointment.appointmentSlotId) {
+    try {
+      await releaseAppointmentSlot(appointment.appointmentSlotId);
+    } catch (error) {
+      return { ok: false, status: 500, data: { message: error.message } };
+    }
   }
 
   await logProviderWorkspaceEvent({
@@ -1113,12 +1526,21 @@ export async function saveProviderSlot(firebaseUser, payload = {}) {
 }
 
 export async function updateProviderSlot(firebaseUser, slotId, payload = {}) {
+  if (payload.delete === true || payload.action === 'delete') {
+    return deleteProviderSlot(firebaseUser, slotId);
+  }
+
   if (!isUuid(slotId)) return { ok: false, status: 400, data: { message: 'Slot không hợp lệ.' } };
 
   const operationsResult = await getProviderWorkspaceOperations(firebaseUser);
   if (!operationsResult.ok) return operationsResult;
   const slot = operationsResult.data.slots?.find((item) => item.id === slotId);
   if (!slot) return { ok: false, status: 404, data: { message: 'Không tìm thấy slot thuộc workspace này.' } };
+
+  const workspace = operationsResult.data.workspace;
+  const linkedDoctor = operationsResult.data.linkedDoctor;
+  const linkedFacility = operationsResult.data.linkedFacility;
+  const isFacilityWorkspace = workspace?.mode === 'clinic' || workspace?.mode === 'hospital';
 
   const patch = {};
   if (typeof payload.isActive === 'boolean') {
@@ -1134,8 +1556,76 @@ export async function updateProviderSlot(firebaseUser, slotId, payload = {}) {
     }
     patch.capacity = capacity;
   }
+  if (payload.date !== undefined || payload.slotDate !== undefined) {
+    const slotDate = clean(payload.date || payload.slotDate);
+    if (!isValidDate(slotDate) || slotDate < todayDateValue()) {
+      return { ok: false, status: 400, data: { message: 'Ngay mo slot khong hop le hoac da qua.' } };
+    }
+    if (slot.bookedCount > 0 && slotDate !== slot.date) {
+      return { ok: false, status: 409, data: { message: 'Khong the doi ngay cua slot da co lich dat.' } };
+    }
+    patch.slot_date = slotDate;
+  }
+  if (payload.startTime !== undefined || payload.start_time !== undefined) {
+    const startTime = toTime(payload.startTime || payload.start_time);
+    if (!startTime) return { ok: false, status: 400, data: { message: 'Gio bat dau khong hop le.' } };
+    if (slot.bookedCount > 0 && formatTime(startTime) !== slot.startTime) {
+      return { ok: false, status: 409, data: { message: 'Khong the doi gio bat dau cua slot da co lich dat.' } };
+    }
+    patch.start_time = startTime;
+  }
+  if (payload.endTime !== undefined || payload.end_time !== undefined) {
+    const endTime = toTime(payload.endTime || payload.end_time);
+    if (!endTime) return { ok: false, status: 400, data: { message: 'Gio ket thuc khong hop le.' } };
+    if (slot.bookedCount > 0 && formatTime(endTime) !== slot.endTime) {
+      return { ok: false, status: 409, data: { message: 'Khong the doi gio ket thuc cua slot da co lich dat.' } };
+    }
+    patch.end_time = endTime;
+  }
+  const nextStartTime = patch.start_time || `${slot.startTime}:00`;
+  const nextEndTime = patch.end_time || `${slot.endTime}:00`;
+  if (formatTime(nextEndTime) <= formatTime(nextStartTime)) {
+    return { ok: false, status: 400, data: { message: 'Gio ket thuc phai sau gio bat dau.' } };
+  }
+  if (isFacilityWorkspace && (
+    payload.specialtyId !== undefined
+    || payload.specialty_id !== undefined
+    || payload.specialtyName !== undefined
+  )) {
+    if (slot.bookedCount > 0) {
+      return { ok: false, status: 409, data: { message: 'Khong the doi chuyen khoa cua slot da co lich dat.' } };
+    }
+    const facilitySpecialty = await resolveFacilitySlotSpecialty(linkedFacility?.id, payload);
+    if (facilitySpecialty.error) {
+      return { ok: false, status: 400, data: { message: facilitySpecialty.error, specialties: facilitySpecialty.specialties || [] } };
+    }
+    patch.specialty_id = facilitySpecialty.specialtyId || null;
+  }
 
   if (!Object.keys(patch).length) return { ok: true, status: 200, data: slot };
+
+  const nextDate = patch.slot_date || slot.date;
+  const nextStart = patch.start_time || `${slot.startTime}:00`;
+  const nextSpecialtyId = patch.specialty_id !== undefined ? patch.specialty_id : slot.specialtyId || null;
+  let conflictQuery = supabase
+    .from('appointment_slots')
+    .select('id')
+    .neq('id', slotId)
+    .eq('slot_date', nextDate)
+    .eq('start_time', nextStart)
+    .limit(1);
+  conflictQuery = workspace?.mode === 'doctor'
+    ? conflictQuery.eq('doctor_id', linkedDoctor?.id)
+    : conflictQuery
+      .eq('facility_id', linkedFacility?.id)
+      .is('doctor_id', null)
+      .eq('specialty_id', nextSpecialtyId);
+
+  const { data: conflicts, error: conflictError } = await conflictQuery;
+  if (conflictError) return { ok: false, status: 500, data: { message: conflictError.message } };
+  if (conflicts?.length) {
+    return { ok: false, status: 409, data: { message: 'Da co khung gio trung ngay, gio va chuyen khoa.' } };
+  }
 
   const { data, error } = await supabase
     .from('appointment_slots')
@@ -1164,6 +1654,47 @@ export async function updateProviderSlot(firebaseUser, slotId, payload = {}) {
   });
 
   return { ok: true, status: 200, data: mapSlotForProvider(data) };
+}
+
+export async function deleteProviderSlot(firebaseUser, slotId) {
+  if (!isUuid(slotId)) return { ok: false, status: 400, data: { message: 'Slot khong hop le.' } };
+
+  const operationsResult = await getProviderWorkspaceOperations(firebaseUser);
+  if (!operationsResult.ok) return operationsResult;
+  const slot = operationsResult.data.slots?.find((item) => item.id === slotId);
+  if (!slot) return { ok: false, status: 404, data: { message: 'Khong tim thay slot thuoc workspace nay.' } };
+  if (slot.bookedCount > 0) {
+    return { ok: false, status: 409, data: { message: 'Khong the xoa slot da co lich dat.' } };
+  }
+
+  const { data: deletedRows, error } = await supabase
+    .from('appointment_slots')
+    .delete()
+    .eq('id', slotId)
+    .eq('booked_count', 0)
+    .select('id');
+  if (error) return { ok: false, status: 500, data: { message: error.message } };
+  if (!deletedRows?.length) {
+    return { ok: false, status: 409, data: { message: 'Không thể xóa slot. Slot có thể đã có lịch đặt hoặc không còn tồn tại.' } };
+  }
+
+  await logProviderWorkspaceEvent({
+    workspaceId: operationsResult.data.workspace?.id,
+    actor: firebaseUser,
+    actorRole: operationsResult.data.workspace?.providerRole || operationsResult.data.workspace?.mode,
+    eventType: 'slot_deleted',
+    entityType: 'appointment_slot',
+    entityId: slotId,
+    message: 'Provider deleted appointment slot.',
+    metadata: {
+      date: slot.date,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      capacity: slot.capacity,
+    },
+  });
+
+  return { ok: true, status: 200, data: { id: slotId } };
 }
 
 export async function reviewProviderWorkspace(workspaceId, payload = {}) {

@@ -2,12 +2,13 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useEffect, useMemo, useState } from 'react';
 import { firebaseAuth } from '../../lib/firebase';
 import DangKiDangNhapLamViec from './dang_ki_dang_nhap_lam_viec';
-import KhuVucLamViec from './khu_vuc_lam_viec';
+import KhuVucLamViec, {
+  WORKSPACE_SECTIONS,
+  isWorkspaceSectionAllowed,
+} from './khu_vuc_lam_viec';
 import {
   DashboardPreview,
-  WORKSPACE_SECTIONS,
   WorkspaceBrand,
-  isWorkspaceSectionAllowed,
 } from './giao_dien_lam_viec';
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
@@ -60,7 +61,7 @@ const FEATURE_GROUPS = [
 
 const WORKFLOW_STEPS = [
   {
-    title: 'Tạo tài khoản đối tác',
+    title: 'Tạo tài khoản bác sĩ',
     detail: 'Đăng ký bằng email chuyên môn, xác thực OTP và dùng Firebase Authentication để đăng nhập workspace.',
   },
   {
@@ -78,7 +79,7 @@ const WORKFLOW_STEPS = [
 ];
 
 const REQUIREMENT_ITEMS = [
-  'Email chuyên môn hoặc email cơ quan để tạo tài khoản đối tác.',
+  'Email chuyên môn hoặc email cơ quan để tạo tài khoản bác sĩ.',
   'Số điện thoại có thể liên hệ khi MidHealth cần xác minh hồ sơ.',
   'Bác sĩ độc lập cần chuẩn bị chức danh, chuyên khoa chính và mô tả chuyên môn.',
   'Phòng khám cần chuẩn bị tên, địa chỉ hoạt động và mã số thuế hoặc mã khám chữa bệnh nếu có.',
@@ -86,9 +87,9 @@ const REQUIREMENT_ITEMS = [
 ];
 
 const SECURITY_ITEMS = [
-  'Xác thực email bằng OTP trước khi tạo tài khoản đối tác.',
+  'Xác thực email bằng OTP trước khi tạo tài khoản bác sĩ.',
   'Tài khoản đăng nhập dùng Firebase Authentication chung với MidHealth.',
-  'Hồ sơ đối tác được tách khỏi hồ sơ bệnh nhân để tránh nhầm quyền sử dụng.',
+  'Hồ sơ bác sĩ/cơ sở khám chữa bệnh được tách khỏi hồ sơ bệnh nhân để tránh nhầm quyền sử dụng.',
   'Dữ liệu lịch hẹn chỉ mở khi hồ sơ bác sĩ, bệnh viện hoặc phòng khám được MidHealth kiểm duyệt.',
 ];
 
@@ -102,8 +103,8 @@ const TRUST_PILLARS = [
     text: 'Workspace đọc lịch hẹn, khung giờ và số liệu từ API backend; các thao tác xác nhận, hủy, hoàn tất lịch đều ghi lại qua Supabase.',
   },
   {
-    title: 'Tách biệt quyền bệnh nhân và đối tác',
-    text: 'Tài khoản đối tác được ghi vào bảng app_users với vai trò bác sĩ, bệnh viện hoặc phòng khám, không trộn với hồ sơ bệnh nhân cá nhân.',
+    title: 'Tách biệt quyền bệnh nhân và bác sĩ',
+    text: 'Tài khoản bác sĩ/cơ sở khám chữa bệnh được ghi vào bảng app_users với vai trò bác sĩ, bệnh viện hoặc phòng khám, không trộn với hồ sơ bệnh nhân cá nhân.',
   },
 ];
 
@@ -153,7 +154,7 @@ async function getProviderWorkspaceApi() {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.message || 'Không thể tải hồ sơ đối tác.');
+    throw new Error(data.message || 'Không thể tải hồ sơ bác sĩ/cơ sở khám chữa bệnh.');
   }
   return data.data || null;
 }
@@ -165,11 +166,11 @@ async function verifyProviderAccount(authUser) {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || 'Tài khoản không thuộc cổng đối tác y tế.');
+  if (!response.ok) throw new Error(data.message || 'Tài khoản không thuộc cổng dành cho bác sĩ.');
   return data.data;
 }
 
-function GioiThieuDoiTacYTe({ currentAccount, isLoading, message, onContinue, onRegister, onLogin, onHome }) {
+function GioiThieuDanhChoBacSi({ currentAccount, isLoading, message, onContinue, onRegister, onLogin, onHome }) {
   const [activeSection, setActiveSection] = useState(NAV_ITEMS[0].id);
 
   const scrollTo = (id) => {
@@ -222,12 +223,12 @@ function GioiThieuDoiTacYTe({ currentAccount, isLoading, message, onContinue, on
       <section className="dw-hero" id="dw-home">
         <div>
           <span className="dw-kicker">Dành cho bác sĩ, bệnh viện và phòng khám</span>
-          <h1>Nền tảng đối tác y tế để cơ sở khám chữa bệnh nhận lịch minh bạch và vận hành chuyên nghiệp</h1>
+          <h1>Nền tảng dành cho bác sĩ để nhận lịch minh bạch và vận hành chuyên nghiệp</h1>
           <p>
             MidHealth Workspace giúp bác sĩ, bệnh viện và phòng khám xây dựng hồ sơ tin cậy, tiếp nhận lịch đặt khám từ bệnh nhân,
             kiểm soát khung giờ, xử lý trạng thái khám và theo dõi hiệu suất vận hành bằng dữ liệu backend chính thức.
           </p>
-          <p className="dw-scope-note">Tài khoản đối tác được xác thực email, ghi nhận trong Supabase và chỉ mở dữ liệu bệnh nhân sau khi hồ sơ được kiểm duyệt.</p>
+          <p className="dw-scope-note">Tài khoản bác sĩ/cơ sở khám chữa bệnh được xác thực email, ghi nhận trong Supabase và chỉ mở dữ liệu bệnh nhân sau khi hồ sơ được kiểm duyệt.</p>
           <div className="dw-hero-actions">
             {currentAccount ? <button type="button" onClick={onContinue} disabled={isLoading}>{isLoading ? 'Đang tải hồ sơ...' : `Tiếp tục với ${currentAccount.email}`}</button> : null}
             <button type="button" className="primary" onClick={onRegister}>Đăng ký ngay</button>
@@ -241,8 +242,8 @@ function GioiThieuDoiTacYTe({ currentAccount, isLoading, message, onContinue, on
       <section className="dw-section dw-trust-section" id="dw-trust">
         <div className="dw-section-head">
           <span>Niềm tin</span>
-          <h2>MidHealth giúp đối tác y tế xuất hiện chuyên nghiệp trước khi bệnh nhân đặt lịch</h2>
-          <p>Trang đối tác không chỉ là form đăng ký. Đây là quy trình xác thực, kiểm duyệt và vận hành để bảo vệ uy tín chuyên môn của bác sĩ và cơ sở y tế.</p>
+          <h2>MidHealth giúp bác sĩ xuất hiện chuyên nghiệp trước khi bệnh nhân đặt lịch</h2>
+          <p>Trang dành cho bác sĩ không chỉ là form đăng ký. Đây là quy trình xác thực, kiểm duyệt và vận hành để bảo vệ uy tín chuyên môn của bác sĩ và cơ sở y tế.</p>
         </div>
         <div className="dw-trust-metrics">
           {TRUST_METRICS.map((item) => (
@@ -326,9 +327,9 @@ function GioiThieuDoiTacYTe({ currentAccount, isLoading, message, onContinue, on
         </div>
         <div className="dw-final-cta">
           <span>Sẵn sàng mở workspace?</span>
-          <h2>Đăng ký tài khoản đối tác và đăng nhập để gửi hồ sơ kiểm duyệt</h2>
+          <h2>Đăng ký tài khoản bác sĩ và đăng nhập để gửi hồ sơ kiểm duyệt</h2>
           <p>Sau khi đăng ký thành công, MidHealth sẽ chuyển bạn về màn đăng nhập. Bạn đăng nhập lại để thiết lập hồ sơ bác sĩ, bệnh viện hoặc phòng khám.</p>
-          <button type="button" onClick={onRegister}>Đăng ký đối tác</button>
+          <button type="button" onClick={onRegister}>Đăng ký bác sĩ</button>
         </div>
       </section>
     </div>
@@ -498,7 +499,7 @@ function TrangChuLamViec({
 
   useEffect(() => {
     if (!hasWorkspace || screen !== 'work') return;
-    if (window.location.pathname === basePath || window.location.pathname === '/danh-cho-bac-si' || window.location.pathname === '/doi-tac-y-te') {
+    if (window.location.pathname === basePath || window.location.pathname === '/danh-cho-bac-si') {
       window.history.replaceState({}, '', `${basePath}/${activeWorkspaceSection}`);
     }
   }, [activeWorkspaceSection, basePath, hasWorkspace, screen]);
@@ -527,7 +528,7 @@ function TrangChuLamViec({
         onVerified={applyAccount}
         onRegistered={(payload) => {
           setPendingAccount(null);
-          setLoginMessage(`Đăng ký ${payload.email} thành công. Vui lòng đăng nhập để thiết lập hồ sơ đối tác.`);
+          setLoginMessage(`Đăng ký ${payload.email} thành công. Vui lòng đăng nhập để thiết lập hồ sơ bác sĩ/cơ sở khám chữa bệnh.`);
           navigateScreen('login', { replace: true });
         }}
         onBack={() => navigateScreen('register')}
@@ -552,7 +553,7 @@ function TrangChuLamViec({
         onVerified={applyAccount}
         onRegistered={(payload) => {
           setPendingAccount(null);
-          setLoginMessage(`Đăng ký ${payload.email} thành công. Vui lòng đăng nhập để thiết lập hồ sơ đối tác.`);
+          setLoginMessage(`Đăng ký ${payload.email} thành công. Vui lòng đăng nhập để thiết lập hồ sơ bác sĩ/cơ sở khám chữa bệnh.`);
           navigateScreen('login', { replace: true });
         }}
         onBack={() => navigateScreen('register')}
@@ -594,7 +595,7 @@ function TrangChuLamViec({
   }
 
   return (
-    <GioiThieuDoiTacYTe
+    <GioiThieuDanhChoBacSi
       currentAccount={account}
       isLoading={isWorkspaceLoading}
       message={workspaceMessage}

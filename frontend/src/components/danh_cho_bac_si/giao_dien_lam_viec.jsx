@@ -1,49 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import BieuTuongLogo from '../dung_chung/bieu_tuong_logo';
-
-const NAV_ITEMS_BY_MODE = {
-  doctor: [
-    { id: 'tong-quan', label: 'Tổng quan', icon: '01' },
-    { id: 'lich-hen', label: 'Lịch hẹn', icon: '02' },
-    { id: 'lich-lam-viec', label: 'Khung giờ', icon: '03' },
-    { id: 'ho-so', label: 'Hồ sơ', icon: '04' },
-    { id: 'tu-van', label: 'Tư vấn', icon: '05' },
-    { id: 'bao-cao', label: 'Báo cáo', icon: '06' },
-  ],
-  clinic: [
-    { id: 'tong-quan', label: 'Tổng quan', icon: '01' },
-    { id: 'lich-hen', label: 'Lịch hẹn', icon: '02' },
-    { id: 'lich-lam-viec', label: 'Khung giờ', icon: '03' },
-    { id: 'dich-vu', label: 'Dịch vụ', icon: '04' },
-    { id: 'ho-so', label: 'Hồ sơ', icon: '05' },
-    { id: 'bao-cao', label: 'Báo cáo', icon: '06' },
-  ],
-  hospital: [
-    { id: 'tong-quan', label: 'Tổng quan', icon: '01' },
-    { id: 'lich-hen', label: 'Lịch hẹn', icon: '02' },
-    { id: 'lich-lam-viec', label: 'Khung giờ', icon: '03' },
-    { id: 'dich-vu', label: 'Dịch vụ', icon: '04' },
-    { id: 'ho-so', label: 'Hồ sơ', icon: '05' },
-    { id: 'bao-cao', label: 'Báo cáo', icon: '06' },
-  ],
-};
-
-const WORKSPACE_SECTIONS = new Set(
-  Object.values(NAV_ITEMS_BY_MODE).flat().map((item) => item.id),
-);
-
-const STATUS_LABELS = {
-  draft: 'Bản nháp',
-  pending_review: 'Chờ kiểm duyệt',
-  approved: 'Đã duyệt',
-  rejected: 'Cần bổ sung',
-};
-
-const ROLE_LABELS = {
-  clinic: 'Phòng khám',
-  hospital: 'Bệnh viện',
-  doctor: 'Bác sĩ độc lập',
-};
 
 const STATUS_BADGES = {
   pending: 'Chờ xác nhận',
@@ -54,8 +10,8 @@ const STATUS_BADGES = {
 };
 
 const RISK_BADGES = {
-  low: 'Rui ro thap',
-  medium: 'Can theo doi',
+  low: 'Rủi ro thấp',
+  medium: 'Cần theo dõi',
   high: 'No-show',
 };
 
@@ -67,17 +23,43 @@ const SLOT_PRESETS = [
   { id: 'evening-1', label: 'Tối 17:30', startTime: '17:30', endTime: '18:00', capacity: '3' },
 ];
 
-function isWorkspaceSectionAllowed(mode, section) {
-  return (NAV_ITEMS_BY_MODE[mode] || NAV_ITEMS_BY_MODE.doctor).some((item) => item.id === section);
-}
+const FLEXIBLE_SLOT_PRESETS = [
+  { id: 'morning-1', session: 'morning', label: 'Sáng 07:30', startTime: '07:30', endTime: '08:00', capacity: '4' },
+  { id: 'morning-2', session: 'morning', label: 'Sáng 08:00', startTime: '08:00', endTime: '08:30', capacity: '4' },
+  { id: 'morning-3', session: 'morning', label: 'Sáng 08:30', startTime: '08:30', endTime: '09:00', capacity: '4' },
+  { id: 'afternoon-1', session: 'afternoon', label: 'Chiều 13:30', startTime: '13:30', endTime: '14:00', capacity: '4' },
+  { id: 'afternoon-2', session: 'afternoon', label: 'Chiều 14:00', startTime: '14:00', endTime: '14:30', capacity: '4' },
+  { id: 'afternoon-3', session: 'afternoon', label: 'Chiều 14:30', startTime: '14:30', endTime: '15:00', capacity: '4' },
+  { id: 'evening-1', session: 'evening', label: 'Tối 17:30', startTime: '17:30', endTime: '18:00', capacity: '3' },
+  { id: 'evening-2', session: 'evening', label: 'Tối 18:00', startTime: '18:00', endTime: '18:30', capacity: '3' },
+];
 
-function getRoleLabel(mode) {
-  return ROLE_LABELS[mode] || ROLE_LABELS.doctor;
-}
+const SLOT_SESSION_PRESETS = [
+  { id: 'morning', label: 'Buổi sáng', startTime: '07:30', endTime: '11:30' },
+  { id: 'afternoon', label: 'Buổi chiều', startTime: '13:30', endTime: '17:00' },
+  { id: 'evening', label: 'Buổi tối', startTime: '17:30', endTime: '19:00' },
+];
 
-function getStatusLabel(status) {
-  return STATUS_LABELS[status] || STATUS_LABELS.pending_review;
-}
+const DURATION_OPTIONS = [
+  { value: 15, label: '15 phút' },
+  { value: 30, label: '30 phút' },
+  { value: 45, label: '45 phút' },
+  { value: 60, label: '60 phút' },
+];
+
+const TIME_OPTIONS = Array.from({ length: 49 }, (_, index) => {
+  const totalMinutes = 7 * 60 + index * 15;
+  const hour = String(Math.floor(totalMinutes / 60)).padStart(2, '0');
+  const minute = String(totalMinutes % 60).padStart(2, '0');
+  return `${hour}:${minute}`;
+});
+
+const UNAVAILABILITY_PRESETS = [
+  { label: '3 ngày', days: 2 },
+  { label: '1 tuần', days: 6 },
+  { label: '1 tháng', days: 30 },
+  { label: '3 tháng', days: 90 },
+];
 
 function WorkspaceBrand({ onHome }) {
   const content = (
@@ -135,6 +117,62 @@ function todayValue() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
+function dateValueFromOffset(offset = 0) {
+  const date = new Date();
+  date.setDate(date.getDate() + offset);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function addDaysToDateValue(value, amount = 1) {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))
+    ? new Date(`${value}T00:00:00`)
+    : new Date();
+  date.setDate(date.getDate() + amount);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function displayDate(value) {
+  if (!value) return '';
+  const [year, month, day] = String(value).split('-');
+  if (!year || !month || !day) return value;
+  return `${day}/${month}/${year}`;
+}
+
+function addMinutesToTime(time, minutes) {
+  const [hour = '0', minute = '0'] = String(time || '00:00').split(':');
+  const totalMinutes = Number(hour) * 60 + Number(minute) + Number(minutes || 0);
+  const normalized = Math.max(0, Math.min(totalMinutes, 23 * 60 + 59));
+  return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
+}
+
+function timeToMinutes(time) {
+  const [hour = '0', minute = '0'] = String(time || '00:00').split(':');
+  return Number(hour) * 60 + Number(minute);
+}
+
+function durationBetweenTimes(startTime, endTime) {
+  return Math.max(0, timeToMinutes(endTime) - timeToMinutes(startTime));
+}
+
+function closestDurationOption(minutes) {
+  const option = DURATION_OPTIONS.find((item) => item.value === minutes);
+  return option?.value || null;
+}
+
+function buildSlotRanges(startTime, endTime, durationMinutes) {
+  const ranges = [];
+  let cursor = timeToMinutes(startTime);
+  const end = timeToMinutes(endTime);
+  const duration = Math.max(15, Number(durationMinutes) || 30);
+  while (cursor + duration <= end && ranges.length < 48) {
+    const start = `${String(Math.floor(cursor / 60)).padStart(2, '0')}:${String(cursor % 60).padStart(2, '0')}`;
+    const finish = addMinutesToTime(start, duration);
+    ranges.push({ startTime: start, endTime: finish });
+    cursor += duration;
+  }
+  return ranges;
+}
+
 function getMetrics(operations, workspace) {
   const summary = operations?.summary || {};
   const locked = workspace?.status !== 'approved';
@@ -146,7 +184,7 @@ function getMetrics(operations, workspace) {
   ];
 }
 
-function EmptyState({ title, text, status }) {
+function EmptyState({ title, text, status, getStatusLabel = (value) => value || '' }) {
   return (
     <section className="dw-workspace-empty">
       <div className={status === 'approved' ? 'ready' : 'locked'}>{status === 'approved' ? '0' : '!'}</div>
@@ -157,12 +195,57 @@ function EmptyState({ title, text, status }) {
   );
 }
 
+function formatWorkspaceEventType(type = '') {
+  const labels = {
+    workspace_submitted: 'Gửi hồ sơ',
+    workspace_resubmitted: 'Gửi lại hồ sơ',
+    workspace_updated: 'Cập nhật hồ sơ',
+    provider_status_reviewed: 'Duyệt hồ sơ',
+    appointment_status_updated: 'Cập nhật lịch hẹn',
+    appointment_received: 'Nhận lịch đặt mới',
+    appointment_cancelled_by_patient: 'Bệnh nhân hủy lịch',
+    slot_created: 'Tạo khung giờ',
+    slot_updated: 'Cập nhật khung giờ',
+    doctor_unavailability_saved: 'Cập nhật lịch nghỉ',
+    doctor_unavailability_cleared: 'Xóa lịch nghỉ',
+    facility_details_updated: 'Cập nhật trang hiển thị',
+  };
+  return labels[type] || type || 'Hoạt động';
+}
+
+function formatWorkspaceEventMessage(message = '') {
+  const labels = {
+    'Provider updated and resubmitted workspace profile.': 'Đối tác đã cập nhật và gửi lại hồ sơ để kiểm duyệt.',
+    'Provider submitted workspace profile for review.': 'Đối tác đã gửi hồ sơ để kiểm duyệt.',
+    'Provider updated approved workspace profile.': 'Đối tác đã cập nhật hồ sơ đã duyệt.',
+    'Patient booked a new appointment.': 'Có lịch đặt mới từ bệnh nhân.',
+    'Patient cancelled appointment.': 'Bệnh nhân đã hủy lịch hẹn.',
+    'Doctor saved unavailable period.': 'Bác sĩ đã cập nhật khoảng thời gian nghỉ.',
+    'Doctor cleared unavailable period.': 'Bác sĩ đã xóa thông báo nghỉ.',
+    'Facility public details updated.': 'Cơ sở đã cập nhật thông tin hiển thị công khai.',
+  };
+  return labels[message] || message || 'Hoạt động đã được ghi nhận.';
+}
+
+function formatWorkspaceEventDetail(event = {}) {
+  const metadata = event.metadata || {};
+  if (['appointment_received', 'appointment_cancelled_by_patient'].includes(event.eventType)) {
+    return [
+      metadata.patientName,
+      metadata.appointmentDate,
+      metadata.appointmentTime,
+      metadata.appointmentCode ? `Mã ${metadata.appointmentCode}` : '',
+    ].filter(Boolean).join(' · ');
+  }
+  return event.actorEmail || 'system';
+}
+
 function ActivityFeed({ events = [] }) {
   if (!events.length) {
     return (
       <div className="dw-activity-empty">
-        <strong>Chua co nhat ky</strong>
-        <p>Cac thao tac duyet ho so, doi trang thai lich va cap nhat slot se hien thi tai day.</p>
+        <strong>Chưa có nhật ký</strong>
+        <p>Các thao tác duyệt hồ sơ, đổi trạng thái lịch và cập nhật slot sẽ hiển thị tại đây.</p>
       </div>
     );
   }
@@ -171,9 +254,9 @@ function ActivityFeed({ events = [] }) {
     <div className="dw-activity-feed">
       {events.slice(0, 8).map((event) => (
         <article key={event.id}>
-          <span>{event.eventType}</span>
-          <strong>{event.message}</strong>
-          <p>{event.actorEmail || 'system'} · {new Date(event.createdAt).toLocaleString('vi-VN')}</p>
+          <span>{formatWorkspaceEventType(event.eventType)}</span>
+          <strong>{formatWorkspaceEventMessage(event.message)}</strong>
+          <p>{formatWorkspaceEventDetail(event)} · {new Date(event.createdAt).toLocaleString('vi-VN')}</p>
         </article>
       ))}
     </div>
@@ -262,8 +345,8 @@ function OperationsOverview({ workspace, operations, onNavigate, onAppointmentSt
 
         <article className="dw-activity-panel">
           <header>
-            <span>Nhat ky van hanh</span>
-            <strong>{operations?.activity?.length ? `${operations.activity.length} su kien gan day` : 'Chua co su kien'}</strong>
+            <span>Nhật ký vận hành</span>
+            <strong>{operations?.activity?.length ? `${operations.activity.length} sự kiện gần đây` : 'Chưa có sự kiện'}</strong>
           </header>
           <ActivityFeed events={operations?.activity || []} />
         </article>
@@ -272,7 +355,7 @@ function OperationsOverview({ workspace, operations, onNavigate, onAppointmentSt
   );
 }
 
-function AppointmentList({ appointments, workspace, onStatusChange }) {
+function AppointmentList({ appointments, workspace, onStatusChange, getStatusLabel }) {
   const [busyId, setBusyId] = useState('');
   const [message, setMessage] = useState('');
 
@@ -282,6 +365,7 @@ function AppointmentList({ appointments, workspace, onStatusChange }) {
         status={workspace?.status}
         title={workspace?.status === 'approved' ? 'Chưa có lịch hẹn' : 'Chức năng đang khóa'}
         text={workspace?.status === 'approved' ? 'API đã hoạt động nhưng chưa có lịch hẹn liên kết với workspace này.' : 'Hồ sơ cần được duyệt trước khi mở dữ liệu bệnh nhân.'}
+        getStatusLabel={getStatusLabel}
       />
     );
   }
@@ -378,7 +462,114 @@ function ProfilePanel({ workspace, onEdit }) {
   );
 }
 
-function SchedulePanel({ workspace, operations, onSaveSlot, onToggleSlot }) {
+function DoctorUnavailabilityPanel({ workspace, operations, onSaveUnavailability }) {
+  const currentNotice = operations?.unavailability?.notice || operations?.linkedDoctor?.unavailableNote || '';
+  const canManage = workspace?.status === 'approved' && operations?.linked && onSaveUnavailability;
+  const [form, setForm] = useState({
+    startDate: todayValue(),
+    endDate: dateValueFromOffset(2),
+    reason: '',
+  });
+  const [busy, setBusy] = useState('');
+  const [message, setMessage] = useState('');
+
+  const applyPreset = (days) => {
+    setForm((current) => ({
+      ...current,
+      startDate: todayValue(),
+      endDate: dateValueFromOffset(days),
+    }));
+  };
+
+  const save = async (event) => {
+    event.preventDefault();
+    if (!canManage) return;
+    if (!form.startDate || !form.endDate) {
+      setMessage('Vui lòng chọn ngày bắt đầu và ngày kết thúc.');
+      return;
+    }
+    if (form.startDate > form.endDate) {
+      setMessage('Ngày kết thúc phải sau hoặc bằng ngày bắt đầu.');
+      return;
+    }
+    setBusy('save');
+    setMessage('');
+    try {
+      await onSaveUnavailability({
+        enabled: true,
+        startDate: form.startDate,
+        endDate: form.endDate,
+        reason: form.reason,
+      });
+      setMessage(`Đã thông báo nghỉ từ ${displayDate(form.startDate)} đến ${displayDate(form.endDate)}.`);
+    } catch (error) {
+      setMessage(error.message || 'Không thể lưu lịch nghỉ.');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const clear = async () => {
+    if (!canManage) return;
+    setBusy('clear');
+    setMessage('');
+    try {
+      await onSaveUnavailability({ enabled: false });
+      setMessage('Đã xoá thông báo nghỉ.');
+    } catch (error) {
+      setMessage(error.message || 'Không thể xoá thông báo nghỉ.');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  return (
+    <section className="dw-unavailability-panel">
+      <header>
+        <div>
+          <span>Lịch nghỉ bác sĩ</span>
+          <strong>Tạm ngừng nhận lịch khi bận</strong>
+          <p>Thông báo này hiển thị trên trang đặt khám cá nhân để bệnh nhân biết bác sĩ nghỉ từ ngày nào đến ngày nào.</p>
+        </div>
+        {currentNotice ? <em>Đang hiển thị công khai</em> : <em>Chưa có thông báo nghỉ</em>}
+      </header>
+      {currentNotice ? (
+        <div className="dw-current-unavailability">
+          <strong>Thông báo hiện tại</strong>
+          <p>{currentNotice}</p>
+        </div>
+      ) : null}
+      <form className="dw-unavailability-form" onSubmit={save}>
+        <div className="dw-unavailability-presets">
+          {UNAVAILABILITY_PRESETS.map((preset) => (
+            <button type="button" key={preset.label} disabled={!canManage} onClick={() => applyPreset(preset.days)}>
+              {preset.label}
+            </button>
+          ))}
+        </div>
+        <label>
+          Bắt đầu nghỉ
+          <input type="date" min={todayValue()} value={form.startDate} disabled={!canManage} onChange={(event) => setForm({ ...form, startDate: event.target.value })} />
+        </label>
+        <label>
+          Nghỉ đến hết ngày
+          <input type="date" min={form.startDate || todayValue()} value={form.endDate} disabled={!canManage} onChange={(event) => setForm({ ...form, endDate: event.target.value })} />
+        </label>
+        <label className="wide">
+          Lý do ngắn
+          <input value={form.reason} disabled={!canManage} maxLength={140} onChange={(event) => setForm({ ...form, reason: event.target.value })} placeholder="Ví dụ: công tác, nghỉ phép, tham dự hội nghị" />
+        </label>
+        <div className="dw-unavailability-actions">
+          <button type="submit" disabled={!canManage || busy === 'save'}>{busy === 'save' ? 'Đang lưu...' : 'Lưu lịch nghỉ'}</button>
+          <button type="button" disabled={!canManage || busy === 'clear' || !currentNotice} onClick={clear}>{busy === 'clear' ? 'Đang xoá...' : 'Xoá lịch nghỉ'}</button>
+        </div>
+      </form>
+      {message ? <p className={message.includes('Đã') ? 'dw-form-alert neutral' : 'dw-form-alert'}>{message}</p> : null}
+    </section>
+  );
+}
+
+function SchedulePanel({ workspace, operations, onSaveSlot, onUpdateSlot, onToggleSlot, onDeleteSlot, onSaveUnavailability, getStatusLabel }) {
   const slots = operations?.slots || [];
   const facilitySpecialties = operations?.specialties || [];
   const isFacilityWorkspace = workspace?.mode === 'clinic' || workspace?.mode === 'hospital';
@@ -389,8 +580,12 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onToggleSlot }) {
     endTime: '08:00',
     capacity: '1',
   });
+  const [copyTargetDate, setCopyTargetDate] = useState(() => dateValueFromOffset(1));
+  const [durationMinutes, setDurationMinutes] = useState(30);
   const [busyId, setBusyId] = useState('');
   const [message, setMessage] = useState('');
+  const [editingSlotId, setEditingSlotId] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const sortedSlots = useMemo(
     () => [...slots].sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.startTime).localeCompare(String(b.startTime))),
     [slots],
@@ -415,13 +610,94 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onToggleSlot }) {
       ? 'Workspace cần liên kết với catalog trước khi mở giờ khám.'
       : '';
 
+  useEffect(() => {
+    const nextDuration = workspace?.mode === 'doctor' ? 15 : 30;
+    setDurationMinutes(nextDuration);
+    setSlotForm((current) => ({
+      ...current,
+      endTime: addMinutesToTime(current.startTime, nextDuration),
+      capacity: workspace?.mode === 'doctor' ? '1' : current.capacity || '1',
+    }));
+  }, [workspace?.mode]);
+
+  useEffect(() => {
+    if (!slotForm.date || copyTargetDate > slotForm.date) return;
+    setCopyTargetDate(addDaysToDateValue(slotForm.date, 1));
+  }, [copyTargetDate, slotForm.date]);
+
   const applyPreset = (preset) => {
     setSlotForm((current) => ({
       ...current,
       startTime: preset.startTime,
       endTime: preset.endTime,
-      capacity: preset.capacity,
+      capacity: preset.capacity ? String(preset.capacity) : current.capacity,
     }));
+  };
+
+  const updateStartTime = (startTime) => {
+    setSlotForm((current) => ({
+      ...current,
+      startTime,
+      endTime: timeToMinutes(current.endTime) > timeToMinutes(startTime)
+        ? current.endTime
+        : addMinutesToTime(startTime, durationMinutes),
+    }));
+  };
+
+  const updateDuration = (duration) => {
+    setDurationMinutes(duration);
+    setSlotForm((current) => ({
+      ...current,
+      endTime: durationBetweenTimes(current.startTime, current.endTime) <= durationMinutes
+        ? addMinutesToTime(current.startTime, duration)
+        : current.endTime,
+    }));
+  };
+
+  const updateEndTime = (endTime) => {
+    const nextDuration = closestDurationOption(durationBetweenTimes(slotForm.startTime, endTime));
+    if (nextDuration) setDurationMinutes(nextDuration);
+    setSlotForm((current) => ({
+      ...current,
+      endTime,
+    }));
+  };
+
+  const updateCapacity = (nextCapacity) => {
+    setSlotForm((current) => ({
+      ...current,
+      capacity: String(Math.max(1, Math.min(Number(nextCapacity) || 1, 100))),
+    }));
+  };
+
+  const createPresetGroup = async (session) => {
+    if (!canSubmitSlot) return;
+    const preset = SLOT_SESSION_PRESETS.find((item) => item.id === session);
+    const ranges = buildSlotRanges(preset?.startTime, preset?.endTime, durationMinutes);
+    if (!ranges.length) {
+      setMessage('Khung giờ kết thúc phải lớn hơn giờ bắt đầu.');
+      return;
+    }
+
+    setBusyId(`bulk-${session}`);
+    setMessage('');
+    try {
+      for (const range of ranges) {
+        await onSaveSlot({
+          specialtyId: selectedSpecialtyId,
+          date: slotForm.date,
+          startTime: range.startTime,
+          endTime: range.endTime,
+          capacity: Number(slotForm.capacity) || 1,
+        });
+      }
+      const sessionLabel = groups.find((group) => group.session === session)?.label || '';
+      setMessage(`Đã tạo ${ranges.length} khung giờ ${sessionLabel.toLowerCase()}.`);
+    } catch (error) {
+      setMessage(error.message || 'Không thể tạo nhanh khung giờ.');
+    } finally {
+      setBusyId('');
+    }
   };
 
   const submitSlot = async (event) => {
@@ -431,19 +707,70 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onToggleSlot }) {
       setMessage('Vui lòng nhập đầy đủ ngày, giờ bắt đầu, giờ kết thúc và số lượt khám.');
       return;
     }
+    const ranges = buildSlotRanges(slotForm.startTime, slotForm.endTime, durationMinutes);
+    if (!ranges.length) {
+      setMessage('Khung giờ kết thúc phải lớn hơn giờ bắt đầu và đủ thời lượng đã chọn.');
+      return;
+    }
     setBusyId('new-slot');
     setMessage('');
     try {
-      await onSaveSlot({
-        specialtyId: selectedSpecialtyId,
-        date: slotForm.date,
-        startTime: slotForm.startTime,
-        endTime: slotForm.endTime,
-        capacity: Number(slotForm.capacity) || 1,
-      });
-      setMessage('Đã lưu khung giờ.');
+      if (editingSlotId) {
+        await onUpdateSlot?.(editingSlotId, {
+          specialtyId: selectedSpecialtyId,
+          date: slotForm.date,
+          startTime: slotForm.startTime,
+          endTime: slotForm.endTime,
+          capacity: Number(slotForm.capacity) || 1,
+        });
+        setEditingSlotId('');
+        setMessage('Đã cập nhật khung giờ.');
+        return;
+      }
+      for (const range of ranges) {
+        await onSaveSlot({
+          specialtyId: selectedSpecialtyId,
+          date: slotForm.date,
+          startTime: range.startTime,
+          endTime: range.endTime,
+          capacity: Number(slotForm.capacity) || 1,
+        });
+      }
+      setMessage(ranges.length === 1 ? 'Đã lưu 1 khung giờ.' : `Đã tạo ${ranges.length} khung giờ.`);
     } catch (error) {
       setMessage(error.message || 'Không thể lưu khung giờ.');
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  const copyDaySlots = async () => {
+    if (!canSubmitSlot || !copyTargetDate || copyTargetDate <= slotForm.date) {
+      setMessage('Vui lòng chọn ngày đích sau ngày nguồn.');
+      return;
+    }
+
+    const sourceSlots = sortedSlots.filter((slot) => slot.date === slotForm.date && slot.isActive);
+    if (!sourceSlots.length) {
+      setMessage('Ngày nguồn chưa có khung giờ đang mở để sao chép.');
+      return;
+    }
+
+    setBusyId('copy-day');
+    setMessage('');
+    try {
+      for (const slot of sourceSlots) {
+        await onSaveSlot({
+          specialtyId: slot.specialtyId || selectedSpecialtyId,
+          date: copyTargetDate,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          capacity: Number(slot.capacity) || 1,
+        });
+      }
+      setMessage(`Đã sao chép ${sourceSlots.length} khung giờ từ ${displayDate(slotForm.date)} sang ${displayDate(copyTargetDate)}.`);
+    } catch (error) {
+      setMessage(error.message || 'Không thể sao chép khung giờ.');
     } finally {
       setBusyId('');
     }
@@ -457,6 +784,51 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onToggleSlot }) {
       await onToggleSlot(slot.id, { isActive: !slot.isActive });
     } catch (error) {
       setMessage(error.message || 'Không thể cập nhật slot.');
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  const editSlot = (slot) => {
+    setEditingSlotId(slot.id);
+    setSlotForm({
+      specialtyId: slot.specialtyId || selectedSpecialtyId,
+      date: slot.date,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      capacity: String(slot.capacity || 1),
+    });
+    const minutes = Math.max(15, timeToMinutes(slot.endTime) - timeToMinutes(slot.startTime));
+    setDurationMinutes(DURATION_OPTIONS.some((option) => option.value === minutes) ? minutes : 30);
+    setMessage('');
+  };
+
+  const cancelEditSlot = () => {
+    setEditingSlotId('');
+    setMessage('');
+  };
+
+  const deleteSlot = (slot) => {
+    if (!onDeleteSlot) return;
+    if (slot.bookedCount > 0) {
+      setMessage('Không thể xóa slot đã có lịch đặt. Hãy khóa lịch mới hoặc xử lý lịch đặt trước.');
+      return;
+    }
+    setMessage('');
+    setDeleteTarget(slot);
+  };
+
+  const confirmDeleteSlot = async () => {
+    if (!deleteTarget || !onDeleteSlot) return;
+    setBusyId(`delete-${deleteTarget.id}`);
+    setMessage('');
+    try {
+      await onDeleteSlot(deleteTarget.id);
+      if (editingSlotId === deleteTarget.id) setEditingSlotId('');
+      setMessage('Đã xóa khung giờ.');
+      setDeleteTarget(null);
+    } catch (error) {
+      setMessage(error.message || 'Không thể xóa khung giờ.');
     } finally {
       setBusyId('');
     }
@@ -477,6 +849,13 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onToggleSlot }) {
           <p>{lockedReason}</p>
         </section>
       ) : null}
+      {workspace?.mode === 'doctor' ? (
+        <DoctorUnavailabilityPanel
+          workspace={workspace}
+          operations={operations}
+          onSaveUnavailability={onSaveUnavailability}
+        />
+      ) : null}
       <section className="dw-schedule-board">
         {groups.map((block) => (
           <article key={block.session}>
@@ -484,7 +863,9 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onToggleSlot }) {
             <strong>{block.time}</strong>
             <p>{block.slots ? `${block.slots} slot đang mở` : 'Chưa có slot'}</p>
             <small>{block.available} lượt còn trống</small>
-            <button type="button" disabled>{workspace?.status === 'approved' ? 'API sẵn sàng' : 'Chưa mở'}</button>
+            <button type="button" disabled={!canSubmitSlot || Boolean(busyId)} onClick={() => createPresetGroup(block.session)}>
+              {busyId === `bulk-${block.session}` ? 'Đang tạo...' : `Tạo nhanh ${block.label.toLowerCase()}`}
+            </button>
           </article>
         ))}
       </section>
@@ -492,13 +873,40 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onToggleSlot }) {
         <form className="dw-slot-form-card" onSubmit={submitSlot} noValidate>
           <div>
             <span>Tạo giờ khám</span>
-            <strong>Chọn mẫu nhanh hoặc tự nhập giờ</strong>
-            <p>Slot trùng ngày và giờ bắt đầu sẽ cập nhật sức chứa thay vì tạo trùng.</p>
+            <strong>Chọn ngày, mẫu giờ hoặc tạo cả buổi</strong>
+            <p>Slot trùng ngày và giờ bắt đầu sẽ cập nhật sức chứa. Danh sách giờ 24h giúp thao tác nhanh hơn input AM/PM.</p>
           </div>
-          <div className="dw-slot-presets" aria-label="Mẫu giờ khám nhanh">
-            {SLOT_PRESETS.map((preset) => (
+          <div className="dw-slot-date-shortcuts" aria-label="Chọn ngày nhanh">
+            {[
+              { label: 'Hôm nay', value: dateValueFromOffset(0) },
+              { label: 'Ngày mai', value: dateValueFromOffset(1) },
+              { label: 'Sau 2 ngày', value: dateValueFromOffset(2) },
+            ].map((item) => (
+              <button
+                type="button"
+                className={slotForm.date === item.value ? 'active' : ''}
+                key={item.label}
+                onClick={() => setSlotForm({ ...slotForm, date: item.value })}
+                disabled={!canManageSlots}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <div className="dw-slot-copy-row">
+            <label>
+              Sao chép lịch ngày đang chọn sang
+              <input type="date" min={addDaysToDateValue(slotForm.date, 1)} value={copyTargetDate} onChange={(event) => setCopyTargetDate(event.target.value)} disabled={!canSubmitSlot || busyId === 'copy-day'} />
+            </label>
+            <button type="button" disabled={!canSubmitSlot || busyId === 'copy-day'} onClick={copyDaySlots}>
+              {busyId === 'copy-day' ? 'Đang sao chép...' : 'Sao chép sang ngày này'}
+            </button>
+          </div>
+          <div className="dw-session-buttons" aria-label="Chọn ca khám nhanh">
+            {SLOT_SESSION_PRESETS.map((preset) => (
               <button type="button" key={preset.id} onClick={() => applyPreset(preset)} disabled={!canSubmitSlot}>
-                {preset.label}
+                <strong>{preset.label}</strong>
+                <span>{preset.startTime} - {preset.endTime}</span>
               </button>
             ))}
           </div>
@@ -524,17 +932,34 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onToggleSlot }) {
           </label>
           <label>
             Bắt đầu
-            <input type="time" value={slotForm.startTime} onChange={(event) => setSlotForm({ ...slotForm, startTime: event.target.value })} disabled={!canManageSlots} required />
+            <select value={slotForm.startTime} onChange={(event) => updateStartTime(event.target.value)} disabled={!canManageSlots} required>
+              {TIME_OPTIONS.map((time) => <option value={time} key={time}>{time}</option>)}
+            </select>
           </label>
           <label>
             Kết thúc
-            <input type="time" value={slotForm.endTime} onChange={(event) => setSlotForm({ ...slotForm, endTime: event.target.value })} disabled={!canManageSlots} required />
+            <select value={slotForm.endTime} onChange={(event) => updateEndTime(event.target.value)} disabled={!canManageSlots} required>
+              {TIME_OPTIONS.map((time) => <option value={time} key={time}>{time}</option>)}
+            </select>
+          </label>
+          <label>
+            Thời lượng
+            <select value={durationMinutes} onChange={(event) => updateDuration(Number(event.target.value))} disabled={!canManageSlots} required>
+              {DURATION_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
+            </select>
           </label>
           <label>
             Sức chứa
-            <input type="number" min="1" max="100" value={slotForm.capacity} onChange={(event) => setSlotForm({ ...slotForm, capacity: event.target.value })} disabled={!canManageSlots} required />
+            <div className="dw-capacity-stepper">
+              <button type="button" onClick={() => updateCapacity(Number(slotForm.capacity) - 1)} disabled={!canManageSlots}>-</button>
+              <input type="number" min="1" max="100" value={slotForm.capacity} onChange={(event) => updateCapacity(event.target.value)} disabled={!canManageSlots} required />
+              <button type="button" onClick={() => updateCapacity(Number(slotForm.capacity) + 1)} disabled={!canManageSlots}>+</button>
+            </div>
           </label>
-          <button type="submit" disabled={!canSubmitSlot || busyId === 'new-slot'}>{busyId === 'new-slot' ? 'Đang lưu...' : 'Lưu khung giờ'}</button>
+          <button type="submit" disabled={!canSubmitSlot || busyId === 'new-slot'}>{busyId === 'new-slot' ? 'Đang lưu...' : editingSlotId ? 'Cập nhật khung giờ' : 'Tạo khung giờ'}</button>
+          {editingSlotId ? (
+            <button type="button" onClick={cancelEditSlot} disabled={busyId === 'new-slot'}>Hủy sửa</button>
+          ) : null}
         </form>
         {message ? <p className={message.includes('Đã') ? 'dw-form-alert neutral' : 'dw-form-alert'}>{message}</p> : null}
         <div className="dw-slot-list upgraded">
@@ -554,8 +979,14 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onToggleSlot }) {
                 <strong>{slot.availableCount}</strong>
                 <span>còn trống / {slot.capacity}</span>
               </div>
+              <button type="button" disabled={!canManageSlots || Boolean(busyId)} onClick={() => editSlot(slot)}>
+                Sửa
+              </button>
               <button type="button" disabled={!canManageSlots || busyId === slot.id} onClick={() => toggleSlot(slot)}>
                 {slot.isActive ? 'Khóa slot' : 'Mở lại'}
+              </button>
+              <button type="button" disabled={!canManageSlots || slot.bookedCount > 0 || busyId === `delete-${slot.id}`} onClick={() => deleteSlot(slot)}>
+                {busyId === `delete-${slot.id}` ? 'Đang xóa...' : 'Xóa'}
               </button>
             </article>
           ))}
@@ -564,15 +995,36 @@ function SchedulePanel({ workspace, operations, onSaveSlot, onToggleSlot }) {
               status={workspace?.status}
               title={canManageSlots ? 'Chưa có giờ khám' : 'Chưa mở được giờ khám'}
               text={canManageSlots ? 'Chọn mẫu giờ nhanh hoặc nhập giờ thủ công để bệnh nhân có thể đặt lịch.' : lockedReason || 'Dữ liệu vận hành chưa sẵn sàng.'}
+              getStatusLabel={getStatusLabel}
             />
           ) : null}
         </div>
+        {deleteTarget ? (
+          <div className="dw-slot-delete-backdrop" role="presentation" onMouseDown={() => busyId ? null : setDeleteTarget(null)}>
+            <div className="dw-slot-delete-modal" role="dialog" aria-modal="true" aria-labelledby="dw-slot-delete-title" onMouseDown={(event) => event.stopPropagation()}>
+              <header>
+                <span>Xác nhận xóa</span>
+                <h2 id="dw-slot-delete-title">Xóa khung giờ khám?</h2>
+              </header>
+              <section>
+                <strong>{displayDate(deleteTarget.date)} · {deleteTarget.startTime} - {deleteTarget.endTime}</strong>
+                <p>{deleteTarget.specialtyName || 'Khung giờ khám'} sẽ được gỡ khỏi danh sách đặt lịch của bệnh nhân. Thao tác này chỉ áp dụng khi slot chưa có lịch đặt.</p>
+              </section>
+              <footer>
+                <button type="button" onClick={() => setDeleteTarget(null)} disabled={Boolean(busyId)}>Hủy</button>
+                <button type="button" className="danger" onClick={confirmDeleteSlot} disabled={busyId === `delete-${deleteTarget.id}`}>
+                  {busyId === `delete-${deleteTarget.id}` ? 'Đang xóa...' : 'Xóa khung giờ'}
+                </button>
+              </footer>
+            </div>
+          </div>
+        ) : null}
       </section>
     </>
   );
 }
 
-function AppointmentsPanel({ workspace, operations, onAppointmentStatusChange, onNavigate }) {
+function AppointmentsPanel({ workspace, operations, onAppointmentStatusChange, onNavigate, getStatusLabel }) {
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState('all');
   const [risk, setRisk] = useState('all');
@@ -641,32 +1093,160 @@ function AppointmentsPanel({ workspace, operations, onAppointmentStatusChange, o
             <option value="low">Rủi ro thấp</option>
           </select>
         </div>
-        <AppointmentList appointments={appointments} workspace={workspace} onStatusChange={onAppointmentStatusChange} />
+      <AppointmentList appointments={appointments} workspace={workspace} onStatusChange={onAppointmentStatusChange} getStatusLabel={getStatusLabel} />
       </section>
     </>
   );
 }
 
-function ServicePanel({ workspace, operations }) {
+function hoursToText(hours = []) {
+  return (hours || []).map((item) => `${item.label || ''} | ${item.time || ''}`.trim()).join('\n');
+}
+
+function servicesToText(services = []) {
+  return (services || []).map((item) => [item.name, item.description, item.fee].filter(Boolean).join(' | ')).join('\n');
+}
+
+function parseHoursText(value = '') {
+  return String(value || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [label = '', time = ''] = line.split('|').map((item) => item.trim());
+      return { label, time };
+    })
+    .filter((item) => item.label || item.time);
+}
+
+function parseServicesText(value = '') {
+  return String(value || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [name = '', description = '', fee = ''] = line.split('|').map((item) => item.trim());
+      return { name, description, fee };
+    })
+    .filter((item) => item.name);
+}
+
+function parseImagesText(value = '') {
+  return String(value || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function ServicePanel({ workspace, operations, onSaveFacilityDetails, getStatusLabel }) {
+  const isFacility = workspace?.mode === 'clinic' || workspace?.mode === 'hospital';
+  const linkedFacility = operations?.linkedFacility || {};
+  const [form, setForm] = useState({
+    subtitle: '',
+    intro: '',
+    phone: '',
+    hoursText: '',
+    servicesText: '',
+    imagesText: '',
+  });
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    setForm({
+      subtitle: linkedFacility.subtitle || '',
+      intro: linkedFacility.intro || '',
+      phone: linkedFacility.phone || '',
+      hoursText: hoursToText(operations?.hours || linkedFacility.hours || []),
+      servicesText: servicesToText(operations?.services || linkedFacility.services || []),
+      imagesText: (operations?.images || linkedFacility.images || []).join('\n'),
+    });
+  }, [linkedFacility.id, linkedFacility.subtitle, linkedFacility.intro, linkedFacility.phone, operations?.hours, operations?.services, operations?.images]);
+
+  if (!isFacility) {
+    return (
+      <>
+        <div className="dw-dashboard-heading compact">
+          <div>
+            <span>Dịch vụ</span>
+            <h1>Dịch vụ và lý do khám</h1>
+            <p>Danh mục dịch vụ áp dụng cho phòng khám hoặc bệnh viện. Hồ sơ bác sĩ cá nhân quản lý lịch khám ở mục Khung giờ.</p>
+          </div>
+        </div>
+        <EmptyState status={workspace?.status} title="Không áp dụng cho bác sĩ cá nhân" text="Bác sĩ độc lập có thể mở khung giờ khám và cập nhật lịch nghỉ tại mục Khung giờ." getStatusLabel={getStatusLabel} />
+      </>
+    );
+  }
+
+  const canSave = workspace?.status === 'approved' && operations?.linked && onSaveFacilityDetails;
+
+  const save = async (event) => {
+    event.preventDefault();
+    if (!canSave) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      await onSaveFacilityDetails({
+        subtitle: form.subtitle,
+        intro: form.intro,
+        phone: form.phone,
+        hours: parseHoursText(form.hoursText),
+        services: parseServicesText(form.servicesText),
+        images: parseImagesText(form.imagesText),
+      });
+      setMessage('Đã cập nhật thông tin hiển thị trên trang bệnh nhân.');
+    } catch (error) {
+      setMessage(error.message || 'Không thể cập nhật trang hiển thị.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <>
       <div className="dw-dashboard-heading compact">
         <div>
-          <span>Dịch vụ</span>
-          <h1>Dịch vụ và lý do khám</h1>
-          <p>API đã dành chỗ cho danh mục dịch vụ cơ sở y tế; hiện trả theo dữ liệu liên kết.</p>
+          <span>Trang bệnh nhân</span>
+          <h1>Dịch vụ, giới thiệu và giờ làm việc</h1>
+          <p>Những thông tin này hiển thị ở thẻ ngoài trang đặt khám, trang chi tiết phòng khám/bệnh viện và luồng bệnh nhân chọn dịch vụ.</p>
         </div>
       </div>
-      <EmptyState
-        status={workspace?.status}
-        title={operations?.services?.length ? 'Dịch vụ đã liên kết' : 'Chưa có dịch vụ'}
-        text={operations?.services?.length ? 'Danh mục dịch vụ đã sẵn sàng.' : 'Chưa có dịch vụ gắn với workspace này trong backend.'}
-      />
+      <form className="dw-facility-public-form" onSubmit={save}>
+        <label>
+          Mô tả ngắn ngoài thẻ
+          <input value={form.subtitle} onChange={(event) => setForm({ ...form, subtitle: event.target.value })} placeholder="Ví dụ: Phòng khám Sản - Nhi, Tai Mũi Họng" disabled={!canSave} />
+        </label>
+        <label>
+          Số điện thoại/hotline
+          <input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="Số điện thoại hiển thị cho bệnh nhân" disabled={!canSave} />
+        </label>
+        <label className="wide">
+          Giới thiệu
+          <textarea value={form.intro} onChange={(event) => setForm({ ...form, intro: event.target.value })} rows={5} placeholder="Mô tả cơ sở, thế mạnh chuyên môn, quy trình tiếp nhận..." disabled={!canSave} />
+        </label>
+        <label className="wide">
+          Giờ làm việc
+          <textarea value={form.hoursText} onChange={(event) => setForm({ ...form, hoursText: event.target.value })} rows={4} placeholder={'Thứ 2 - Thứ 6 | 07:30 - 17:00\nThứ 7 | 07:30 - 11:30\nChủ nhật | Theo lịch hẹn'} disabled={!canSave} />
+        </label>
+        <label className="wide">
+          Dịch vụ đặt khám
+          <textarea value={form.servicesText} onChange={(event) => setForm({ ...form, servicesText: event.target.value })} rows={5} placeholder={'Khám Lao - bệnh phổi | Tư vấn và khám chuyên khoa hô hấp | Theo bảng giá\nKhám tổng quát | Khám ban đầu và tư vấn sức khỏe | Theo bảng giá'} disabled={!canSave} />
+        </label>
+        <label className="wide">
+          Ảnh thư viện
+          <textarea value={form.imagesText} onChange={(event) => setForm({ ...form, imagesText: event.target.value })} rows={3} placeholder="Mỗi dòng một URL ảnh hoặc data:image. Ảnh đại diện chính chỉnh ở mục Hồ sơ." disabled={!canSave} />
+        </label>
+        {message ? <p className={message.includes('Đã') ? 'dw-form-alert neutral' : 'dw-form-alert'}>{message}</p> : null}
+        <div className="dw-facility-public-actions">
+          <button type="submit" disabled={!canSave || busy}>{busy ? 'Đang lưu...' : 'Cập nhật trang bệnh nhân'}</button>
+          <span>{canSave ? 'Sau khi lưu, bệnh nhân sẽ thấy dữ liệu mới khi catalog được tải lại.' : 'Hồ sơ cần được duyệt và liên kết catalog trước khi cập nhật.'}</span>
+        </div>
+      </form>
     </>
   );
 }
 
-function OnlineConsultPanel({ workspace }) {
+function OnlineConsultPanel({ workspace, getStatusLabel }) {
   return (
     <>
       <div className="dw-dashboard-heading compact">
@@ -676,7 +1256,7 @@ function OnlineConsultPanel({ workspace }) {
           <p>Kênh tư vấn được tách riêng để sau này nối API video/chat.</p>
         </div>
       </div>
-      <EmptyState status={workspace?.status} title="Chưa có yêu cầu tư vấn" text="Khi có yêu cầu gửi đến bác sĩ, dữ liệu sẽ hiển thị tại đây." />
+      <EmptyState status={workspace?.status} title="Chưa có yêu cầu tư vấn" text="Khi có yêu cầu gửi đến bác sĩ, dữ liệu sẽ hiển thị tại đây." getStatusLabel={getStatusLabel} />
     </>
   );
 }
@@ -715,6 +1295,8 @@ function ReportPanel({ workspace, operations }) {
 
 function WorkspaceDashboard({
   activeSection = 'tong-quan',
+  navItems = [],
+  getStatusLabel,
   displayName,
   roleLabel,
   statusLabel,
@@ -730,9 +1312,12 @@ function WorkspaceDashboard({
   onRefresh,
   onAppointmentStatusChange,
   onSaveSlot,
+  onUpdateSlot,
   onToggleSlot,
+  onDeleteSlot,
+  onSaveUnavailability,
+  onSaveFacilityDetails,
 }) {
-  const navItems = NAV_ITEMS_BY_MODE[workspace?.mode] || NAV_ITEMS_BY_MODE.doctor;
   const allowedSection = navItems.some((item) => item.id === activeSection) ? activeSection : 'tong-quan';
 
   return (
@@ -790,13 +1375,13 @@ function WorkspaceDashboard({
       ) : allowedSection === 'ho-so' ? (
           <ProfilePanel workspace={workspace} onEdit={onEdit} />
       ) : allowedSection === 'lich-lam-viec' ? (
-          <SchedulePanel workspace={workspace} operations={operations} onSaveSlot={onSaveSlot} onToggleSlot={onToggleSlot} />
+          <SchedulePanel workspace={workspace} operations={operations} onSaveSlot={onSaveSlot} onUpdateSlot={onUpdateSlot} onToggleSlot={onToggleSlot} onDeleteSlot={onDeleteSlot} onSaveUnavailability={onSaveUnavailability} getStatusLabel={getStatusLabel} />
       ) : allowedSection === 'lich-hen' ? (
-          <AppointmentsPanel workspace={workspace} operations={operations} onAppointmentStatusChange={onAppointmentStatusChange} onRefresh={onRefresh} onNavigate={onNavigate} />
+          <AppointmentsPanel workspace={workspace} operations={operations} onAppointmentStatusChange={onAppointmentStatusChange} onRefresh={onRefresh} onNavigate={onNavigate} getStatusLabel={getStatusLabel} />
         ) : allowedSection === 'dich-vu' ? (
-          <ServicePanel workspace={workspace} operations={operations} />
+          <ServicePanel workspace={workspace} operations={operations} onSaveFacilityDetails={onSaveFacilityDetails} getStatusLabel={getStatusLabel} />
         ) : allowedSection === 'tu-van' ? (
-          <OnlineConsultPanel workspace={workspace} />
+          <OnlineConsultPanel workspace={workspace} getStatusLabel={getStatusLabel} />
         ) : (
           <ReportPanel workspace={workspace} operations={operations} />
         )}
@@ -807,10 +1392,6 @@ function WorkspaceDashboard({
 
 export {
   DashboardPreview,
-  WORKSPACE_SECTIONS,
   WorkspaceBrand,
   WorkspaceDashboard,
-  getRoleLabel,
-  getStatusLabel,
-  isWorkspaceSectionAllowed,
 };

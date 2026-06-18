@@ -4,12 +4,70 @@ import { fetchCatalog } from '../../lib/catalog';
 import {
   WorkspaceBrand,
   WorkspaceDashboard,
-  getRoleLabel,
-  getStatusLabel,
 } from './giao_dien_lam_viec';
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
 const WORKSPACE_DRAFT_STORAGE_KEY = 'midhealth_provider_workspace_drafts';
+
+const NAV_ITEMS_BY_MODE = {
+  doctor: [
+    { id: 'tong-quan', label: 'Tổng quan', icon: '01' },
+    { id: 'lich-hen', label: 'Lịch hẹn', icon: '02' },
+    { id: 'lich-lam-viec', label: 'Khung giờ', icon: '03' },
+    { id: 'ho-so', label: 'Hồ sơ', icon: '04' },
+    { id: 'tu-van', label: 'Tư vấn', icon: '05' },
+    { id: 'bao-cao', label: 'Báo cáo', icon: '06' },
+  ],
+  clinic: [
+    { id: 'tong-quan', label: 'Tổng quan', icon: '01' },
+    { id: 'lich-hen', label: 'Lịch hẹn', icon: '02' },
+    { id: 'lich-lam-viec', label: 'Khung giờ', icon: '03' },
+    { id: 'dich-vu', label: 'Dịch vụ', icon: '04' },
+    { id: 'ho-so', label: 'Hồ sơ', icon: '05' },
+    { id: 'bao-cao', label: 'Báo cáo', icon: '06' },
+  ],
+  hospital: [
+    { id: 'tong-quan', label: 'Tổng quan', icon: '01' },
+    { id: 'lich-hen', label: 'Lịch hẹn', icon: '02' },
+    { id: 'lich-lam-viec', label: 'Khung giờ', icon: '03' },
+    { id: 'dich-vu', label: 'Dịch vụ', icon: '04' },
+    { id: 'ho-so', label: 'Hồ sơ', icon: '05' },
+    { id: 'bao-cao', label: 'Báo cáo', icon: '06' },
+  ],
+};
+
+const WORKSPACE_SECTIONS = new Set(
+  Object.values(NAV_ITEMS_BY_MODE).flat().map((item) => item.id),
+);
+
+const STATUS_LABELS = {
+  draft: 'Bản nháp',
+  pending_review: 'Chờ kiểm duyệt',
+  approved: 'Đã duyệt',
+  rejected: 'Cần bổ sung',
+};
+
+const ROLE_LABELS = {
+  clinic: 'Phòng khám',
+  hospital: 'Bệnh viện',
+  doctor: 'Bác sĩ độc lập',
+};
+
+function isWorkspaceSectionAllowed(mode, section) {
+  return (NAV_ITEMS_BY_MODE[mode] || NAV_ITEMS_BY_MODE.doctor).some((item) => item.id === section);
+}
+
+function getWorkspaceNavItems(mode) {
+  return NAV_ITEMS_BY_MODE[mode] || NAV_ITEMS_BY_MODE.doctor;
+}
+
+function getRoleLabel(mode) {
+  return ROLE_LABELS[mode] || ROLE_LABELS.doctor;
+}
+
+function getStatusLabel(status) {
+  return STATUS_LABELS[status] || STATUS_LABELS.pending_review;
+}
 const DOCTOR_TITLE_OPTIONS = [
   { value: 'BS', label: 'BS - Bác sĩ' },
   { value: 'BS.CKI', label: 'BS.CKI - Bác sĩ Chuyên khoa I' },
@@ -62,7 +120,7 @@ async function saveProviderWorkspaceApi(payload) {
     body: JSON.stringify(payload),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || 'Không thể lưu hồ sơ đối tác.');
+  if (!response.ok) throw new Error(data.message || 'Không thể lưu hồ sơ bác sĩ/cơ sở khám chữa bệnh.');
   return data.data;
 }
 
@@ -105,6 +163,42 @@ async function patchProviderSlotApi(slotId, payload) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.message || 'Không thể cập nhật khung giờ.');
+  return data.data;
+}
+
+async function deleteProviderSlotApi(slotId) {
+  const response = await fetch(`${apiBaseUrl}/api/provider/workspace/slots/${encodeURIComponent(slotId)}`, {
+    method: 'PATCH',
+    headers: await getAuthHeaders(),
+    body: JSON.stringify({ delete: true }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = data.message || 'Không thể xóa khung giờ.';
+    throw new Error(message);
+  }
+  return data.data;
+}
+
+async function patchProviderUnavailabilityApi(payload) {
+  const response = await fetch(`${apiBaseUrl}/api/provider/workspace/unavailability`, {
+    method: 'PATCH',
+    headers: await getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || 'Không thể cập nhật lịch nghỉ.');
+  return data.data;
+}
+
+async function patchProviderFacilityDetailsApi(payload) {
+  const response = await fetch(`${apiBaseUrl}/api/provider/workspace/facility-details`, {
+    method: 'PATCH',
+    headers: await getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || 'Không thể cập nhật trang hiển thị.');
   return data.data;
 }
 
@@ -200,6 +294,7 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
   const [specialtyOptions, setSpecialtyOptions] = useState([]);
   const [isLoadingSpecialties, setIsLoadingSpecialties] = useState(false);
   const [specialtySearch, setSpecialtySearch] = useState('');
+  const [customSpecialty, setCustomSpecialty] = useState('');
   const [formData, setFormData] = useState({
     clinicName: initialWorkspace?.clinicName || '',
     clinicAddress: initialWorkspace?.clinicAddress || '',
@@ -317,6 +412,25 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
     setFormData({ ...formData, specialty: next.join(', ') });
   };
 
+  const addCustomSpecialty = () => {
+    const name = customSpecialty.trim();
+    if (!name) return;
+    const exists = selectedSpecialties.some((item) => item.toLocaleLowerCase('vi') === name.toLocaleLowerCase('vi'));
+    const next = exists ? selectedSpecialties : [...selectedSpecialties, name];
+    setFormData({ ...formData, specialty: next.join(', ') });
+    setSpecialtyOptions((current) => (
+      current.some((item) => item.toLocaleLowerCase('vi') === name.toLocaleLowerCase('vi'))
+        ? current
+        : [name, ...current]
+    ));
+    setCustomSpecialty('');
+  };
+
+  const removeFacilitySpecialty = (specialty) => {
+    const next = selectedSpecialties.filter((item) => item !== specialty);
+    setFormData({ ...formData, specialty: next.join(', ') });
+  };
+
   const submit = async (event) => {
     event.preventDefault();
     if (!mode) {
@@ -369,13 +483,13 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
 
       <section className="dw-profile-hero">
         <div>
-          <span>Hồ sơ đối tác</span>
+          <span>Hồ sơ bác sĩ</span>
           <h1>{isEditing ? 'Cập nhật hồ sơ vận hành' : 'Thiết lập hồ sơ bác sĩ, bệnh viện hoặc phòng khám'}</h1>
           <p>Đây là trang riêng để xác minh thông tin chuyên môn trước khi mở workspace. Dữ liệu tại đây sẽ được ghi vào Supabase và liên kết với catalog bác sĩ/bệnh viện/phòng khám.</p>
         </div>
         <aside>
           <strong>{account.email}</strong>
-          <small>Tài khoản đối tác đã xác thực</small>
+          <small>Tài khoản bác sĩ đã xác thực</small>
         </aside>
       </section>
 
@@ -477,10 +591,36 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
               <div className="dw-specialty-heading">
                 <div>
                   <strong>Danh sách chuyên khoa</strong>
-                  <p>Chọn một chuyên khoa chính từ danh mục đang hoạt động.</p>
+                  <p>{isFacilityMode(mode) ? 'Chọn một hoặc nhiều chuyên khoa cơ sở đang tiếp nhận. Có thể thêm chuyên khoa ngoài danh mục nếu chưa thấy trong catalog.' : 'Chọn một chuyên khoa chính từ danh mục đang hoạt động.'}</p>
                 </div>
                 <span>{isFacilityMode(mode) ? `${selectedSpecialties.length} đã chọn` : `${specialtyOptions.length} chuyên khoa`}</span>
               </div>
+              {isFacilityMode(mode) ? (
+                <div className="dw-selected-specialties" aria-label="Chuyên khoa đã chọn">
+                  {selectedSpecialties.length ? selectedSpecialties.map((specialty) => (
+                    <button type="button" key={specialty} onClick={() => removeFacilitySpecialty(specialty)}>
+                      <span>{specialty}</span>
+                      <b aria-hidden="true">×</b>
+                    </button>
+                  )) : <p>Chưa chọn chuyên khoa tiếp nhận.</p>}
+                </div>
+              ) : null}
+              {isFacilityMode(mode) ? (
+                <div className="dw-custom-specialty-row">
+                  <input
+                    value={customSpecialty}
+                    onChange={(event) => setCustomSpecialty(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        addCustomSpecialty();
+                      }
+                    }}
+                    placeholder="Thêm chuyên khoa khác, ví dụ: Nội tiết"
+                  />
+                  <button type="button" onClick={addCustomSpecialty}>Thêm</button>
+                </div>
+              ) : null}
               <input
                 className="dw-specialty-search"
                 type="search"
@@ -552,18 +692,25 @@ function TrangLamViec({
   onRefresh,
   onAppointmentStatusChange,
   onSaveSlot,
+  onUpdateSlot,
   onToggleSlot,
+  onDeleteSlot,
+  onSaveUnavailability,
+  onSaveFacilityDetails,
 }) {
   const displayName = workspace?.mode === 'doctor'
     ? `${workspace?.doctorTitle ? `${workspace.doctorTitle} ` : ''}${account.name}`
     : workspace?.clinicName || 'MidHealth Workspace';
   const statusLabel = getStatusLabel(workspace?.status);
   const roleLabel = getRoleLabel(workspace?.mode);
+  const navItems = getWorkspaceNavItems(workspace?.mode);
 
   return (
     <div className="dw-dashboard-page refined">
       <WorkspaceDashboard
         activeSection={activeSection}
+        navItems={navItems}
+        getStatusLabel={getStatusLabel}
         displayName={displayName}
         roleLabel={roleLabel}
         statusLabel={statusLabel}
@@ -579,7 +726,11 @@ function TrangLamViec({
         onRefresh={onRefresh}
         onAppointmentStatusChange={onAppointmentStatusChange}
         onSaveSlot={onSaveSlot}
+        onUpdateSlot={onUpdateSlot}
         onToggleSlot={onToggleSlot}
+        onDeleteSlot={onDeleteSlot}
+        onSaveUnavailability={onSaveUnavailability}
+        onSaveFacilityDetails={onSaveFacilityDetails}
       />
     </div>
   );
@@ -673,6 +824,41 @@ function KhuVucLamViec({
     await loadOperations();
   };
 
+  const handleUpdateSlot = async (slotId, payload) => {
+    setOperationsMessage('');
+    await patchProviderSlotApi(slotId, payload);
+    await loadOperations();
+  };
+
+  const handleDeleteSlot = async (slotId) => {
+    setOperationsMessage('');
+    const result = await deleteProviderSlotApi(slotId);
+    setOperations((current) => current ? {
+      ...current,
+      slots: (current.slots || []).filter((slot) => slot.id !== slotId),
+    } : current);
+    const nextOperations = await loadOperations();
+    if (nextOperations?.slots?.some((slot) => slot.id === slotId)) {
+      setOperations({
+        ...nextOperations,
+        slots: nextOperations.slots.filter((slot) => slot.id !== slotId),
+      });
+    }
+    return result;
+  };
+
+  const handleSaveUnavailability = async (payload) => {
+    setOperationsMessage('');
+    await patchProviderUnavailabilityApi(payload);
+    await loadOperations();
+  };
+
+  const handleSaveFacilityDetails = async (payload) => {
+    setOperationsMessage('');
+    await patchProviderFacilityDetailsApi(payload);
+    await loadOperations();
+  };
+
   if (hasWorkspace) {
     return (
       <TrangLamViec
@@ -690,6 +876,10 @@ function KhuVucLamViec({
         onAppointmentStatusChange={handleAppointmentStatusChange}
         onSaveSlot={handleSaveSlot}
         onToggleSlot={handleToggleSlot}
+        onUpdateSlot={handleUpdateSlot}
+        onDeleteSlot={handleDeleteSlot}
+        onSaveUnavailability={handleSaveUnavailability}
+        onSaveFacilityDetails={handleSaveFacilityDetails}
       />
     );
   }
@@ -705,5 +895,12 @@ function KhuVucLamViec({
     />
   );
 }
+
+export {
+  WORKSPACE_SECTIONS,
+  getRoleLabel,
+  getStatusLabel,
+  isWorkspaceSectionAllowed,
+};
 
 export default KhuVucLamViec;

@@ -52,7 +52,7 @@ function formatDate(value) {
 }
 
 function formatDateTime(value) {
-  if (!value) return 'Chua co';
+  if (!value) return 'Chưa có';
   return new Intl.DateTimeFormat('vi-VN', {
     day: '2-digit',
     month: '2-digit',
@@ -167,6 +167,7 @@ export default function AdminDashboard({ onBackHome }) {
   const [message, setMessage] = useState('');
   const [articleForm, setArticleForm] = useState(emptyArticleForm);
   const [articleEditorOpen, setArticleEditorOpen] = useState(false);
+  const [deleteArticleTarget, setDeleteArticleTarget] = useState(null);
 
   const metrics = dashboard?.metrics || {};
   const currentAdminEmail = dashboard?.admin?.email || adminUser?.email || email;
@@ -443,13 +444,19 @@ export default function AdminDashboard({ onBackHome }) {
     }
   }
 
-  async function deleteArticle(article) {
-    if (!window.confirm(`Xóa bài viết "${article.title}"?`)) return;
+  function deleteArticle(article) {
+    setDeleteArticleTarget(article);
+  }
+
+  async function confirmDeleteArticle() {
+    const article = deleteArticleTarget;
+    if (!article) return;
     setActionId(article.id);
     setMessage('');
     try {
       await adminRequest(`/api/admin/health-articles/${encodeURIComponent(article.id)}`, backendToken, { method: 'DELETE' });
       setMessage('Đã xóa bài viết.');
+      setDeleteArticleTarget(null);
       await loadDashboard();
     } catch (error) {
       setMessage(error.message);
@@ -552,7 +559,7 @@ export default function AdminDashboard({ onBackHome }) {
           </div>
         </div>
         <span className="admin-nav-label">Vận hành</span>
-        <button className={activeTab === 'providers' ? 'active' : ''} type="button" onClick={() => setActiveTab('providers')}><span>Đối tác y tế</span><small>{formatNumber(metrics.pendingProviders)}</small></button>
+        <button className={activeTab === 'providers' ? 'active' : ''} type="button" onClick={() => setActiveTab('providers')}><span>Hồ sơ bác sĩ</span><small>{formatNumber(metrics.pendingProviders)}</small></button>
         <button className={activeTab === 'appointments' ? 'active' : ''} type="button" onClick={() => setActiveTab('appointments')}><span>Lịch hẹn</span><small>{formatNumber(metrics.todayAppointments)}</small></button>
         <span className="admin-nav-label">Dữ liệu hệ thống</span>
         <button className={activeTab === 'catalog' ? 'active' : ''} type="button" onClick={() => setActiveTab('catalog')}><span>Danh mục y tế</span><small>{formatNumber(catalogItems.length)}</small></button>
@@ -582,7 +589,7 @@ export default function AdminDashboard({ onBackHome }) {
 
         <div className="admin-metric-grid">
           <MetricCard label="Tài khoản hệ thống" value={formatNumber(metrics.totalUsers)} helper={`${formatNumber(metrics.totalPatients)} hồ sơ bệnh nhân`} />
-          <MetricCard label="Đối tác y tế" value={formatNumber(metrics.totalProviders)} helper={`${formatNumber(metrics.pendingProviders)} hồ sơ cần xử lý`} tone={metrics.pendingProviders ? 'warning' : 'success'} />
+          <MetricCard label="Hồ sơ bác sĩ" value={formatNumber(metrics.totalProviders)} helper={`${formatNumber(metrics.pendingProviders)} hồ sơ cần xử lý`} tone={metrics.pendingProviders ? 'warning' : 'success'} />
           <MetricCard label="Lịch hẹn hôm nay" value={formatNumber(metrics.todayAppointments)} helper={`${formatNumber(metrics.totalAppointments)} lịch hẹn toàn hệ thống`} tone="info" />
           <MetricCard label="Doanh thu đã thu" value={formatMoney(metrics.revenue)} helper={`${formatNumber(metrics.paidPayments)} giao dịch thành công`} tone="success" />
           <MetricCard label="Danh mục y tế" value={formatNumber((metrics.totalDoctors || 0) + (metrics.totalFacilities || 0))} helper={`${formatNumber(metrics.totalDoctors)} bác sĩ · ${formatNumber(metrics.totalFacilities)} cơ sở`} />
@@ -614,7 +621,7 @@ export default function AdminDashboard({ onBackHome }) {
             <div className="admin-table-wrap">
               <table className="admin-table">
                 <thead>
-                  <tr><th>Đối tác</th><th>Loại</th><th>Chuyên khoa</th><th>Liên hệ</th><th>Trạng thái</th><th>Thao tác</th></tr>
+                  <tr><th>Hồ sơ</th><th>Loại</th><th>Chuyên khoa</th><th>Liên hệ</th><th>Trạng thái</th><th>Thao tác</th></tr>
                 </thead>
                 <tbody>
                   {filteredProviders.map((provider) => (
@@ -920,13 +927,33 @@ export default function AdminDashboard({ onBackHome }) {
             <div className="admin-section-heading">
               <div>
                 <h2>Nhật ký vận hành</h2>
-                <p>Theo dõi các thao tác quan trọng của admin và đối tác y tế.</p>
+                <p>Theo dõi các thao tác quan trọng của admin, bác sĩ và cơ sở khám chữa bệnh.</p>
               </div>
             </div>
             <AuditEventList events={dashboard?.events || []} />
           </section>
         ) : null}
       </main>
+      {deleteArticleTarget ? (
+        <div className="app-confirm-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && actionId !== deleteArticleTarget.id) setDeleteArticleTarget(null); }}>
+          <article className="app-confirm-modal danger" role="dialog" aria-modal="true" aria-labelledby="admin-delete-article-title">
+            <header>
+              <span>Cần xác nhận</span>
+              <h2 id="admin-delete-article-title">Xóa bài viết</h2>
+            </header>
+            <section>
+              <p>Bạn có chắc muốn xóa bài viết này?</p>
+              <small>{deleteArticleTarget.title}</small>
+            </section>
+            <footer>
+              <button type="button" disabled={actionId === deleteArticleTarget.id} onClick={() => setDeleteArticleTarget(null)}>Giữ lại</button>
+              <button type="button" className="confirm danger" disabled={actionId === deleteArticleTarget.id} onClick={confirmDeleteArticle}>
+                {actionId === deleteArticleTarget.id ? 'Đang xóa...' : 'Xóa bài viết'}
+              </button>
+            </footer>
+          </article>
+        </div>
+      ) : null}
     </section>
   );
 }

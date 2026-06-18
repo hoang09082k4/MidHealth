@@ -87,8 +87,8 @@ function AuthLayout({ children, mode = 'register', onHome }) {
         <h2>Chào mừng đến với<br /><span>MidHealth Workspace</span></h2>
         <p>
           {mode === 'login'
-            ? 'Đăng nhập để tiếp tục quản lý hồ sơ đối tác, lịch khám và workspace của bạn.'
-            : 'Xác thực email trước khi tạo tài khoản đối tác để bảo vệ thông tin chuyên môn và cơ sở y tế.'}
+            ? 'Đăng nhập để tiếp tục quản lý hồ sơ bác sĩ, lịch khám và workspace của bạn.'
+            : 'Xác thực email trước khi tạo tài khoản bác sĩ để bảo vệ thông tin chuyên môn và cơ sở y tế.'}
         </p>
       </section>
     </div>
@@ -139,7 +139,7 @@ function TrangDangKy({ onOtpSent, onSwitchToLogin, onHome }) {
 
     const email = formData.email.trim().toLowerCase();
     if (isPersonalEmail(email)) {
-      setMessage('Vui lòng dùng email cơ quan hoặc email chuyên môn. Tài khoản Gmail/Yahoo/Outlook cá nhân chưa được chấp nhận cho đăng ký đối tác.');
+      setMessage('Vui lòng dùng email cơ quan hoặc email chuyên môn. Tài khoản Gmail/Yahoo/Outlook cá nhân chưa được chấp nhận cho đăng ký bác sĩ.');
       return;
     }
 
@@ -163,13 +163,13 @@ function TrangDangKy({ onOtpSent, onSwitchToLogin, onHome }) {
       <section className="dw-register-main">
         <WorkspaceBrand onHome={onHome} />
         <form className="dw-auth-form dw-register-form" onSubmit={submit} noValidate>
-        <h1>Đăng ký tài khoản đối tác</h1>
+        <h1>Đăng ký tài khoản bác sĩ</h1>
         <p className="dw-auth-intro">Bước này chỉ tạo tài khoản đăng nhập. Hồ sơ bác sĩ, bệnh viện hoặc phòng khám sẽ là một trang riêng sau khi bạn đăng nhập.</p>
         <div className="dw-register-note">
           <span>01</span>
           <div>
             <strong>Tạo tài khoản</strong>
-            <p>Xác thực email và lưu tài khoản đối tác vào Supabase.</p>
+            <p>Xác thực email và lưu tài khoản bác sĩ vào Supabase.</p>
           </div>
         </div>
         <label>
@@ -181,7 +181,7 @@ function TrangDangKy({ onOtpSent, onSwitchToLogin, onHome }) {
           Số điện thoại
           <input className={fieldErrors.phone ? 'has-error' : ''} value={formData.phone} onChange={(event) => updateField('phone', event.target.value)} placeholder="0901234567" inputMode="tel" />
           {fieldErrors.phone && <small className="field-error">{fieldErrors.phone}</small>}
-          <small>MidHealth sẽ dùng số này để liên hệ xác minh hồ sơ đối tác.</small>
+          <small>MidHealth sẽ dùng số này để liên hệ xác minh hồ sơ bác sĩ/cơ sở khám chữa bệnh.</small>
         </label>
         <label>
           Email cơ quan/chuyên môn
@@ -272,7 +272,7 @@ function TrangXacNhanOtp({ pendingAccount, onRegistered, onBack, onHome }) {
     <AuthLayout onHome={onHome}>
       <form className="dw-auth-form" onSubmit={submit} noValidate>
         <h1>Xác nhận đăng ký</h1>
-        <p className="dw-auth-intro">Nhập OTP email và tạo mật khẩu để mở tài khoản đối tác.</p>
+        <p className="dw-auth-intro">Nhập OTP email và tạo mật khẩu để mở tài khoản bác sĩ.</p>
         <label>
           Mã OTP
           <input className={fieldErrors.otp ? 'has-error' : ''} value={otp} onChange={(event) => { const nextOtp = event.target.value.replace(/\D/g, '').slice(0, 6); setOtp(nextOtp); setFieldErrors((current) => ({ ...current, otp: nextOtp && nextOtp.length < 6 ? 'Vui lòng nhập đủ 6 số OTP.' : '' })); }} placeholder="Nhập mã OTP" inputMode="numeric" maxLength="6" />
@@ -347,7 +347,7 @@ function TrangDangNhap({ onLogin, onRegister, onHome, initialMessage = '' }) {
   return (
     <AuthLayout mode="login" onHome={onHome}>
       <form className="dw-auth-form" onSubmit={submit} noValidate>
-        <h1>Đăng nhập đối tác</h1>
+        <h1>Đăng nhập bác sĩ</h1>
         <p className="dw-auth-intro">Chào mừng quay trở lại.</p>
         <label>
           Email
