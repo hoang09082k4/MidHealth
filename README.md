@@ -7,7 +7,6 @@ MidHealth là đồ án website đặt lịch khám gồm frontend React/Vite, b
 - `frontend`: giao diện React/Vite.
 - `backend`: API Node.js, auth, appointment, payment, provider workspace, admin, queue, chatbot.
 - `supabase`: schema, seed và cấu hình database.
-- `api`: serverless admin API dùng khi deploy Vercel.
 - `docs`: tài liệu demo, checklist nghiệm thu và báo cáo kiểm chứng.
 - `diagram`: tài liệu phân tích/use case/activity diagram.
 
