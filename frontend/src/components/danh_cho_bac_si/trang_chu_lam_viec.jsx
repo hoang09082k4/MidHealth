@@ -422,11 +422,22 @@ function TrangChuLamViec({
   useEffect(() => {
     let active = true;
     const unsubscribe = onAuthStateChanged(firebaseAuth, async (authUser) => {
+      const shouldVerifyExistingSession = requireAuth || ['resume', 'profile', 'work'].includes(screen);
+
       if (!authUser) {
         setAccount(null);
         setWorkspace(null);
         setEditingWorkspace(null);
         if (screen === 'resume') navigateScreen('login', { replace: true });
+        return;
+      }
+
+      if (!shouldVerifyExistingSession) {
+        setAccount(null);
+        setWorkspace(null);
+        setEditingWorkspace(null);
+        setWorkspaceMessage('');
+        setLoginMessage('');
         return;
       }
 
@@ -459,7 +470,7 @@ function TrangChuLamViec({
       active = false;
       unsubscribe();
     };
-  }, [account?.phone, account?.uid, screen]);
+  }, [account?.phone, account?.uid, requireAuth, screen]);
 
   const applyAccount = async (nextAccount) => {
     setAccount(nextAccount);
