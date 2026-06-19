@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "build": "npm install --prefix ../frontend && npm run build --prefix ../frontend && node ../scripts/copy-dist.cjs ../frontend/dist dist",
     "test": "node --test tests/authorization_policy.test.js tests/cors_policy.test.js tests/queue_policy.test.js tests/security_headers.test.js",
     "check:env": "node scripts/check_env.js",
     "dev": "node src/server.js",
