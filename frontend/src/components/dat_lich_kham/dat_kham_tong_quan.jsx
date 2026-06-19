@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import TheBacSi from '../the_hien_thi/the_bac_si';
 import TheChuyenKhoa from '../the_hien_thi/the_chuyen_khoa';
 import { doctorImagePath } from '../../lib/doctor_images';
-import { listAppointments } from '../../lib/appointments';
 
 const BOOKING_TABS = [
   { key: 'doctor', label: 'Đặt khám Bác sĩ', icon: 'doctor' },
@@ -151,6 +150,11 @@ function TrangDatKhamTongQuan({
   useEffect(() => {
     let isMounted = true;
 
+    setRecentDoctorAppointment(null);
+    return () => {
+      isMounted = false;
+    };
+
     if (!user) {
       setRecentDoctorAppointment(null);
       return () => {
@@ -158,7 +162,7 @@ function TrangDatKhamTongQuan({
       };
     }
 
-    listAppointments(user)
+    Promise.resolve([])
       .then((items) => {
         if (!isMounted) return;
         const latestDoctorAppointment = (items || []).find((item) => (

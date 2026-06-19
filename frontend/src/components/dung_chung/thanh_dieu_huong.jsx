@@ -80,7 +80,7 @@ function ThanhDieuHuong({
 
   useEffect(() => {
     let active = true;
-    if (!user) {
+    if (!user || !isAccountOpen) {
       setNotifications([]);
       return () => {
         active = false;
@@ -94,7 +94,7 @@ function ThanhDieuHuong({
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [isAccountOpen, user]);
 
   const openMedicalAssistant = () => {
     window.dispatchEvent(new CustomEvent('midhealth:open-chatbot'));
