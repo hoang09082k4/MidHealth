@@ -165,7 +165,7 @@ export async function listPatientProfiles(user) {
 export async function listAppointments(user) {
   if (!await canUsePatientPortal(user)) return [];
 
-  const response = await fetch(`${apiBaseUrl}/api/appointments`, {
+  const response = await fetch(`${apiBaseUrl}/api/appointments?optional=1`, {
     headers: await getAuthHeaders(user),
   });
   return parseResponse(response, 'Không thể tải lịch khám.');

@@ -1136,7 +1136,12 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.method === 'GET' && url.pathname === '/api/appointments') {
+    const optionalSessionCheck = url.searchParams.get('optional') === '1';
     const user = await getUserFromRequest(request);
+    if (!user && optionalSessionCheck) {
+      sendJson(response, 200, { data: [] });
+      return;
+    }
     if (!user) {
       sendJson(response, 401, { message: 'Bạn cần đăng nhập để xem lịch khám.' });
       return;
@@ -1144,7 +1149,7 @@ const server = http.createServer(async (request, response) => {
 
     const access = await ensurePatientAccess(user);
     if (!access.ok) {
-      if (access.status === 403) {
+      if (optionalSessionCheck || access.status === 403) {
         sendJson(response, 200, { data: [] });
         return;
       }
