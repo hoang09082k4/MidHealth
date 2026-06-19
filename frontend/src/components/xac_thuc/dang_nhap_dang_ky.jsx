@@ -12,9 +12,9 @@ import {
   getGoogleRedirectResult,
   signInWithGoogleRedirect,
 } from '../../lib/firebase';
+import { apiBaseUrl } from '../../lib/api_base';
 import { useReferenceData } from '../../lib/reference_data';
 
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
 const GOOGLE_AUTH_MODE_KEY = 'midhealth_google_auth_mode';
 const initialProfile = {
   fullName: '',

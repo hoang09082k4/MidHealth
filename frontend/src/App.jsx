@@ -3,6 +3,7 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import { firebaseAuth } from './lib/firebase';
 import { fallbackCatalog, fetchCatalog } from './lib/catalog';
 import { ReferenceDataProvider } from './lib/reference_data';
+import { apiBaseUrl } from './lib/api_base';
 import MucBaoMatFooter from './components/trang_chu/bao_mat_footer';
 import ThanhDieuHuong from './components/dung_chung/thanh_dieu_huong';
 
@@ -36,8 +37,6 @@ const PUBLIC_INFO_SLUGS = new Set([
   'giai-quyet-khieu-nai',
   'mien-tru-trach-nhiem-y-khoa',
 ]);
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
-
 function healthPathMatch(path) {
   return HEALTH_PATH_ALIASES.find((basePath) => path === basePath || path.startsWith(`${basePath}/`)) || '';
 }

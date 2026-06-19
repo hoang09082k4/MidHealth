@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { firebaseAuth } from '../../lib/firebase';
+import { apiBaseUrl } from '../../lib/api_base';
 
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
-const adminApiBaseUrl = typeof window !== 'undefined' && window.location.hostname === 'midhealth.vercel.app'
-  ? window.location.origin
-  : apiBaseUrl;
+const adminApiBaseUrl = apiBaseUrl;
 const emptyArticleForm = {
   id: '',
   title: '',

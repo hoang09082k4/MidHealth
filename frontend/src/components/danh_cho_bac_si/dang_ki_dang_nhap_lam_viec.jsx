@@ -1,9 +1,9 @@
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { useState } from 'react';
 import { firebaseAuth } from '../../lib/firebase';
+import { apiBaseUrl } from '../../lib/api_base';
 import { DashboardPreview, WorkspaceBrand } from './giao_dien_lam_viec';
 
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
 const PERSONAL_EMAIL_DOMAINS = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com'];
 
 function normalizePhone(value = '') {

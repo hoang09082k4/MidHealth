@@ -1,6 +1,7 @@
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useEffect, useMemo, useState } from 'react';
 import { firebaseAuth } from '../../lib/firebase';
+import { apiBaseUrl } from '../../lib/api_base';
 import DangKiDangNhapLamViec from './dang_ki_dang_nhap_lam_viec';
 import KhuVucLamViec, {
   WORKSPACE_SECTIONS,
@@ -11,7 +12,6 @@ import {
   WorkspaceBrand,
 } from './giao_dien_lam_viec';
 
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
 const WORKSPACE_DRAFT_STORAGE_KEY = 'midhealth_provider_workspace_drafts';
 function buildWorkspaceScreenUrls(basePath) {
   return {

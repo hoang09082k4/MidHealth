@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { firebaseAuth } from '../../lib/firebase';
+import { apiBaseUrl } from '../../lib/api_base';
 import { fetchCatalog } from '../../lib/catalog';
 import {
   WorkspaceBrand,
   WorkspaceDashboard,
 } from './giao_dien_lam_viec';
 
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
 const WORKSPACE_DRAFT_STORAGE_KEY = 'midhealth_provider_workspace_drafts';
 
 const NAV_ITEMS_BY_MODE = {

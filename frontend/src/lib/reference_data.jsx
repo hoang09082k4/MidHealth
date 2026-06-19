@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
+import { apiBaseUrl } from './api_base';
 
 const TAT_CA_PHUONG_XA = 'Tất cả phường/xã/khu vực';
 

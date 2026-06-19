@@ -1,7 +1,7 @@
 import { onAuthStateChanged } from 'firebase/auth';
+import { apiBaseUrl } from './api_base';
 import { firebaseAuth } from './firebase';
 
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
 const patientPortalAccessCache = new Map();
 
 function waitForCurrentUser(timeoutMs = 2500) {
@@ -175,6 +175,7 @@ export async function listPatientProfiles(user) {
       Authorization: `Bearer ${token}`,
     },
   });
+  if (response.status === 401 || response.status === 403) return [];
   return parseResponse(response, 'Không thể tải hồ sơ bệnh nhân.');
 }
 
@@ -188,6 +189,7 @@ export async function listAppointments(user) {
       Authorization: `Bearer ${token}`,
     },
   });
+  if (response.status === 401 || response.status === 403) return [];
   return parseResponse(response, 'Không thể tải lịch khám.');
 }
 

@@ -240,7 +240,7 @@ async function resolveQueueReadAccess(firebaseUser) {
   return patientAccess.status === 404 ? privilegedAccess : patientAccess;
 }
 
-const server = http.createServer(async (request, response) => {
+export async function handleRequest(request, response) {
   const url = new URL(request.url, `http://${request.headers.host}`);
   applyCorsHeaders(request, response);
   applySecurityHeaders(response, request);
@@ -1373,7 +1373,9 @@ const server = http.createServer(async (request, response) => {
   }
 
   sendJson(response, 404, { message: 'Endpoint không tồn tại' });
-});
+}
+
+const server = http.createServer(handleRequest);
 
 server.on('error', (error) => {
   if (error?.code === 'EADDRINUSE') {
@@ -1383,6 +1385,8 @@ server.on('error', (error) => {
   throw error;
 });
 
-server.listen(config.port, () => {
-  console.log(`MidHealth backend listening on http://localhost:${config.port}`);
-});
+if (!process.env.VERCEL) {
+  server.listen(config.port, () => {
+    console.log(`MidHealth backend listening on http://localhost:${config.port}`);
+  });
+}

@@ -1,4 +1,4 @@
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
+import { apiBaseUrl } from './api_base';
 
 function normalizeText(value = '') {
   return String(value)

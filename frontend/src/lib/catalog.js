@@ -1,4 +1,5 @@
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
+import { apiBaseUrl } from './api_base';
+
 const catalogCacheKey = 'midhealth_catalog_cache_v1';
 const catalogCacheTtlMs = 5 * 60 * 1000;
 
