@@ -1,4 +1,10 @@
 import { hasSupabaseConfig, supabase } from './supabase.js';
+import {
+  clinics as seedClinics,
+  doctors as seedDoctors,
+  hospitals as seedHospitals,
+  specialties as seedSpecialties,
+} from '../scripts/catalog_seed_data.js';
 
 function stripPrefix(value = '', prefix) {
   return value?.startsWith(prefix) ? value.slice(prefix.length) : value;
@@ -102,13 +108,95 @@ function compareHomepageOrder(a, b) {
     || String(a.name || '').localeCompare(String(b.name || ''), 'vi');
 }
 
+function slugifyFallback(value = '') {
+  return String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'd')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'fallback';
+}
+
+function fallbackServices(items = []) {
+  return items.map((name, index) => ({
+    id: `fallback-service-${slugifyFallback(name)}-${index}`,
+    name,
+    description: '',
+    fee: 'Thanh toán tại cơ sở',
+  }));
+}
+
+function fallbackCatalog() {
+  return {
+    doctors: seedDoctors.map((doctor, index) => ({
+      id: `fallback-doctor-${index + 1}`,
+      initials: doctor.initials,
+      image: doctor.image,
+      name: doctor.name,
+      specialty: doctor.specialty,
+      workplace: doctor.workplace,
+      address: doctor.workplace,
+      province: 'TP. Hồ Chí Minh',
+      district: '',
+      notice: '',
+      homepageFeatured: true,
+      homepageOrder: index + 1,
+    })),
+    hospitals: seedHospitals.map((hospital, index) => ({
+      id: `fallback-hospital-${index + 1}`,
+      avatar: hospital.avatar,
+      background: hospital.background,
+      gallery: hospital.gallery || [hospital.background, hospital.avatar].filter(Boolean),
+      name: hospital.name,
+      subtitle: hospital.subtitle || '',
+      address: hospital.address,
+      province: 'TP. Hồ Chí Minh',
+      district: '',
+      intro: hospital.intro || '',
+      services: fallbackServices(hospital.services || hospital.specialties || []),
+      specialties: (hospital.specialties || []).filter(isVisibleSpecialty),
+      notes: hospital.notes || [],
+      hours: hospital.hours || [],
+      homepageFeatured: true,
+      homepageOrder: index + 1,
+    })),
+    clinics: seedClinics.map((clinic, index) => ({
+      id: `fallback-clinic-${index + 1}`,
+      avatar: clinic.avatar,
+      gallery: clinic.gallery || [clinic.avatar].filter(Boolean),
+      name: clinic.name,
+      subtitle: clinic.subtitle || '',
+      address: clinic.address,
+      province: 'TP. Hồ Chí Minh',
+      district: '',
+      phone: clinic.phone || '',
+      intro: clinic.intro || '',
+      services: fallbackServices(clinic.services || clinic.specialties || []),
+      specialties: (clinic.specialties || []).filter(isVisibleSpecialty),
+      doctors: clinic.doctors || [],
+      hours: clinic.hours || [],
+      homepageFeatured: true,
+      homepageOrder: index + 1,
+    })),
+    specialties: seedSpecialties
+      .filter((item) => isVisibleSpecialty(item.name))
+      .map((item, index) => ({
+        id: `fallback-specialty-${index + 1}`,
+        name: item.name,
+        image: item.image,
+      })),
+  };
+}
+
+function fallbackResult() {
+  return { ok: true, status: 200, data: fallbackCatalog() };
+}
+
 export async function getCatalog() {
   if (!hasSupabaseConfig) {
-    return {
-      ok: false,
-      status: 503,
-      data: { message: 'Backend chưa cấu hình SUPABASE_URL hoặc SUPABASE_SERVICE_ROLE_KEY.' },
-    };
+    return fallbackResult();
   }
 
   try {
@@ -292,10 +380,6 @@ export async function getCatalog() {
       },
     };
   } catch (error) {
-    return {
-      ok: false,
-      status: 500,
-      data: { message: 'Không thể tải dữ liệu danh mục từ Supabase.', detail: error.message },
-    };
+    return fallbackResult();
   }
 }

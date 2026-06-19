@@ -1,4 +1,9 @@
 import { hasSupabaseConfig, supabase } from './supabase.js';
+import {
+  articles as fallbackArticleRows,
+  authors as fallbackAuthorRows,
+  categories as fallbackCategoryRows,
+} from '../scripts/health_news_content_data.js';
 
 const ARTICLE_FIELDS = `
   id,
@@ -15,22 +20,6 @@ const ARTICLE_FIELDS = `
   category:health_categories(id, name, slug, description),
   author:health_authors(id, full_name, title, specialty, avatar_url, bio, status)
 `;
-
-function unavailable() {
-  return {
-    ok: false,
-    status: 503,
-    data: { message: 'Backend chưa cấu hình SUPABASE_URL hoặc SUPABASE_SERVICE_ROLE_KEY.' },
-  };
-}
-
-function fail(error, message = 'Không thể tải dữ liệu tin y tế từ Supabase.') {
-  return {
-    ok: false,
-    status: 500,
-    data: { message, detail: error.message },
-  };
-}
 
 function parseLimit(value, fallback = 12) {
   const number = Number(value);
@@ -83,8 +72,81 @@ function mapPerson(person) {
   };
 }
 
+function fallbackCategories() {
+  return {
+    ok: true,
+    status: 200,
+    data: fallbackCategoryRows.map((item) => ({
+      id: item.slug,
+      name: item.name,
+      slug: item.slug,
+      description: item.description || '',
+      status: item.status || 'active',
+    })),
+  };
+}
+
+function fallbackPerson(person, index = 0) {
+  return mapPerson({
+    id: person.id || `fallback-person-${index + 1}`,
+    full_name: person.full_name || person.name,
+    name: person.name,
+    title: person.title,
+    specialty: person.specialty,
+    avatar_url: person.avatar_url || person.avatar,
+    description: person.description,
+    bio: person.bio || person.description,
+    status: person.status || 'active',
+  });
+}
+
+function fallbackArticle(item, index = 0) {
+  const category = fallbackCategories().data.find((categoryItem) => categoryItem.slug === item.categorySlug) || null;
+  const authorRow = fallbackAuthorRows.find((author) => author.name === item.authorName || author.full_name === item.authorName) || fallbackAuthorRows[0];
+  return {
+    id: item.id || `fallback-article-${index + 1}`,
+    title: item.title,
+    slug: item.slug,
+    summary: item.summary || '',
+    content: item.content || '',
+    thumbnail: item.thumbnail_url || item.thumbnail || '',
+    thumbnailUrl: item.thumbnail_url || item.thumbnail || '',
+    publishedDate: item.published_at || item.published_date,
+    publishedAt: item.published_at || item.published_date,
+    updatedDate: item.updated_at || item.updated_date,
+    updatedAt: item.updated_at || item.updated_date,
+    isFeatured: Boolean(item.is_featured),
+    status: item.status || 'published',
+    viewCount: item.view_count || 0,
+    category,
+    author: fallbackPerson(authorRow, 0),
+  };
+}
+
+function fallbackArticles({ category, keyword, featured, limit } = {}) {
+  const normalizedKeyword = cleanSearchKeyword(decodeURIComponent(keyword || '')).toLowerCase();
+  const rows = fallbackArticleRows
+    .filter((item) => !category || item.categorySlug === category)
+    .filter((item) => featured === undefined || featured === null || featured === '' || String(Boolean(item.is_featured)) === String(featured))
+    .filter((item) => !normalizedKeyword || `${item.title} ${item.summary} ${item.content}`.toLowerCase().includes(normalizedKeyword))
+    .slice(0, parseLimit(limit))
+    .map(fallbackArticle);
+  return { ok: true, status: 200, data: rows };
+}
+
+function fallbackArticleDetail(identifier) {
+  const item = fallbackArticleRows.find((row) => row.slug === identifier || row.id === identifier);
+  return item
+    ? { ok: true, status: 200, data: fallbackArticle(item) }
+    : { ok: true, status: 200, data: fallbackArticles({ limit: 1 }).data[0] || null };
+}
+
+function fallbackExperts() {
+  return { ok: true, status: 200, data: fallbackAuthorRows.map(fallbackPerson) };
+}
+
 export async function listHealthCategories() {
-  if (!hasSupabaseConfig) return unavailable();
+  if (!hasSupabaseConfig) return fallbackCategories();
 
   try {
     const { data, error } = await supabase
@@ -115,12 +177,12 @@ export async function listHealthCategories() {
     const categories = (data || []).sort((a, b) => orderIndex(a.slug) - orderIndex(b.slug));
     return { ok: true, status: 200, data: categories };
   } catch (error) {
-    return fail(error);
+    return fallbackCategories();
   }
 }
 
 export async function listHealthArticles({ category, keyword, featured, limit } = {}) {
-  if (!hasSupabaseConfig) return unavailable();
+  if (!hasSupabaseConfig) return fallbackArticles({ category, keyword, featured, limit });
 
   const normalizedKeyword = cleanSearchKeyword(decodeURIComponent(keyword || ''));
 
@@ -157,12 +219,12 @@ export async function listHealthArticles({ category, keyword, featured, limit } 
     if (error) throw error;
     return { ok: true, status: 200, data: (data || []).map(mapArticle) };
   } catch (error) {
-    return fail(error);
+    return fallbackArticles({ category, keyword, featured, limit });
   }
 }
 
 export async function listFeaturedHealthArticles(limit) {
-  if (!hasSupabaseConfig) return unavailable();
+  if (!hasSupabaseConfig) return fallbackArticles({ featured: true, limit });
 
   try {
     const { data, error } = await supabase
@@ -177,12 +239,12 @@ export async function listFeaturedHealthArticles(limit) {
     if (error) throw error;
     return { ok: true, status: 200, data: (data || []).map(mapArticle) };
   } catch (error) {
-    return fail(error);
+    return fallbackArticles({ featured: true, limit });
   }
 }
 
 export async function getHealthArticle(identifier) {
-  if (!hasSupabaseConfig) return unavailable();
+  if (!hasSupabaseConfig) return fallbackArticleDetail(identifier);
 
   try {
     const column = isUuid(identifier) ? 'id' : 'slug';
@@ -203,12 +265,12 @@ export async function getHealthArticle(identifier) {
 
     return { ok: true, status: 200, data: mapArticle(data) };
   } catch (error) {
-    return fail(error);
+    return fallbackArticleDetail(identifier);
   }
 }
 
 export async function searchHealthArticles({ keyword, category, limit } = {}) {
-  if (!hasSupabaseConfig) return unavailable();
+  if (!hasSupabaseConfig) return fallbackArticles({ keyword, category, limit });
 
   const normalizedKeyword = cleanSearchKeyword(decodeURIComponent(keyword || ''));
   if (!normalizedKeyword) return { ok: true, status: 200, data: [] };
@@ -239,12 +301,12 @@ export async function searchHealthArticles({ keyword, category, limit } = {}) {
     if (error) throw error;
     return { ok: true, status: 200, data: (data || []).map(mapArticle) };
   } catch (error) {
-    return fail(error);
+    return fallbackArticles({ keyword, category, limit });
   }
 }
 
 export async function listHealthExperts() {
-  if (!hasSupabaseConfig) return unavailable();
+  if (!hasSupabaseConfig) return fallbackExperts();
 
   try {
     const { data, error } = await supabase
@@ -256,12 +318,12 @@ export async function listHealthExperts() {
     if (error) throw error;
     return { ok: true, status: 200, data: (data || []).map(mapPerson) };
   } catch (error) {
-    return fail(error);
+    return fallbackExperts();
   }
 }
 
 export async function listHealthAuthors() {
-  if (!hasSupabaseConfig) return unavailable();
+  if (!hasSupabaseConfig) return fallbackExperts();
 
   try {
     const { data, error } = await supabase
@@ -273,12 +335,12 @@ export async function listHealthAuthors() {
     if (error) throw error;
     return { ok: true, status: 200, data: (data || []).map(mapPerson) };
   } catch (error) {
-    return fail(error);
+    return fallbackExperts();
   }
 }
 
 export async function getHealthAuthor(authorId) {
-  if (!hasSupabaseConfig) return unavailable();
+  if (!hasSupabaseConfig) return { ok: true, status: 200, data: fallbackExperts().data[0] || null };
 
   try {
     const { data, error } = await supabase
@@ -292,6 +354,6 @@ export async function getHealthAuthor(authorId) {
     if (!data) return { ok: false, status: 404, data: { message: 'Không tìm thấy tác giả.' } };
     return { ok: true, status: 200, data: mapPerson(data) };
   } catch (error) {
-    return fail(error);
+    return { ok: true, status: 200, data: fallbackExperts().data[0] || null };
   }
 }

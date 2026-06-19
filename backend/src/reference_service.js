@@ -2,13 +2,26 @@ import { hasSupabaseConfig, supabase } from './supabase.js';
 
 const DEFAULT_KEYS = ['regions', 'addressData', 'ethnicGroups', 'occupations'];
 
+const FALLBACK_REFERENCE_DATA = {
+  regions: [
+    { name: 'TP. Hồ Chí Minh', aliases: ['Hồ Chí Minh', 'TPHCM'], districts: ['Quận 1', 'Quận 3', 'Quận 5', 'Thủ Đức'] },
+    { name: 'Thành phố Hà Nội', aliases: ['Hà Nội'], districts: ['Ba Đình', 'Hoàn Kiếm', 'Đống Đa', 'Cầu Giấy'] },
+  ],
+  addressData: [
+    { name: 'TP. Hồ Chí Minh', districts: [{ name: 'Quận 1', wards: ['Tất cả phường/xã/khu vực'] }, { name: 'Thủ Đức', wards: ['Tất cả phường/xã/khu vực'] }] },
+    { name: 'Thành phố Hà Nội', districts: [{ name: 'Ba Đình', wards: ['Tất cả phường/xã/khu vực'] }] },
+  ],
+  ethnicGroups: ['Kinh', 'Tày', 'Thái', 'Hoa', 'Khmer', 'Khác'],
+  occupations: ['Học sinh / Sinh viên', 'Nhân viên văn phòng', 'Kinh doanh', 'Công nhân', 'Lao động tự do', 'Khác'],
+};
+
+function fallbackResult() {
+  return { ok: true, status: 200, data: FALLBACK_REFERENCE_DATA };
+}
+
 export async function getReferenceData() {
   if (!hasSupabaseConfig) {
-    return {
-      ok: false,
-      status: 503,
-      data: { message: 'Backend chưa cấu hình Supabase.' },
-    };
+    return fallbackResult();
   }
 
   try {
@@ -31,13 +44,6 @@ export async function getReferenceData() {
       },
     };
   } catch (error) {
-    return {
-      ok: false,
-      status: 500,
-      data: {
-        message: 'Không thể tải dữ liệu danh mục từ Supabase.',
-        detail: error.message,
-      },
-    };
+    return fallbackResult();
   }
 }

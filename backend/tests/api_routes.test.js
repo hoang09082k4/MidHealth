@@ -48,5 +48,6 @@ test('public API reads are routed by the backend handler', async () => {
     const response = mockResponse();
     await handleRequest(mockRequest(pathname), response);
     assert.notEqual(response.statusCode, 404, pathname);
+    assert.ok(response.statusCode >= 200 && response.statusCode < 300, pathname);
   }
 });

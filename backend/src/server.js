@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { URL } from 'node:url';
+import { fileURLToPath, URL } from 'node:url';
 import { upsertAppUser } from './account_service.js';
 import { requirePortal, requireRoles, APP_ROLES } from './authorization_service.js';
 import { applyCorsHeaders } from './cors.js';
@@ -1385,7 +1385,9 @@ server.on('error', (error) => {
   throw error;
 });
 
-if (!process.env.VERCEL) {
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+
+if (isDirectRun) {
   server.listen(config.port, () => {
     console.log(`MidHealth backend listening on http://localhost:${config.port}`);
   });
