@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { loadNotifications } from '../../lib/notifications';
 import BieuTuongLogo from './bieu_tuong_logo';
 
 const ACCOUNT_ITEMS = [
@@ -48,7 +47,6 @@ function ThanhDieuHuong({
 }) {
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isBookingOpen, setIsBookingOpen] = useState(false);
-  const [notifications, setNotifications] = useState([]);
   const accountRef = useRef(null);
   const bookingRef = useRef(null);
 
@@ -78,29 +76,9 @@ function ThanhDieuHuong({
     };
   }, [isAccountOpen, isBookingOpen]);
 
-  useEffect(() => {
-    let active = true;
-    if (!user || !isAccountOpen) {
-      setNotifications([]);
-      return () => {
-        active = false;
-      };
-    }
-
-    loadNotifications(user).then((items) => {
-      if (active) setNotifications(items);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [isAccountOpen, user]);
-
   const openMedicalAssistant = () => {
     window.dispatchEvent(new CustomEvent('midhealth:open-chatbot'));
   };
-
-  const unreadCount = notifications.filter((item) => !item.read).length;
 
   return (
     <header className="site-header">
@@ -185,7 +163,6 @@ function ThanhDieuHuong({
                   }}
                 >
                   <span>{item.label}</span>
-                  {item.id === 'thong_bao' && unreadCount > 0 ? <b className="account-notification-badge">{unreadCount > 9 ? '9+' : unreadCount}</b> : null}
                 </button>
               ))}
               <button
