@@ -1,5 +1,6 @@
 import {
   createUserWithEmailAndPassword,
+  onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut,
   updatePassword,
@@ -10,6 +11,7 @@ import { savePatientProfile } from '../../lib/appointments';
 import {
   firebaseAuth,
   getGoogleRedirectResult,
+  signInWithGooglePopup,
   signInWithGoogleRedirect,
 } from '../../lib/firebase';
 import { apiBaseUrl } from '../../lib/api_base';
@@ -226,6 +228,29 @@ async function xac_minh_cong_benh_nhan(user, { allowIncomplete = false } = {}) {
   return data.data;
 }
 
+function la_loi_ho_so_chua_hoan_tat(error) {
+  const value = `${error?.code || ''} ${error?.message || ''}`;
+  return value.includes('PATIENT_PROFILE_INCOMPLETE') || value.includes('chưa hoàn tất hồ sơ');
+}
+
+function cho_nguoi_dung_firebase_hien_tai(timeoutMs = 2500) {
+  if (firebaseAuth.currentUser) return Promise.resolve(firebaseAuth.currentUser);
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let unsubscribe = () => {};
+    const finish = (user) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timerId);
+      unsubscribe();
+      resolve(user || firebaseAuth.currentUser || null);
+    };
+    const timerId = window.setTimeout(() => finish(firebaseAuth.currentUser), timeoutMs);
+    unsubscribe = onAuthStateChanged(firebaseAuth, finish, () => finish(null));
+  });
+}
+
 function lay_thong_bao_loi(error) {
   const code = error?.code || '';
   if (code.includes('auth/operation-not-allowed')) return 'Firebase chưa bật phương thức đăng nhập Email/Password.';
@@ -333,14 +358,15 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
 
     const xu_ly_ket_qua_redirect = async () => {
       try {
+        const redirectMode = sessionStorage.getItem(GOOGLE_AUTH_MODE_KEY) || '';
         const credential = await getGoogleRedirectResult();
-        if (!credential || !isMounted) return;
+        const fallbackUser = !credential && redirectMode ? await cho_nguoi_dung_firebase_hien_tai() : null;
+        if ((!credential && !fallbackUser) || !isMounted) return;
 
-        const redirectMode = sessionStorage.getItem(GOOGLE_AUTH_MODE_KEY) || 'signin';
         sessionStorage.removeItem(GOOGLE_AUTH_MODE_KEY);
         setMessage('');
         setIsLoading(true);
-        await xu_ly_google_credential(credential, redirectMode);
+        await xu_ly_google_credential(credential || { user: fallbackUser }, redirectMode || 'signin');
       } catch (error) {
         if (isMounted) setMessage(lay_thong_bao_loi(error));
       } finally {
@@ -704,8 +730,7 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
       throw new Error('Khong nhan duoc thong tin dang nhap Google. Vui long thu lai.');
     }
 
-    if (authMode === 'signup-entry') {
-      const googleUser = credential.user;
+    const chuyen_sang_hoan_tat_ho_so_google = (googleUser, nextMessage) => {
       setGoogleSignupUser(googleUser);
       setSignupAuthUser(null);
       setMode('signup');
@@ -723,13 +748,31 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
           fullName: current.profile.fullName || googleUser.displayName || '',
         },
       }));
-      setMessage('Google da xac thuc email. Bam tiep tuc de tao mat khau.');
+      setMessage(nextMessage);
+    };
+
+    if (authMode === 'signup-entry') {
+      chuyen_sang_hoan_tat_ho_so_google(
+        credential.user,
+        'Google đã xác thực email. Bấm tiếp tục để tạo mật khẩu.',
+      );
       return;
     }
 
     const idToken = await credential.user.getIdToken();
     await goi_api('/api/auth/google', { idToken, portal: 'patient' });
-    await xac_minh_cong_benh_nhan(credential.user);
+    try {
+      await xac_minh_cong_benh_nhan(credential.user);
+    } catch (error) {
+      if (la_loi_ho_so_chua_hoan_tat(error)) {
+        chuyen_sang_hoan_tat_ho_so_google(
+          credential.user,
+          'Tài khoản Google đã đăng nhập. Vui lòng hoàn tất hồ sơ để sử dụng MidHealth.',
+        );
+        return;
+      }
+      throw error;
+    }
     onAuthSuccess(credential.user);
     onBack();
   };
@@ -739,42 +782,12 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
     setIsLoading(true);
 
     try {
-      sessionStorage.setItem(GOOGLE_AUTH_MODE_KEY, mode);
-      await signInWithGoogleRedirect();
-      return;
-
-      if (mode === 'signup-entry') {
-        const googleUser = credential.user;
-        setGoogleSignupUser(googleUser);
-        setSignupAuthUser(null);
-        setMode('signup');
-        setSignupStep(1);
-        setOtpSent(false);
-        setOtpToken('');
-        setForm((current) => ({
-          ...current,
-          email: googleUser.email || '',
-          otp: '',
-          password: '',
-          profile: {
-            ...current.profile,
-            email: googleUser.email || '',
-            fullName: current.profile.fullName || googleUser.displayName || '',
-          },
-        }));
-        setMessage('Google đã xác thực email. Bấm tiếp tục để tạo mật khẩu.');
-        return;
-      }
-
-      const idToken = await credential.user.getIdToken();
-      await goi_api('/api/auth/google', { idToken, portal: 'patient' });
-      await xac_minh_cong_benh_nhan(credential.user);
-      onAuthSuccess(credential.user);
-      onBack();
+      sessionStorage.removeItem(GOOGLE_AUTH_MODE_KEY);
+      const credential = await signInWithGooglePopup();
+      await xu_ly_google_credential(credential, mode);
     } catch (error) {
       const code = error?.code || '';
       const shouldUseRedirect = [
-        'auth/popup-closed-by-user',
         'auth/popup-blocked',
         'auth/cancelled-popup-request',
       ].some((item) => code.includes(item));

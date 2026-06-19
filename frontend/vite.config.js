@@ -6,6 +6,7 @@ export default defineConfig({
   server: {
     headers: {
       'Cache-Control': 'no-store',
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
     },
   },
   build: {
