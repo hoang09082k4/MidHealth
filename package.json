@@ -1,4 +1,9 @@
 {
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
   "scripts": {
     "test": "npm test --prefix backend",
     "build": "npm run build --prefix frontend",
