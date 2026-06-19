@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  canReadQueueTicket,
   formatAppointmentCode,
   formatPatientCode,
   formatQueueTicketCode,
@@ -60,4 +61,13 @@ test('maps queue rows into frontend-safe response shape', () => {
   assert.equal(response.doctor, 'BS. Lê Minh');
   assert.equal(response.status, queueStatusLabel('waiting'));
   assert.equal(response.eta, queueEtaText({ status: 'waiting', estimated_minutes: 15 }));
+});
+
+test('limits queue ticket reads to owners or privileged roles', () => {
+  const ticket = { owner_profile_id: 'owner-1' };
+
+  assert.equal(canReadQueueTicket(ticket, { id: 'owner-1' }, false), true);
+  assert.equal(canReadQueueTicket(ticket, { id: 'owner-2' }, false), false);
+  assert.equal(canReadQueueTicket(ticket, null, false), false);
+  assert.equal(canReadQueueTicket(ticket, null, true), true);
 });

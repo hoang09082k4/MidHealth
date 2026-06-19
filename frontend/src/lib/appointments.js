@@ -2,6 +2,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { firebaseAuth } from './firebase';
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
+const patientPortalAccessCache = new Map();
 
 function waitForCurrentUser(timeoutMs = 2500) {
   if (firebaseAuth.currentUser) return Promise.resolve(firebaseAuth.currentUser);
@@ -43,6 +44,23 @@ async function getAuthHeaders(user, options = {}) {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
+}
+
+async function canUsePatientPortal(user) {
+  const token = await getAuthToken(user);
+  if (!token) return false;
+
+  const cacheKey = String(firebaseAuth.currentUser?.uid || user?.uid || user?.email || token).trim();
+  if (patientPortalAccessCache.has(cacheKey)) return patientPortalAccessCache.get(cacheKey);
+
+  const accessCheck = fetch(`${apiBaseUrl}/api/auth/me?portal=patient&allowIncomplete=1&optional=1`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then(async (response) => {
+    const result = await response.json().catch(() => ({}));
+    return response.ok && result.data?.allowed !== false;
+  }).catch(() => false);
+  patientPortalAccessCache.set(cacheKey, accessCheck);
+  return accessCheck;
 }
 
 async function parseResponse(response, fallbackMessage) {
@@ -136,6 +154,8 @@ export async function listClinicSlots(clinicId, options = {}) {
 }
 
 export async function listPatientProfiles(user) {
+  if (!await canUsePatientPortal(user)) return [];
+
   const response = await fetch(`${apiBaseUrl}/api/patient/profiles`, {
     headers: await getAuthHeaders(user),
   });
@@ -143,6 +163,8 @@ export async function listPatientProfiles(user) {
 }
 
 export async function listAppointments(user) {
+  if (!await canUsePatientPortal(user)) return [];
+
   const response = await fetch(`${apiBaseUrl}/api/appointments`, {
     headers: await getAuthHeaders(user),
   });

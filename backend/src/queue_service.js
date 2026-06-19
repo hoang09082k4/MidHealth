@@ -122,6 +122,11 @@ export function mapQueueTicketResponse(ticket = {}) {
   };
 }
 
+export function canReadQueueTicket(ticket = {}, owner = null, privileged = false) {
+  if (privileged) return true;
+  return Boolean(owner?.id && ticket.owner_profile_id === owner.id);
+}
+
 async function nextQueueNumber() {
   const { data, error } = await supabase
     .from('queue_tickets')
@@ -166,16 +171,24 @@ function queueSelect() {
   `;
 }
 
-export async function listQueueTickets() {
+export async function listQueueTickets(options = {}) {
   const ready = requireSupabase();
   if (!ready.ok) return ready;
 
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('queue_tickets')
       .select(queueSelect())
       .order('created_at', { ascending: false })
       .limit(100);
+
+    if (!options.privileged) {
+      const owner = await findOwnerProfile(options.firebaseUser);
+      if (!owner?.id) return { ok: true, status: 200, data: [] };
+      query = query.eq('owner_profile_id', owner.id);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     return { ok: true, status: 200, data: (data || []).map(mapQueueTicketResponse) };
   } catch (error) {
@@ -183,11 +196,12 @@ export async function listQueueTickets() {
   }
 }
 
-export async function getQueueTicket(ticketCodeValue) {
+export async function getQueueTicket(ticketCodeValue, options = {}) {
   const ready = requireSupabase();
   if (!ready.ok) return ready;
 
   try {
+    const owner = options.privileged ? null : await findOwnerProfile(options.firebaseUser);
     const ticketCodeValueNormalized = normalizeTicketCode(ticketCodeValue);
     const { data, error } = await supabase
       .from('queue_tickets')
@@ -196,6 +210,9 @@ export async function getQueueTicket(ticketCodeValue) {
       .maybeSingle();
     if (error) throw error;
     if (!data) return { ok: false, status: 404, data: { message: 'Không tìm thấy số khám.' } };
+    if (!canReadQueueTicket(data, owner, options.privileged)) {
+      return { ok: false, status: 403, data: { message: 'Ban khong co quyen xem so kham nay.' } };
+    }
     return { ok: true, status: 200, data: mapQueueTicketResponse(data) };
   } catch (error) {
     return { ok: false, status: 500, data: { message: error.message } };

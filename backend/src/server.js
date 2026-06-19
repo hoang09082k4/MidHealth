@@ -199,10 +199,29 @@ async function ensurePatientAccess(firebaseUser) {
   return access;
 }
 
+async function resolveQueueReadAccess(firebaseUser) {
+  if (!firebaseUser) {
+    return { ok: false, status: 401, data: { message: 'Ban can dang nhap de xem so kham.' } };
+  }
+
+  const privilegedAccess = await requireRoles(firebaseUser, [
+    APP_ROLES.ADMIN,
+    APP_ROLES.DOCTOR,
+    APP_ROLES.CLINIC,
+    APP_ROLES.HOSPITAL,
+  ]);
+  if (privilegedAccess.ok) return { ok: true, privileged: true };
+
+  const patientAccess = await requireRoles(firebaseUser, APP_ROLES.PATIENT);
+  if (patientAccess.ok) return { ok: true, privileged: false };
+
+  return patientAccess.status === 404 ? privilegedAccess : patientAccess;
+}
+
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
   applyCorsHeaders(request, response);
-  applySecurityHeaders(response);
+  applySecurityHeaders(response, request);
 
   if (request.method === 'OPTIONS') {
     sendJson(response, 200, { ok: true });
@@ -420,6 +439,10 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.method === 'POST' && url.pathname === '/api/auth/otp/send') {
+    if (isAuthRateLimited(request)) {
+      sendJson(response, 429, { message: 'Qua nhieu yeu cau xac thuc. Vui long thu lai sau.' });
+      return;
+    }
     try {
       const payload = await readBody(request);
       const result = await sendEmailOtp(payload.email);
@@ -431,6 +454,10 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.method === 'POST' && url.pathname === '/api/auth/password-reset') {
+    if (isAuthRateLimited(request)) {
+      sendJson(response, 429, { message: 'Qua nhieu yeu cau dat lai mat khau. Vui long thu lai sau.' });
+      return;
+    }
     try {
       const payload = await readBody(request);
       const resolved = payload.phone && !payload.email
@@ -1043,8 +1070,12 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    const access = await requireRoles(user, APP_ROLES.PATIENT);
+    const access = await ensurePatientAccess(user);
     if (!access.ok) {
+      if (access.status === 403) {
+        sendJson(response, 200, { data: [] });
+        return;
+      }
       sendJson(response, access.status, access.data);
       return;
     }
@@ -1061,7 +1092,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
-      const access = await requireRoles(user, APP_ROLES.PATIENT);
+      const access = await ensurePatientAccess(user);
       if (!access.ok) {
         sendJson(response, access.status, access.data);
         return;
@@ -1083,7 +1114,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
-      const access = await requireRoles(user, APP_ROLES.PATIENT);
+      const access = await ensurePatientAccess(user);
       if (!access.ok) {
         sendJson(response, access.status, access.data);
         return;
@@ -1111,8 +1142,12 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    const access = await requireRoles(user, APP_ROLES.PATIENT);
+    const access = await ensurePatientAccess(user);
     if (!access.ok) {
+      if (access.status === 403) {
+        sendJson(response, 200, { data: [] });
+        return;
+      }
       sendJson(response, access.status, access.data);
       return;
     }
@@ -1243,7 +1278,7 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    const access = await requireRoles(user, APP_ROLES.PATIENT);
+    const access = await ensurePatientAccess(user);
     if (!access.ok) {
       sendJson(response, access.status, access.data);
       return;
@@ -1255,13 +1290,28 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.method === 'GET' && url.pathname === '/api/queue') {
-    const result = await listQueueTickets();
+    const user = await getUserFromRequest(request);
+    const access = await resolveQueueReadAccess(user);
+    if (!access.ok) {
+      sendJson(response, access.status, access.data);
+      return;
+    }
+    const result = await listQueueTickets({ firebaseUser: user, privileged: access.privileged });
     sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     return;
   }
 
   if (request.method === 'GET' && url.pathname.startsWith('/api/queue/')) {
-    const result = await getQueueTicket(url.pathname.replace('/api/queue/', ''));
+    const user = await getUserFromRequest(request);
+    const access = await resolveQueueReadAccess(user);
+    if (!access.ok) {
+      sendJson(response, access.status, access.data);
+      return;
+    }
+    const result = await getQueueTicket(url.pathname.replace('/api/queue/', ''), {
+      firebaseUser: user,
+      privileged: access.privileged,
+    });
     sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     return;
   }
@@ -1294,7 +1344,7 @@ const server = http.createServer(async (request, response) => {
         sendJson(response, 401, { message: 'Bạn cần đăng nhập bằng tài khoản đối tác y tế.' });
         return;
       }
-      const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL]);
+      const access = await requireRoles(user, [APP_ROLES.ADMIN, APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL]);
       if (!access.ok) {
         sendJson(response, access.status, access.data);
         return;
