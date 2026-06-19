@@ -12,6 +12,10 @@ const EMPTY_PROVIDER_OPERATIONS_ENDPOINTS = new Set([
 ]);
 
 const NO_FALLBACK = Symbol('NO_FALLBACK');
+const PUBLIC_APPOINTMENT_PATHS = new Set([
+  '/',
+  '/danh-cho-bac-si',
+]);
 
 function readUrl(input) {
   const rawUrl = typeof input === 'string' ? input : input?.url || '';
@@ -20,7 +24,7 @@ function readUrl(input) {
   try {
     return new URL(rawUrl, window.location.origin);
   } catch {
-    return NO_FALLBACK;
+    return null;
   }
 }
 
@@ -62,9 +66,27 @@ function isReadRequest(init = {}) {
   return String(init.method || 'GET').toUpperCase() === 'GET';
 }
 
+function isPublicAppointmentRead(url) {
+  if (url.pathname !== '/api/appointments') return false;
+  return PUBLIC_APPOINTMENT_PATHS.has(window.location.pathname.replace(/\/+$/, '') || '/');
+}
+
+function isPublicProviderSessionCheck(url) {
+  if (url.pathname !== '/api/auth/me' || url.searchParams.get('optional') !== '1') return false;
+  if (url.searchParams.get('portal') !== 'provider') return false;
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  return path === '/danh-cho-bac-si';
+}
+
 function shouldUseSilentFallback(url, input, init) {
-  if (!url || !url.pathname.startsWith('/api/') || !isReadRequest(init) || hasAuthorization(input, init)) {
-    return null;
+  if (!url || !url.pathname.startsWith('/api/') || !isReadRequest(init)) {
+    return NO_FALLBACK;
+  }
+
+  if (hasAuthorization(input, init)) {
+    if (isPublicAppointmentRead(url)) return [];
+    if (isPublicProviderSessionCheck(url)) return { allowed: false, reason: 'PUBLIC_LANDING' };
+    return NO_FALLBACK;
   }
 
   if (EMPTY_ARRAY_ENDPOINTS.has(url.pathname)) return [];
