@@ -48,6 +48,10 @@ async function getAuthHeaders(user, options = {}) {
 
 async function canUsePatientPortal(user) {
   const token = await getAuthToken(user);
+  return canUsePatientPortalWithToken(user, token);
+}
+
+async function canUsePatientPortalWithToken(user, token) {
   if (!token) return false;
 
   const cacheKey = String(firebaseAuth.currentUser?.uid || user?.uid || user?.email || token).trim();
@@ -61,6 +65,14 @@ async function canUsePatientPortal(user) {
   }).catch(() => false);
   patientPortalAccessCache.set(cacheKey, accessCheck);
   return accessCheck;
+}
+
+function apiUrl(path, params = {}) {
+  const url = new URL(path, `${apiBaseUrl}/`);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value));
+  });
+  return url.toString();
 }
 
 async function parseResponse(response, fallbackMessage) {
@@ -154,19 +166,27 @@ export async function listClinicSlots(clinicId, options = {}) {
 }
 
 export async function listPatientProfiles(user) {
-  if (!await canUsePatientPortal(user)) return [];
+  const token = await getAuthToken(user);
+  if (!await canUsePatientPortalWithToken(user, token)) return [];
 
-  const response = await fetch(`${apiBaseUrl}/api/patient/profiles`, {
-    headers: await getAuthHeaders(user),
+  const response = await fetch(apiUrl('/api/patient/profiles'), {
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
   });
   return parseResponse(response, 'Không thể tải hồ sơ bệnh nhân.');
 }
 
 export async function listAppointments(user) {
-  if (!await canUsePatientPortal(user)) return [];
+  const token = await getAuthToken(user);
+  if (!await canUsePatientPortalWithToken(user, token)) return [];
 
-  const response = await fetch(`${apiBaseUrl}/api/appointments?optional=1`, {
-    headers: await getAuthHeaders(user),
+  const response = await fetch(apiUrl('/api/appointments', { optional: 1 }), {
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
   });
   return parseResponse(response, 'Không thể tải lịch khám.');
 }
