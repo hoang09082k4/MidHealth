@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "npm install --prefix ../frontend && npm run build --prefix ../frontend && node ../scripts/copy-dist.cjs ../frontend/dist dist",
-    "test": "node --test tests/authorization_policy.test.js tests/cors_policy.test.js tests/queue_policy.test.js tests/security_headers.test.js",
+    "test": "node --test tests/api_routes.test.js tests/authorization_policy.test.js tests/cors_policy.test.js tests/queue_policy.test.js tests/security_headers.test.js tests/vercel_config.test.js",
     "check:env": "node scripts/check_env.js",
     "dev": "node src/server.js",
     "start": "node src/server.js",
