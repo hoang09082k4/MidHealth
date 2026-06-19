@@ -5,7 +5,7 @@ import {
   chuan_hoa_so_dien_thoai,
   kiem_tra_bhyt,
   kiem_tra_ngay_sinh,
-} from '../../data/du_lieu_ho_so';
+} from '../../lib/patient_profile';
 import { createAppointment, listDoctorSlots, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
 import { saveLocalAppointment } from '../../lib/local_appointments';
 import { doctorImageName, doctorImagePath } from '../../lib/doctor_images';

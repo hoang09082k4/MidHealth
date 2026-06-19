@@ -6,7 +6,7 @@ import {
   chuan_hoa_so_dien_thoai,
   kiem_tra_bhyt,
   kiem_tra_ngay_sinh,
-} from '../../data/du_lieu_ho_so';
+} from '../../lib/patient_profile';
 import { cancelAppointment, listAppointments, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
 import { mergeAppointments, readLocalAppointments, saveLocalAppointments } from '../../lib/local_appointments';
 import { loadNotifications, markNotificationsRead } from '../../lib/notifications';

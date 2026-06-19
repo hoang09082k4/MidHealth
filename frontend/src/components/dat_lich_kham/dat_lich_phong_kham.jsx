@@ -9,7 +9,7 @@ import {
   chuan_hoa_so_dien_thoai,
   kiem_tra_bhyt,
   kiem_tra_ngay_sinh,
-} from '../../data/du_lieu_ho_so';
+} from '../../lib/patient_profile';
 
 const CANVAS_FONT = 'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 const ASSET_PATH_LIMIT = 2048;
