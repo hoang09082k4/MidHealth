@@ -11,7 +11,8 @@
     "verify": "npm test --prefix backend && npm run build --prefix frontend"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.106.1"
+    "@supabase/supabase-js": "^2.106.1",
+    "nodemailer": "^8.0.8"
   },
   "devDependencies": {
     "supabase": "^2.102.0"

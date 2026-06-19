@@ -1,3 +1,10 @@
+try {
+  require.resolve('@supabase/supabase-js');
+  require.resolve('nodemailer');
+} catch {
+  // These calls are build-time hints for Vercel's file tracer.
+}
+
 const categories = [
   { id: 'suc-khoe-tong-quat', name: 'Suc khoe tong quat', slug: 'suc-khoe-tong-quat', status: 'active' },
   { id: 'benh-thuong-gap', name: 'Benh thuong gap', slug: 'benh-thuong-gap', status: 'active' },
