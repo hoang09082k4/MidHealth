@@ -150,6 +150,28 @@ function sendJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
+function emptyProviderOperations(reason = '') {
+  return {
+    workspace: null,
+    linked: false,
+    reason,
+    summary: {
+      todayAppointments: 0,
+      pendingAppointments: 0,
+      availableSlots: 0,
+      checkedIn: 0,
+      completedAppointments: 0,
+      cancelledAppointments: 0,
+    },
+    appointments: [],
+    slots: [],
+    specialties: [],
+    services: [],
+    report: [],
+    activity: [],
+  };
+}
+
 function readBody(request) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -696,13 +718,13 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/api/provider/workspace') {
     const user = await getUserFromRequest(request);
     if (!user) {
-      sendJson(response, 401, { message: 'Vui lòng đăng nhập để xem hồ sơ đối tác.' });
+      sendJson(response, 200, { data: null });
       return;
     }
 
     const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL]);
     if (!access.ok) {
-      sendJson(response, access.status, access.data);
+      sendJson(response, 200, { data: null });
       return;
     }
     const result = await getProviderWorkspace(user);
@@ -735,13 +757,13 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/api/provider/workspace/operations') {
     const user = await getUserFromRequest(request);
     if (!user) {
-      sendJson(response, 401, { message: 'Vui lòng đăng nhập để xem dữ liệu vận hành.' });
+      sendJson(response, 200, { data: emptyProviderOperations('Chua dang nhap workspace.') });
       return;
     }
 
     const access = await requireRoles(user, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL]);
     if (!access.ok) {
-      sendJson(response, access.status, access.data);
+      sendJson(response, 200, { data: emptyProviderOperations('Tai khoan khong thuoc workspace bac si.') });
       return;
     }
     const result = await getProviderWorkspaceOperations(user);
@@ -1066,17 +1088,13 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/api/patient/profiles') {
     const user = await getUserFromRequest(request);
     if (!user) {
-      sendJson(response, 401, { message: 'Bạn cần đăng nhập để xem hồ sơ bệnh nhân.' });
+      sendJson(response, 200, { data: [] });
       return;
     }
 
     const access = await ensurePatientAccess(user);
     if (!access.ok) {
-      if (access.status === 403) {
-        sendJson(response, 200, { data: [] });
-        return;
-      }
-      sendJson(response, access.status, access.data);
+      sendJson(response, 200, { data: [] });
       return;
     }
     const result = await listPatientProfiles(user);
@@ -1136,24 +1154,15 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.method === 'GET' && url.pathname === '/api/appointments') {
-    const optionalSessionCheck = url.searchParams.get('optional') === '1';
     const user = await getUserFromRequest(request);
-    if (!user && optionalSessionCheck) {
-      sendJson(response, 200, { data: [] });
-      return;
-    }
     if (!user) {
-      sendJson(response, 401, { message: 'Bạn cần đăng nhập để xem lịch khám.' });
+      sendJson(response, 200, { data: [] });
       return;
     }
 
     const access = await ensurePatientAccess(user);
     if (!access.ok) {
-      if (optionalSessionCheck || access.status === 403) {
-        sendJson(response, 200, { data: [] });
-        return;
-      }
-      sendJson(response, access.status, access.data);
+      sendJson(response, 200, { data: [] });
       return;
     }
     const result = await listAppointments(user);
