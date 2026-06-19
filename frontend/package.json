@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node scripts/create-spa-route-fallbacks.js",
+    "build": "node scripts/copy-backend-api.cjs && vite build && node scripts/create-spa-route-fallbacks.js",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.106.1",
     "firebase": "^12.13.0",
+    "nodemailer": "^8.0.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

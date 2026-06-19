@@ -157,12 +157,18 @@ function publicFallback(request, response) {
 }
 
 module.exports = async function midhealthApi(request, response) {
-  if (publicFallback(request, response)) return;
-
   try {
-    const { handleRequest } = await import('../../backend/src/server.js');
+    let backendModule;
+    try {
+      backendModule = await import('../backend/src/server.js');
+    } catch {
+      backendModule = await import('../../backend/src/server.js');
+    }
+    const { handleRequest } = backendModule;
     return handleRequest(request, response);
   } catch (error) {
+    if (publicFallback(request, response)) return;
+
     sendJson(response, 503, {
       message: 'Backend function is unavailable on this deployment.',
       detail: error?.message || String(error),
