@@ -204,12 +204,19 @@ async function patchProviderFacilityDetailsApi(payload) {
 
 function trimWorkspaceData(formData) {
   return {
+    ownerName: formData.ownerName.trim(),
+    ownerPhone: formData.ownerPhone.trim(),
     clinicName: formData.clinicName.trim(),
     clinicAddress: formData.clinicAddress.trim(),
     taxCode: formData.taxCode.trim(),
     doctorTitle: formData.doctorTitle.trim(),
     specialty: formData.specialty.trim(),
   };
+}
+
+function isUsableMapAddress(value = '') {
+  const address = String(value || '').trim();
+  return Boolean(address && address.length >= 12 && /\s/.test(address) && /\p{L}/u.test(address));
 }
 
 function isFacilityMode(mode) {
@@ -244,7 +251,7 @@ function fileToDataUrl(file) {
 
 function buildPreviewTitle({ mode, formData, account }) {
   if (isFacilityMode(mode)) return formData.clinicName || `Tên ${facilityLabel(mode)}`;
-  if (mode === 'doctor') return `${formData.doctorTitle ? `${formData.doctorTitle} ` : ''}${account.name || 'Tên bác sĩ'}`;
+  if (mode === 'doctor') return `${formData.doctorTitle ? `${formData.doctorTitle} ` : ''}${formData.ownerName || account.name || 'Tên bác sĩ'}`;
   return 'Chọn hình thức hoạt động';
 }
 
@@ -296,6 +303,8 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
   const [specialtySearch, setSpecialtySearch] = useState('');
   const [customSpecialty, setCustomSpecialty] = useState('');
   const [formData, setFormData] = useState({
+    ownerName: initialWorkspace?.ownerName || account.name || '',
+    ownerPhone: initialWorkspace?.ownerPhone || account.phone || '',
     clinicName: initialWorkspace?.clinicName || '',
     clinicAddress: initialWorkspace?.clinicAddress || '',
     taxCode: initialWorkspace?.taxCode || '',
@@ -319,9 +328,11 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
   const canSubmit = useMemo(() => {
     const clean = trimWorkspaceData(formData);
     const hasFacilitySpecialty = parseSpecialtyList(clean.specialty).length > 0;
-    if (mode === 'clinic') return Boolean(clean.clinicName && clean.clinicAddress && hasFacilitySpecialty);
-    if (mode === 'hospital') return Boolean(clean.clinicName && clean.clinicAddress && clean.taxCode && hasFacilitySpecialty);
-    if (mode === 'doctor') return Boolean(clean.doctorTitle && clean.specialty);
+    const hasMapAddress = isUsableMapAddress(clean.clinicAddress);
+    if (!clean.ownerName) return false;
+    if (mode === 'clinic') return Boolean(clean.clinicName && hasMapAddress && hasFacilitySpecialty);
+    if (mode === 'hospital') return Boolean(clean.clinicName && hasMapAddress && clean.taxCode && hasFacilitySpecialty);
+    if (mode === 'doctor') return Boolean(clean.doctorTitle && clean.specialty && hasMapAddress);
     return false;
   }, [formData, mode]);
   const stepItems = [
@@ -335,8 +346,6 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
     saveWorkspaceDraft({
       uid: account.uid,
       email: account.email,
-      ownerName: account.name,
-      ownerPhone: account.phone,
       mode,
       providerRole: mode,
       ...trimWorkspaceData(formData),
@@ -439,7 +448,11 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
     }
 
     if (!canSubmit) {
-      setSetupMessage(isFacilityMode(mode) ? `Vui lòng nhập đủ thông tin ${facilityLabel(mode)}.` : 'Vui lòng nhập chuyên khoa chính của bác sĩ.');
+      setSetupMessage(!formData.ownerName.trim()
+        ? 'Vui lòng nhập tên hiển thị của hồ sơ.'
+        : !isUsableMapAddress(formData.clinicAddress)
+        ? 'Vui lòng nhập địa chỉ đầy đủ, ví dụ: 1B Nguyễn Xí, Bình Lợi Trung, TP.HCM.'
+        : isFacilityMode(mode) ? `Vui lòng nhập đủ thông tin ${facilityLabel(mode)}.` : 'Vui lòng nhập chuyên khoa chính của bác sĩ.');
       return;
     }
 
@@ -455,8 +468,6 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
       const clean = trimWorkspaceData(formData);
       const workspace = await saveProviderWorkspaceApi({
         email: account.email,
-        ownerName: account.name,
-        ownerPhone: account.phone,
         mode,
         providerRole: mode,
         ...clean,
@@ -509,7 +520,7 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
         <form className="dw-profile-form" onSubmit={submit} noValidate>
           <div className="dw-form-title-row">
             <div>
-              <h2>{account.name}</h2>
+              <h2>{formData.ownerName || account.name}</h2>
               <p>Hoàn thiện thông tin tối thiểu để MidHealth kiểm duyệt trước khi mở lịch hẹn, khung giờ và báo cáo.</p>
             </div>
           </div>
@@ -549,6 +560,19 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
             <p>MidHealth chỉ mở workspace khi thông tin chuyên môn hoặc cơ sở y tế có thể đối chiếu. Dữ liệu này chưa hiển thị công khai trước khi admin duyệt.</p>
           </section>
 
+          {mode ? (
+            <>
+              <label>
+                {isFacilityMode(mode) ? 'Người phụ trách hồ sơ' : 'Họ tên bác sĩ hiển thị'}
+                <input value={formData.ownerName} onChange={(event) => setFormData({ ...formData, ownerName: event.target.value })} placeholder={isFacilityMode(mode) ? 'Nhập tên người phụ trách' : 'Nhập họ tên bác sĩ'} required />
+              </label>
+              <label>
+                Số điện thoại liên hệ
+                <input value={formData.ownerPhone} onChange={(event) => setFormData({ ...formData, ownerPhone: event.target.value })} placeholder="Nhập số điện thoại/hotline để hỗ trợ bệnh nhân" />
+              </label>
+            </>
+          ) : null}
+
           {!mode ? (
             <div className="dw-setup-empty">Chọn một hình thức hoạt động để hiển thị form phù hợp.</div>
           ) : isFacilityMode(mode) ? (
@@ -577,6 +601,16 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
                   ))}
                 </select>
                 <small>Thứ tự hiển thị chuẩn: học hàm, học vị/chuyên khoa, sau cùng là bác sĩ.</small>
+              </label>
+              <label className="dw-doctor-title-field">
+                Nơi khám / phòng khám
+                <input value={formData.clinicName} onChange={(event) => setFormData({ ...formData, clinicName: event.target.value })} placeholder="Ví dụ: Phòng khám MidHealth Quận 1" />
+                <small>Tên nơi khám hiển thị trên trang đặt khám của bệnh nhân.</small>
+              </label>
+              <label className="dw-doctor-title-field">
+                Địa chỉ nơi khám
+                <input value={formData.clinicAddress} onChange={(event) => setFormData({ ...formData, clinicAddress: event.target.value })} placeholder="Nhập số nhà, đường, phường/xã, quận/huyện, tỉnh/thành" required />
+                <small>Nút mở bản đồ trên trang bác sĩ sẽ dùng địa chỉ này để tìm trên Google Maps.</small>
               </label>
               <div className="dw-selected-specialty">
                 <span>Chuyên khoa chính</span>
@@ -666,6 +700,7 @@ function TrangThietLap({ account, initialWorkspace, onComplete, onCancelEdit, on
               <h3>{previewTitle}</h3>
               <p>{previewSubtitle}</p>
               <p>Email: {account.email}</p>
+              {formData.ownerPhone ? <p>Liên hệ: {formData.ownerPhone}</p> : null}
             </div>
           </article>
           <div className="dw-profile-checklist">
@@ -699,7 +734,7 @@ function TrangLamViec({
   onSaveFacilityDetails,
 }) {
   const displayName = workspace?.mode === 'doctor'
-    ? `${workspace?.doctorTitle ? `${workspace.doctorTitle} ` : ''}${account.name}`
+    ? `${workspace?.doctorTitle ? `${workspace.doctorTitle} ` : ''}${workspace?.ownerName || account.name}`
     : workspace?.clinicName || 'MidHealth Workspace';
   const statusLabel = getStatusLabel(workspace?.status);
   const roleLabel = getRoleLabel(workspace?.mode);

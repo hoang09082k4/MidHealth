@@ -93,6 +93,12 @@ function shortDoctorName(name = '') {
 }
 
 function doctorAddress(doctor) {
+  const address = [
+    doctor?.address,
+    doctor?.workplaceAddress,
+    doctor?.workplace?.address,
+  ].map((item) => String(item || '').trim()).find(Boolean);
+  if (address) return address;
   return doctor?.name?.includes('Lâm Việt Trung') ? LAM_VIET_TRUNG_ADDRESS : DEFAULT_ADDRESS;
 }
 
@@ -624,7 +630,7 @@ function TrangDatLichBacSi({ doctor, initialScreen = 'detail', user, onBackHome,
 
   const openDoctorMap = () => {
     const address = doctorAddress(doctor).replace(/^Phòng mạch:\s*/i, '');
-    window.open(`https://www.google.com/maps/search/${encodeURIComponent(address)}`, '_blank', 'noopener,noreferrer');
+    window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`, '_blank', 'noopener,noreferrer');
   };
 
   const renderDatePicker = () => (

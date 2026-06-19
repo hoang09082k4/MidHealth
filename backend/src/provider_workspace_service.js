@@ -23,6 +23,16 @@ function clean(value) {
   return typeof value === 'string' ? value.trim() : value;
 }
 
+function isUsableMapAddress(value = '') {
+  const address = clean(value);
+  return Boolean(
+    address
+    && address.length >= 12
+    && /\s/.test(address)
+    && /\p{L}/u.test(address)
+  );
+}
+
 function digitsOnly(value = '') {
   return String(value || '').replace(/[^\d]/g, '');
 }
@@ -641,11 +651,48 @@ async function syncProviderCatalogLink(workspaceRow) {
   if (workspace.mode === 'doctor') {
     const specialty = await findOrCreateSpecialty(workspace.specialty);
     const existingDoctor = workspace.linkedDoctorId ? null : await findLinkedDoctor(workspace);
+    let facilityId = workspace.linkedFacilityId || existingDoctor?.facility_id || null;
+
+    if (workspace.clinicAddress) {
+      const facilityName = workspace.clinicName || `Phong kham ${workspace.ownerName}`;
+      const facilityRow = {
+        type: 'clinic',
+        name: facilityName,
+        subtitle: `Noi kham cua ${workspace.ownerName}`,
+        intro: `${facilityName} la dia diem kham cua ${workspace.ownerName} tren MidHealth.`,
+        address: workspace.clinicAddress,
+        avatar_url: workspace.imageUrl || null,
+        phone: workspace.ownerPhone || null,
+        hotline: workspace.ownerPhone || null,
+        is_active: active,
+      };
+      const facilityResult = facilityId
+        ? await supabase
+          .from('medical_facilities')
+          .update(facilityRow)
+          .eq('id', facilityId)
+          .select('id')
+          .single()
+        : await supabase
+          .from('medical_facilities')
+          .insert({
+            ...facilityRow,
+            slug: `${slugify(facilityName)}-${String(workspace.firebaseUid).slice(0, 8)}`,
+          })
+          .select('id')
+          .single();
+      if (facilityResult.error) throw facilityResult.error;
+      facilityId = facilityResult.data.id;
+      await syncFacilitySpecialties(facilityId, workspace.specialty);
+      await ensureFacilityHours(facilityId);
+      await ensureFacilityServices(facilityId, workspace.specialty);
+    }
     const doctorRow = {
       full_name: workspace.ownerName,
       initials: initialsFromName(workspace.ownerName),
       title: workspace.doctorTitle || null,
       specialty_id: specialty.id,
+      facility_id: facilityId,
       workplace_text: workspace.clinicName || 'Bác sĩ độc lập trên MidHealth',
       avatar_url: workspace.imageUrl || null,
       intro: `Hồ sơ chuyên môn của ${workspace.ownerName} trên MidHealth.`,
@@ -670,7 +717,7 @@ async function syncProviderCatalogLink(workspaceRow) {
         .single();
     if (result.error) throw result.error;
 
-    return { linked_doctor_id: result.data.id, linked_facility_id: null };
+    return { linked_doctor_id: result.data.id, linked_facility_id: facilityId };
   }
 
   const facilityType = facilityTypeForMode(workspace.mode);
@@ -799,6 +846,7 @@ function validateWorkspacePayload(payload = {}) {
     const label = mode === 'hospital' ? 'bệnh viện' : 'phòng khám';
     if (!clean(payload.clinicName)) return `Vui lòng nhập tên ${label}.`;
     if (!clean(payload.clinicAddress)) return `Vui lòng nhập địa chỉ ${label}.`;
+    if (!isUsableMapAddress(payload.clinicAddress)) return 'Vui long nhap dia chi day du, vi du: 1B Nguyen Xi, Binh Loi Trung, TP.HCM.';
     if (mode === 'hospital' && !clean(payload.taxCode)) return 'Vui lòng nhập mã giấy phép hoạt động, mã KCB hoặc mã số thuế của bệnh viện.';
   }
 
@@ -809,6 +857,13 @@ function validateWorkspacePayload(payload = {}) {
     if (!clean(payload.specialty)) {
       return 'Vui lòng chọn chuyên khoa chính của bác sĩ.';
     }
+  }
+
+  if (mode === 'doctor' && !clean(payload.clinicAddress)) {
+    return 'Vui long nhap dia chi noi kham cua bac si.';
+  }
+  if (mode === 'doctor' && !isUsableMapAddress(payload.clinicAddress)) {
+    return 'Vui long nhap dia chi noi kham day du, vi du: 1B Nguyen Xi, Binh Loi Trung, TP.HCM.';
   }
 
   return '';
@@ -1176,6 +1231,10 @@ export async function updateProviderFacilityDetails(firebaseUser, payload = {}) 
   const subtitle = clean(payload.subtitle);
   const intro = clean(payload.intro);
   const phone = clean(payload.phone);
+  const address = clean(payload.address);
+  if (address && !isUsableMapAddress(address)) {
+    return { ok: false, status: 400, data: { message: 'Vui long nhap dia chi day du, vi du: 1B Nguyen Xi, Binh Loi Trung, TP.HCM.' } };
+  }
   const avatarUrl = clean(payload.avatarUrl);
   const backgroundUrl = clean(payload.backgroundUrl);
   const hours = cleanListItems(payload.hours, (item) => {
@@ -1199,6 +1258,7 @@ export async function updateProviderFacilityDetails(firebaseUser, payload = {}) 
   const facilityPatch = {
     subtitle: subtitle || buildFacilitySubtitle(workspace),
     intro: intro || buildFacilityIntro(workspace),
+    address: address || linkedFacility.address || workspace.clinicAddress,
     phone: phone || workspace.ownerPhone || null,
     hotline: phone || workspace.ownerPhone || null,
   };
@@ -1282,6 +1342,7 @@ export async function updateProviderFacilityDetails(firebaseUser, payload = {}) 
     status: 200,
     data: {
       facilityId: linkedFacility.id,
+      address: facilityPatch.address || '',
       subtitle: facilityPatch.subtitle,
       intro: facilityPatch.intro,
       phone: facilityPatch.phone || '',

@@ -451,21 +451,46 @@ function AppointmentList({ appointments, workspace, onStatusChange, getStatusLab
   );
 }
 
-function ProfilePanel({ workspace, onEdit }) {
+function ProfilePanel({ workspace, operations, onEdit }) {
   const isFacility = workspace?.mode === 'clinic' || workspace?.mode === 'hospital';
   const facilityLabel = workspace?.mode === 'hospital' ? 'bệnh viện' : 'phòng khám';
+  const linkedFacility = operations?.linkedFacility || {};
+  const linkedDoctor = operations?.linkedDoctor || {};
+  const specialtyNames = (operations?.specialties || [])
+    .map((item) => item?.name || item)
+    .filter(Boolean)
+    .join(', ');
+  const hoursSummary = (operations?.hours || linkedFacility.hours || [])
+    .map((item) => [item?.label, item?.time || item?.timeText].filter(Boolean).join(': '))
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(' | ');
   const fields = isFacility
     ? [
       [`Tên ${facilityLabel}`, workspace?.clinicName],
+      ['Loại hồ sơ', facilityLabel],
+      ['Người phụ trách', workspace?.ownerName],
       ['Địa chỉ hoạt động', workspace?.clinicAddress],
+      ['Hotline / số liên hệ', linkedFacility.phone || workspace?.ownerPhone],
+      ['Chuyên khoa tiếp nhận', specialtyNames || workspace?.specialty],
+      ['Mô tả ngắn ngoài thẻ', linkedFacility.subtitle],
       [workspace?.mode === 'hospital' ? 'Giấy phép hoạt động / mã KCB / mã số thuế' : 'Mã số thuế / mã KCB', workspace?.taxCode],
+      ['Giờ làm việc', hoursSummary],
+      ['Dịch vụ đặt khám', operations?.services?.length ? `${operations.services.length} dịch vụ` : 'Chưa cập nhật'],
+      ['Ảnh thư viện', operations?.images?.length ? `${operations.images.length} ảnh` : 'Chưa cập nhật'],
       ['Email quản trị', workspace?.email],
+      ['Mã liên kết catalog', workspace?.linkedFacilityId || linkedFacility.id],
     ]
     : [
       ['Họ tên hiển thị', workspace?.ownerName],
       ['Học hàm / chức danh', workspace?.doctorTitle],
       ['Chuyên khoa chính', workspace?.specialty],
+      ['Nơi khám / phòng khám', workspace?.clinicName || linkedDoctor.workplace],
+      ['Địa chỉ nơi khám', workspace?.clinicAddress || linkedFacility.address],
+      ['Số điện thoại liên hệ', workspace?.ownerPhone],
+      ['Trạng thái nhận lịch', linkedDoctor.notice || linkedDoctor.unavailableNote ? 'Đang có thông báo nghỉ' : 'Đang nhận lịch khi có khung giờ'],
       ['Email chuyên môn', workspace?.email],
+      ['Mã liên kết bác sĩ', workspace?.linkedDoctorId || linkedDoctor.id],
     ];
 
   return (
@@ -474,7 +499,7 @@ function ProfilePanel({ workspace, onEdit }) {
         <div>
           <span>Thông tin công khai</span>
           <h1>{isFacility ? `Hồ sơ ${facilityLabel}` : 'Hồ sơ bác sĩ'}</h1>
-          <p>Thông tin dùng để kiểm duyệt và hiển thị với bệnh nhân.</p>
+          <p>Thông tin dùng để kiểm duyệt, đồng bộ catalog và hiển thị với bệnh nhân.</p>
         </div>
         <button type="button" className="dw-primary-command" onClick={onEdit}>Chỉnh sửa</button>
       </div>
@@ -1272,10 +1297,16 @@ function serializeImages(images = []) {
     .filter(Boolean);
 }
 
+function isUsableMapAddress(value = '') {
+  const address = String(value || '').trim();
+  return Boolean(address && address.length >= 12 && /\s/.test(address) && /\p{L}/u.test(address));
+}
+
 function ServicePanel({ workspace, operations, onSaveFacilityDetails, getStatusLabel }) {
   const isFacility = workspace?.mode === 'clinic' || workspace?.mode === 'hospital';
   const linkedFacility = operations?.linkedFacility || {};
   const [form, setForm] = useState({
+    address: '',
     subtitle: '',
     intro: '',
     phone: '',
@@ -1290,6 +1321,7 @@ function ServicePanel({ workspace, operations, onSaveFacilityDetails, getStatusL
 
   useEffect(() => {
     setForm({
+      address: linkedFacility.address || workspace?.clinicAddress || '',
       subtitle: linkedFacility.subtitle || '',
       intro: linkedFacility.intro || '',
       phone: linkedFacility.phone || '',
@@ -1297,7 +1329,7 @@ function ServicePanel({ workspace, operations, onSaveFacilityDetails, getStatusL
       services: hydrateServices(operations?.services || linkedFacility.services || []),
       images: hydrateImages(operations?.images || linkedFacility.images || []),
     });
-  }, [linkedFacility.id, linkedFacility.subtitle, linkedFacility.intro, linkedFacility.phone, operations?.hours, operations?.services, operations?.images]);
+  }, [linkedFacility.id, linkedFacility.address, linkedFacility.subtitle, linkedFacility.intro, linkedFacility.phone, workspace?.clinicAddress, operations?.hours, operations?.services, operations?.images]);
 
   if (!isFacility) {
     return (
@@ -1396,10 +1428,15 @@ function ServicePanel({ workspace, operations, onSaveFacilityDetails, getStatusL
   const save = async (event) => {
     event.preventDefault();
     if (!canSave) return;
+    if (!isUsableMapAddress(form.address)) {
+      setMessage('Vui lòng nhập địa chỉ đầy đủ, ví dụ: 1B Nguyễn Xí, Bình Lợi Trung, TP.HCM.');
+      return;
+    }
     setBusy(true);
     setMessage('');
     try {
       await onSaveFacilityDetails({
+        address: form.address,
         subtitle: form.subtitle,
         intro: form.intro,
         phone: form.phone,
@@ -1425,6 +1462,10 @@ function ServicePanel({ workspace, operations, onSaveFacilityDetails, getStatusL
         </div>
       </div>
       <form className="dw-facility-public-form" onSubmit={save}>
+        <label className="wide">
+          Địa chỉ hiển thị trên bản đồ
+          <input value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} placeholder="Nhập địa chỉ đầy đủ để bệnh nhân mở Google Maps đúng nơi" disabled={!canSave} />
+        </label>
         <label>
           Mô tả ngắn ngoài thẻ
           <input value={form.subtitle} onChange={(event) => setForm({ ...form, subtitle: event.target.value })} placeholder="Ví dụ: Phòng khám Sản - Nhi, Tai Mũi Họng" disabled={!canSave} />
@@ -1675,7 +1716,7 @@ function WorkspaceDashboard({
             onAppointmentStatusChange={onAppointmentStatusChange}
           />
       ) : allowedSection === 'ho-so' ? (
-          <ProfilePanel workspace={workspace} onEdit={onEdit} />
+          <ProfilePanel workspace={workspace} operations={operations} onEdit={onEdit} />
       ) : allowedSection === 'lich-lam-viec' ? (
           <SchedulePanel workspace={workspace} operations={operations} onSaveSlot={onSaveSlot} onUpdateSlot={onUpdateSlot} onToggleSlot={onToggleSlot} onDeleteSlot={onDeleteSlot} onSaveUnavailability={onSaveUnavailability} getStatusLabel={getStatusLabel} />
       ) : allowedSection === 'lich-hen' ? (
