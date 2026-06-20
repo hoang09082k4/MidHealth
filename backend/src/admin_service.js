@@ -381,7 +381,14 @@ export async function getAdminDashboard(firebaseUser) {
   if (!admin.ok) return admin;
 
   if (!hasSupabaseConfig) {
-    return { ok: true, status: 200, data: demoAdminDashboard(firebaseUser, admin) };
+    return {
+      ok: false,
+      status: 503,
+      data: {
+        message: 'Backend Vercel chua cau hinh Supabase. Hay them SUPABASE_URL va SUPABASE_SERVICE_ROLE_KEY trong Vercel Environment Variables roi redeploy.',
+        code: 'SUPABASE_CONFIG_MISSING',
+      },
+    };
   }
 
   try {

@@ -12,7 +12,7 @@ import {
   updateCatalogEntityAsAdmin,
   updateUserAsAdmin,
 } from './admin_service.js';
-import { config } from './config.js';
+import { config, missingBackendConfig } from './config.js';
 import {
   cancelAppointment,
   createAppointment,
@@ -351,6 +351,7 @@ export async function handleRequest(request, response) {
   }
 
   if (request.method === 'GET' && url.pathname === '/api/health') {
+    const missingConfig = missingBackendConfig();
     sendJson(response, 200, {
       status: 'ok',
       service: 'midhealth-backend',
@@ -360,6 +361,7 @@ export async function handleRequest(request, response) {
       paypal: config.paypalClientId && config.paypalClientSecret ? 'connected' : 'missing-config',
       momo: config.momoPartnerCode && config.momoAccessKey && config.momoSecretKey ? 'connected' : 'missing-config',
       gemini: hasGeminiConfig ? 'connected' : 'missing-config',
+      missingConfig,
     });
     return;
   }

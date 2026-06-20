@@ -3,7 +3,9 @@ import path from 'node:path';
 
 const envPaths = [
   path.resolve(process.cwd(), '.env'),
+  path.resolve(process.cwd(), 'backend', '.env'),
   path.resolve(process.cwd(), '..', '.env'),
+  path.resolve(process.cwd(), '..', 'backend', '.env'),
 ];
 
 envPaths.filter((envPath, index) => envPaths.indexOf(envPath) === index && fs.existsSync(envPath)).forEach((envPath) => {
@@ -36,15 +38,24 @@ const defaultAllowedOrigins = [
   'https://www.midhealth.vn',
 ];
 
+export function pickEnv(...names) {
+  return names.map((name) => process.env[name]).find((value) => String(value || '').trim()) || '';
+}
+
 export const config = {
   port: process.env.PORT || 4000,
-  firebaseApiKey: process.env.FIREBASE_API_KEY,
-  firebaseProjectId: process.env.FIREBASE_PROJECT_ID,
-  supabaseUrl: process.env.SUPABASE_URL,
-  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-  jwtSecret: process.env.JWT_SECRET,
-  gmailUser: process.env.GMAIL_USER,
-  gmailAppPassword: process.env.GMAIL_APP_PASSWORD,
+  firebaseApiKey: pickEnv('FIREBASE_API_KEY', 'VITE_FIREBASE_API_KEY'),
+  firebaseProjectId: pickEnv('FIREBASE_PROJECT_ID', 'VITE_FIREBASE_PROJECT_ID'),
+  supabaseUrl: pickEnv('SUPABASE_URL', 'VITE_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL'),
+  supabaseServiceRoleKey: pickEnv(
+    'SUPABASE_SERVICE_ROLE_KEY',
+    'SUPABASE_SERVICE_KEY',
+    'SUPABASE_SERVICE_ROLE',
+    'SUPABASE_SECRET_KEY',
+  ),
+  jwtSecret: pickEnv('JWT_SECRET'),
+  gmailUser: pickEnv('GMAIL_USER'),
+  gmailAppPassword: pickEnv('GMAIL_APP_PASSWORD'),
   otpExpiresMinutes: Number(process.env.OTP_EXPIRES_MINUTES || 5),
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
   allowedOrigins: [
@@ -56,22 +67,36 @@ export const config = {
     .map((origin) => origin.trim())
     .filter(Boolean),
   paypalMode: process.env.PAYPAL_MODE || 'sandbox',
-  paypalClientId: process.env.PAYPAL_CLIENT_ID,
-  paypalClientSecret: process.env.PAYPAL_CLIENT_SECRET,
-  paypalWebhookId: process.env.PAYPAL_WEBHOOK_ID,
+  paypalClientId: pickEnv('PAYPAL_CLIENT_ID'),
+  paypalClientSecret: pickEnv('PAYPAL_CLIENT_SECRET'),
+  paypalWebhookId: pickEnv('PAYPAL_WEBHOOK_ID'),
   paypalCurrency: process.env.PAYPAL_CURRENCY || 'USD',
   paypalVndToUsdRate: Number(process.env.PAYPAL_VND_TO_USD_RATE || 25000),
   paypalReturnUrl: process.env.PAYPAL_RETURN_URL || 'http://localhost:4000/api/payments/paypal/return',
   paypalCancelUrl: process.env.PAYPAL_CANCEL_URL || 'http://localhost:4000/api/payments/paypal/cancel',
   paymentPendingExpiryMinutes: Number(process.env.PAYMENT_PENDING_EXPIRY_MINUTES || 15),
   momoEndpoint: (process.env.MOMO_ENDPOINT || 'https://test-payment.momo.vn').replace(/\/+$/, ''),
-  momoPartnerCode: process.env.MOMO_PARTNER_CODE,
-  momoAccessKey: process.env.MOMO_ACCESS_KEY,
-  momoSecretKey: process.env.MOMO_SECRET_KEY,
+  momoPartnerCode: pickEnv('MOMO_PARTNER_CODE'),
+  momoAccessKey: pickEnv('MOMO_ACCESS_KEY'),
+  momoSecretKey: pickEnv('MOMO_SECRET_KEY'),
   momoPartnerName: process.env.MOMO_PARTNER_NAME || 'MidHealth',
   momoStoreId: process.env.MOMO_STORE_ID || 'MidHealthStore',
   momoReturnUrl: process.env.MOMO_RETURN_URL || 'http://localhost:4000/api/payments/momo/return',
   momoIpnUrl: process.env.MOMO_IPN_URL || 'http://localhost:4000/api/payments/momo/ipn',
-  geminiApiKey: process.env.GEMINI_API_KEY,
+  geminiApiKey: pickEnv('GEMINI_API_KEY'),
   geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
 };
+
+export function missingBackendConfig() {
+  return [
+    ['FIREBASE_API_KEY', config.firebaseApiKey],
+    ['FIREBASE_PROJECT_ID', config.firebaseProjectId],
+    ['SUPABASE_URL', config.supabaseUrl],
+    ['SUPABASE_SERVICE_ROLE_KEY', config.supabaseServiceRoleKey],
+    ['JWT_SECRET', config.jwtSecret],
+    ['GMAIL_USER', config.gmailUser],
+    ['GMAIL_APP_PASSWORD', config.gmailAppPassword],
+  ]
+    .filter(([, value]) => !value)
+    .map(([name]) => name);
+}
