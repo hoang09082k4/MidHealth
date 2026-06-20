@@ -1,5 +1,7 @@
 {
+  "name": "midhealth",
   "private": true,
+  "version": "1.0.0",
   "workspaces": [
     "backend",
     "frontend"
@@ -16,5 +18,8 @@
   },
   "devDependencies": {
     "supabase": "^2.102.0"
+  },
+  "engines": {
+    "node": "22.x"
   }
 }
