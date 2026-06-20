@@ -43,3 +43,16 @@ test('Vercel bundles backend source files with serverless API functions', () => 
   assert.equal(rootConfig.functions?.['api/[...path].js']?.includeFiles, 'backend/src/**');
   assert.equal(frontendConfig.functions?.['api/[...path].js']?.includeFiles, 'backend/src/**');
 });
+
+test('Vercel API entrypoints keep auth fallback for demo portals', () => {
+  const repoRoot = path.resolve(process.cwd(), '..');
+  const rootApi = fs.readFileSync(path.join(repoRoot, 'api', '[...path].js'), 'utf8');
+  const frontendApi = fs.readFileSync(path.join(repoRoot, 'frontend', 'api', '[...path].js'), 'utf8');
+
+  for (const apiSource of [rootApi, frontendApi]) {
+    assert.match(apiSource, /\/api\/auth\/me/);
+    assert.match(apiSource, /\/api\/admin\/dashboard/);
+    assert.match(apiSource, /hoang_2251220149@dau\.edu\.vn/);
+    assert.match(apiSource, /admin@gmail\.com/);
+  }
+});

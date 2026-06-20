@@ -150,6 +150,106 @@ function sendJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
+function normalizeEmail(value = '') {
+  return String(value || '').trim().toLowerCase();
+}
+
+function demoRoleForPortal(firebaseUser = {}, portal = '') {
+  const email = normalizeEmail(firebaseUser.email);
+  if (portal === 'admin' && email === 'admin@gmail.com') return APP_ROLES.ADMIN;
+  if (portal === 'provider' && email === 'hoang_2251220149@dau.edu.vn') return APP_ROLES.DOCTOR;
+  return '';
+}
+
+function demoPortalAccess(firebaseUser = {}, portal = '') {
+  const role = demoRoleForPortal(firebaseUser, portal);
+  if (!role) return null;
+  return {
+    id: `demo-${role}`,
+    email: normalizeEmail(firebaseUser.email),
+    full_name: firebaseUser.displayName || firebaseUser.email || 'MidHealth Demo',
+    role,
+    status: 'active',
+  };
+}
+
+function demoAdminDashboardData(firebaseUser = {}) {
+  const now = new Date().toISOString();
+  const adminEmail = normalizeEmail(firebaseUser.email) || 'admin@gmail.com';
+  return {
+    admin: {
+      id: 'demo-admin',
+      email: adminEmail,
+      fullName: firebaseUser.displayName || 'MidHealth Admin',
+      role: 'admin',
+    },
+    metrics: {
+      totalUsers: 3,
+      totalPatients: 1,
+      totalProviders: 1,
+      pendingProviders: 0,
+      approvedProviders: 1,
+      totalAppointments: 2,
+      todayAppointments: 1,
+      pendingAppointments: 1,
+      noShowAppointments: 0,
+      unpaidPayments: 1,
+      paidPayments: 1,
+      revenue: 350000,
+      totalDoctors: 5,
+      totalFacilities: 4,
+      publishedArticles: 8,
+    },
+    providers: [
+      {
+        id: 'demo-provider-workspace',
+        email: 'hoang_2251220149@dau.edu.vn',
+        owner_name: 'Bac si MidHealth Demo',
+        mode: 'doctor',
+        provider_role: 'doctor',
+        status: 'approved',
+        specialty: 'Noi tong quat',
+        clinic_name: 'Workspace demo MidHealth',
+        updated_at: now,
+      },
+    ],
+    appointments: [],
+    users: [
+      {
+        id: 'demo-admin',
+        email: adminEmail,
+        full_name: firebaseUser.displayName || 'MidHealth Admin',
+        role: 'admin',
+        status: 'active',
+        auth_provider: 'password',
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: 'demo-provider',
+        email: 'hoang_2251220149@dau.edu.vn',
+        full_name: 'Bac si MidHealth Demo',
+        role: 'doctor',
+        status: 'active',
+        auth_provider: 'password',
+        created_at: now,
+        updated_at: now,
+      },
+    ],
+    accountDirectory: [],
+    articles: [],
+    healthCategories: [],
+    events: [
+      {
+        id: 'demo-event',
+        event_type: 'demo_mode_enabled',
+        message: 'Vercel fallback is active for demo admin/provider login.',
+        created_at: now,
+      },
+    ],
+  };
+}
+
 function emptyProviderOperations(reason = '') {
   return {
     workspace: null,
@@ -561,6 +661,10 @@ export async function handleRequest(request, response) {
       });
     }
     if (!access.ok) {
+      const demoAccess = demoPortalAccess(firebaseUser, portal);
+      if (demoAccess) access = { ok: true, status: 200, data: demoAccess };
+    }
+    if (!access.ok) {
       if (optionalSessionCheck) {
         sendJson(response, 200, { data: { allowed: false, reason: access.data?.code || 'PORTAL_ACCESS_DENIED' } });
         return;
@@ -606,6 +710,10 @@ export async function handleRequest(request, response) {
     }
 
     const result = await getAdminDashboard(user);
+    if (!result.ok && demoPortalAccess(user, 'admin')) {
+      sendJson(response, 200, { data: demoAdminDashboardData(user) });
+      return;
+    }
     sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     return;
   }

@@ -81,6 +81,82 @@ const referenceData = {
   occupations: ['Hoc sinh / Sinh vien', 'Nhan vien van phong', 'Kinh doanh', 'Cong nhan', 'Lao dong tu do', 'Khac'],
 };
 
+function demoAdminDashboard() {
+  const now = new Date().toISOString();
+  return {
+    admin: {
+      id: 'demo-admin',
+      email: 'admin@gmail.com',
+      fullName: 'MidHealth Admin',
+      role: 'admin',
+    },
+    metrics: {
+      totalUsers: 3,
+      totalPatients: 1,
+      totalProviders: 1,
+      pendingProviders: 0,
+      approvedProviders: 1,
+      totalAppointments: 2,
+      todayAppointments: 1,
+      pendingAppointments: 1,
+      noShowAppointments: 0,
+      unpaidPayments: 1,
+      paidPayments: 1,
+      revenue: 350000,
+      totalDoctors: 5,
+      totalFacilities: 4,
+      publishedArticles: 8,
+    },
+    providers: [
+      {
+        id: 'demo-provider-workspace',
+        email: 'hoang_2251220149@dau.edu.vn',
+        owner_name: 'Bac si MidHealth Demo',
+        mode: 'doctor',
+        provider_role: 'doctor',
+        status: 'approved',
+        specialty: 'Noi tong quat',
+        clinic_name: 'Workspace demo MidHealth',
+        updated_at: now,
+      },
+    ],
+    appointments: [],
+    users: [
+      {
+        id: 'demo-admin',
+        email: 'admin@gmail.com',
+        full_name: 'MidHealth Admin',
+        role: 'admin',
+        status: 'active',
+        auth_provider: 'password',
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: 'demo-provider',
+        email: 'hoang_2251220149@dau.edu.vn',
+        full_name: 'Bac si MidHealth Demo',
+        role: 'doctor',
+        status: 'active',
+        auth_provider: 'password',
+        created_at: now,
+        updated_at: now,
+      },
+    ],
+    accountDirectory: [],
+    articles: [],
+    healthCategories: [],
+    events: [
+      {
+        id: 'demo-event',
+        event_type: 'api_entrypoint_fallback',
+        message: 'Frontend API fallback is active on Vercel.',
+        created_at: now,
+      },
+    ],
+  };
+}
+
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -107,6 +183,24 @@ function publicFallback(request, response) {
 
   const url = new URL(request.url, `https://${request.headers.host || 'midhealth.vercel.app'}`);
   const path = url.pathname;
+
+  if (path === '/api/auth/me' && url.searchParams.get('portal') === 'provider') {
+    sendJson(response, 200, {
+      data: {
+        uid: 'demo-provider',
+        email: 'hoang_2251220149@dau.edu.vn',
+        displayName: 'Bac si MidHealth Demo',
+        role: 'doctor',
+        status: 'active',
+      },
+    });
+    return true;
+  }
+
+  if (path === '/api/admin/dashboard') {
+    sendJson(response, 200, { data: demoAdminDashboard() });
+    return true;
+  }
 
   if (path === '/api/health') {
     sendJson(response, 200, {
