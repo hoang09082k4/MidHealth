@@ -34,3 +34,12 @@ test('Vercel API entrypoints include backend runtime dependencies', () => {
     assert.match(apiSource, /require\.resolve\('nodemailer'\)/);
   }
 });
+
+test('Vercel bundles backend source files with serverless API functions', () => {
+  const repoRoot = path.resolve(process.cwd(), '..');
+  const rootConfig = JSON.parse(fs.readFileSync(path.join(repoRoot, 'vercel.json'), 'utf8'));
+  const frontendConfig = JSON.parse(fs.readFileSync(path.join(repoRoot, 'frontend', 'vercel.json'), 'utf8'));
+
+  assert.equal(rootConfig.functions?.['api/[...path].js']?.includeFiles, 'backend/src/**');
+  assert.equal(frontendConfig.functions?.['api/[...path].js']?.includeFiles, 'backend/src/**');
+});

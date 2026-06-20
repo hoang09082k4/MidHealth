@@ -40,6 +40,8 @@ function isPersonalEmail(email = '') {
 
 function mapAuthError(error) {
   const code = error?.code || error?.codeName || '';
+  const message = error?.message || '';
+  if (message.includes('PORTAL_ACCESS_DENIED')) return 'Tai khoan nay chua duoc cap quyen bac si tren MidHealth. Vui long dung email bac si da dang ky hoac lien he admin de bat role doctor.';
   if (code.includes('auth/email-already-in-use') || code.includes('EMAIL_EXISTS')) return 'Email này đã có tài khoản. Vui lòng đăng nhập để tiếp tục đăng ký workspace.';
   if (code.includes('auth/invalid-credential') || code.includes('INVALID_LOGIN_CREDENTIALS')) return 'Email hoặc mật khẩu không đúng.';
   if (code.includes('auth/weak-password') || code.includes('WEAK_PASSWORD')) return 'Mật khẩu cần tối thiểu 6 ký tự.';
@@ -71,7 +73,7 @@ async function verifyProviderPortal(user) {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await response.json().catch(() => ({}));
-  if (data.data?.allowed === false) throw new Error('PORTAL_ACCESS_DENIED');
+  if (data.data?.allowed === false) throw new Error(data.data.reason || 'PORTAL_ACCESS_DENIED');
   if (!response.ok) throw new Error(data.message || 'Tài khoản không có quyền truy cập workspace bác sĩ.');
   return data.data;
 }

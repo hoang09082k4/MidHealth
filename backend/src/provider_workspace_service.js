@@ -202,6 +202,86 @@ function emptyOperations(workspace, reason = '') {
   };
 }
 
+function demoProviderWorkspace(firebaseUser = {}, payload = {}) {
+  const email = normalizeEmail(firebaseUser?.email || payload.email || 'hoang_2251220149@dau.edu.vn');
+  const ownerName = clean(payload.ownerName || firebaseUser?.displayName) || 'Bac si MidHealth Demo';
+  return {
+    id: 'demo-provider-workspace',
+    firebaseUid: clean(firebaseUser?.localId || firebaseUser?.uid) || 'demo-provider',
+    email,
+    ownerName,
+    ownerPhone: clean(payload.ownerPhone) || '0900000000',
+    mode: clean(payload.mode) || 'doctor',
+    providerRole: MODE_TO_APP_ROLE[clean(payload.mode)] || 'doctor',
+    status: 'approved',
+    linkedDoctorId: 'demo-doctor',
+    linkedFacilityId: '',
+    clinicName: clean(payload.clinicName) || 'Phong kham demo MidHealth',
+    clinicAddress: clean(payload.clinicAddress) || '1 Nguyen Hue, Ben Nghe, TP.HCM',
+    taxCode: clean(payload.taxCode) || '',
+    doctorTitle: normalizeDoctorTitle(payload.doctorTitle) || 'BS',
+    specialty: clean(payload.specialty) || 'Noi tong quat',
+    imageUrl: clean(payload.imageUrl) || '',
+    reviewNote: '',
+    submittedAt: new Date().toISOString(),
+    reviewedAt: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function demoProviderOperations(firebaseUser = {}, workspace = demoProviderWorkspace(firebaseUser)) {
+  const today = todayDateValue();
+  return {
+    workspace,
+    linked: true,
+    reason: 'Che do demo dang hoat dong vi Vercel chua cau hinh Supabase.',
+    summary: {
+      todayAppointments: 1,
+      pendingAppointments: 1,
+      availableSlots: 3,
+      checkedIn: 0,
+      completedAppointments: 1,
+      cancelledAppointments: 0,
+    },
+    appointments: [
+      {
+        id: 'demo-appointment-1',
+        appointmentCode: 'YMA-DEMO-001',
+        patientName: 'Benh nhan demo',
+        patientPhone: '0900000001',
+        date: today,
+        time: '08:30',
+        status: 'pending',
+        paymentStatus: 'unpaid',
+        finalAmount: 150000,
+      },
+    ],
+    slots: [
+      {
+        id: 'demo-slot-1',
+        date: today,
+        startTime: '08:00',
+        endTime: '08:30',
+        capacity: 4,
+        bookedCount: 1,
+        isActive: true,
+        specialtyName: workspace.specialty,
+      },
+    ],
+    specialties: [{ id: 'demo-specialty', name: workspace.specialty }],
+    services: [{ id: 'demo-service', name: 'Kham tong quat', fee: '150.000 d' }],
+    report: [],
+    activity: [
+      {
+        id: 'demo-activity',
+        message: 'Workspace demo san sang cho buoi trinh bay.',
+        createdAt: new Date().toISOString(),
+      },
+    ],
+  };
+}
+
 function actorFromFirebaseUser(firebaseUser, fallbackRole = '') {
   return {
     actor_firebase_uid: clean(firebaseUser?.localId || firebaseUser?.uid) || null,
@@ -870,9 +950,7 @@ function validateWorkspacePayload(payload = {}) {
 }
 
 export async function ensureProviderWorkspaceTableReady() {
-  if (!hasSupabaseConfig) {
-    return { ok: false, status: 500, data: { message: 'Backend chưa cấu hình Supabase để lưu hồ sơ đối tác.' } };
-  }
+  if (!hasSupabaseConfig) return { ok: true, skipped: true };
 
   const { error } = await supabase
     .from('provider_workspaces')
@@ -908,7 +986,7 @@ export async function getProviderWorkspace(firebaseUser) {
   if (!access.ok) return access;
 
   if (!hasSupabaseConfig) {
-    return { ok: false, status: 500, data: { message: 'Backend chưa cấu hình Supabase để tải hồ sơ đối tác.' } };
+    return { ok: true, status: 200, data: demoProviderWorkspace(firebaseUser) };
   }
 
   const firebaseUid = clean(firebaseUser?.localId || firebaseUser?.uid);
@@ -935,6 +1013,14 @@ export async function getProviderWorkspace(firebaseUser) {
 export async function saveProviderWorkspace(firebaseUser, payload = {}) {
   const access = await requireRoles(firebaseUser, [APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL]);
   if (!access.ok) return access;
+
+  if (!hasSupabaseConfig) {
+    const validationMessage = validateWorkspacePayload(payload);
+    if (validationMessage) {
+      return { ok: false, status: 400, data: { message: validationMessage } };
+    }
+    return { ok: true, status: 200, data: demoProviderWorkspace(firebaseUser, payload) };
+  }
 
   const tableReady = await ensureProviderWorkspaceTableReady();
   if (!tableReady.ok) return tableReady;
@@ -1062,6 +1148,10 @@ export async function getProviderWorkspaceOperations(firebaseUser) {
   if (!workspaceResult.ok) return workspaceResult;
 
   const workspace = workspaceResult.data;
+  if (!hasSupabaseConfig) {
+    return { ok: true, status: 200, data: demoProviderOperations(firebaseUser, workspace || demoProviderWorkspace(firebaseUser)) };
+  }
+
   if (!workspace) {
     return { ok: true, status: 200, data: emptyOperations(null, 'Chưa có hồ sơ workspace.') };
   }

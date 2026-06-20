@@ -300,9 +300,89 @@ export async function requireAdmin(firebaseUser) {
   return fetchAdminAccount(firebaseUser);
 }
 
+function demoAdminDashboard(firebaseUser = {}, admin = {}) {
+  const now = new Date().toISOString();
+  return {
+    admin: {
+      id: admin.data?.id || 'demo-admin',
+      email: admin.data?.email || firebaseUser.email || 'admin@gmail.com',
+      fullName: admin.data?.full_name || firebaseUser.displayName || 'MidHealth Admin',
+      role: 'admin',
+    },
+    metrics: {
+      totalUsers: 3,
+      totalPatients: 1,
+      totalProviders: 1,
+      pendingProviders: 0,
+      approvedProviders: 1,
+      totalAppointments: 2,
+      todayAppointments: 1,
+      pendingAppointments: 1,
+      noShowAppointments: 0,
+      unpaidPayments: 1,
+      paidPayments: 1,
+      revenue: 350000,
+      totalDoctors: 5,
+      totalFacilities: 4,
+      publishedArticles: 8,
+    },
+    providers: [
+      {
+        id: 'demo-provider-workspace',
+        email: 'hoang_2251220149@dau.edu.vn',
+        owner_name: 'Bac si MidHealth Demo',
+        mode: 'doctor',
+        provider_role: 'doctor',
+        status: 'approved',
+        specialty: 'Noi tong quat',
+        clinic_name: 'Workspace demo MidHealth',
+        updated_at: now,
+      },
+    ],
+    appointments: [],
+    users: [
+      {
+        id: 'demo-admin',
+        email: admin.data?.email || 'admin@gmail.com',
+        full_name: admin.data?.full_name || 'MidHealth Admin',
+        role: 'admin',
+        status: 'active',
+        auth_provider: 'password',
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: 'demo-provider',
+        email: 'hoang_2251220149@dau.edu.vn',
+        full_name: 'Bac si MidHealth Demo',
+        role: 'doctor',
+        status: 'active',
+        auth_provider: 'password',
+        created_at: now,
+        updated_at: now,
+      },
+    ],
+    accountDirectory: [],
+    articles: [],
+    healthCategories: [],
+    events: [
+      {
+        id: 'demo-event',
+        event_type: 'demo_mode_enabled',
+        message: 'Vercel dang chay che do demo vi chua cau hinh Supabase.',
+        created_at: now,
+      },
+    ],
+  };
+}
+
 export async function getAdminDashboard(firebaseUser) {
   const admin = await requireAdmin(firebaseUser);
   if (!admin.ok) return admin;
+
+  if (!hasSupabaseConfig) {
+    return { ok: true, status: 200, data: demoAdminDashboard(firebaseUser, admin) };
+  }
 
   try {
     const today = todayDateValue();

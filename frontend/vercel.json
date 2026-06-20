@@ -1,5 +1,10 @@
 {
   "version": 2,
+  "functions": {
+    "api/[...path].js": {
+      "includeFiles": "backend/src/**"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/:path*",
