@@ -38,14 +38,20 @@ const defaultAllowedOrigins = [
   'https://www.midhealth.vn',
 ];
 
+// Firebase Web API keys identify a Firebase project and are intentionally
+// public. Keep the backend aligned with the Firebase project already used by
+// the browser when Vercel has not injected the optional environment aliases.
+const defaultFirebaseApiKey = 'AIzaSyBfkTA39JCh8YtBkj0Iyq-cL6Oruo7jk6M';
+const defaultFirebaseProjectId = 'midhealth-1c1b9';
+
 export function pickEnv(...names) {
   return names.map((name) => process.env[name]).find((value) => String(value || '').trim()) || '';
 }
 
 export const config = {
   port: process.env.PORT || 4000,
-  firebaseApiKey: pickEnv('FIREBASE_API_KEY', 'VITE_FIREBASE_API_KEY'),
-  firebaseProjectId: pickEnv('FIREBASE_PROJECT_ID', 'VITE_FIREBASE_PROJECT_ID'),
+  firebaseApiKey: pickEnv('FIREBASE_API_KEY', 'VITE_FIREBASE_API_KEY') || defaultFirebaseApiKey,
+  firebaseProjectId: pickEnv('FIREBASE_PROJECT_ID', 'VITE_FIREBASE_PROJECT_ID') || defaultFirebaseProjectId,
   supabaseUrl: pickEnv('SUPABASE_URL', 'VITE_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL'),
   supabaseServiceRoleKey: pickEnv(
     'SUPABASE_SERVICE_ROLE_KEY',
