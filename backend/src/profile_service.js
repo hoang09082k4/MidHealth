@@ -121,7 +121,11 @@ export async function savePatientProfile(firebaseUser, payload = {}) {
 }
 
 export async function hasCompletePatientProfile(firebaseUser = {}) {
-  if (!hasSupabaseConfig || !firebaseUser.localId) return false;
+  // In the Vercel fallback mode there is no persistent profile table. Saving a
+  // profile is intentionally skipped, so the matching access check must not
+  // reject every otherwise valid Firebase session.
+  if (!hasSupabaseConfig) return true;
+  if (!firebaseUser.localId) return false;
 
   const { data, error } = await supabase
     .from('patient_profiles')

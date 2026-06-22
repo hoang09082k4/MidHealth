@@ -223,7 +223,7 @@ async function xac_minh_cong_benh_nhan(user, { allowIncomplete = false } = {}) {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await response.json().catch(() => ({}));
-  if (data.data?.allowed === false) throw new Error(data.message || 'PORTAL_ACCESS_DENIED');
+  if (data.data?.allowed === false) throw new Error(data.message || data.data.reason || 'PORTAL_ACCESS_DENIED');
   if (!response.ok) throw new Error(data.message || 'Tài khoản không thuộc cổng bệnh nhân.');
   return data.data;
 }
