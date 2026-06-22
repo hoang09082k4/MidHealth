@@ -17,7 +17,7 @@
     "seed:reference": "node scripts/seed_reference_data.js"
   },
   "engines": {
-    "node": "22.x"
+    "node": "24.x"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.1",

@@ -2,6 +2,7 @@
   "name": "midhealth",
   "private": true,
   "version": "1.0.0",
+  "main": "api/[...path].js",
   "workspaces": [
     "backend",
     "frontend"
@@ -20,6 +21,6 @@
     "supabase": "^2.102.0"
   },
   "engines": {
-    "node": "22.x"
+    "node": "24.x"
   }
 }
