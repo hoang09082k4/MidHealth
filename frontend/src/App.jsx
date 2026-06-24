@@ -4,6 +4,9 @@ import { firebaseAuth } from './lib/firebase';
 import { fallbackCatalog, fetchCatalog } from './lib/catalog';
 import { ReferenceDataProvider } from './lib/reference_data';
 import { apiBaseUrl } from './lib/api_base';
+import { useOnlineStatus } from './hooks/useOnlineStatus';
+import OfflinePage from './components/error/OfflinePage';
+import NotFoundPage from './components/error/NotFoundPage';
 import MucBaoMatFooter from './components/trang_chu/bao_mat_footer';
 import ThanhDieuHuong from './components/dung_chung/thanh_dieu_huong';
 
@@ -279,7 +282,11 @@ function routeFromLocation() {
     };
   }
 
-  return { page: 'home', health: { name: 'list', category: DEFAULT_HEALTH_CATEGORY } };
+  if (path === '/') {
+    return { page: 'home', health: { name: 'list', category: DEFAULT_HEALTH_CATEGORY } };
+  }
+
+  return { page: 'not-found' };
 }
 
 function bookingRouteToUrl(kind, item, screen = 'detail') {
@@ -362,6 +369,7 @@ function App() {
   const [isChatbotReady, setIsChatbotReady] = useState(false);
   const [catalog, setCatalog] = useState(fallbackCatalog);
   const [appRoute, setAppRoute] = useState(routeFromLocation);
+  const isOnline = useOnlineStatus();
   const isHealthPage = appRoute.page === 'health';
   const isDoctorWorkspacePage = appRoute.page === 'doctor-workspace';
   const isAdminPage = appRoute.page === 'admin';
@@ -647,6 +655,10 @@ function App() {
     setAppRoute(route);
   };
 
+  if (!isOnline) {
+    return <OfflinePage />;
+  }
+
   return (
     <ReferenceDataProvider>
     <div className={`site-shell${isHealthPage ? ' health-news-shell' : ''}${isDoctorWorkspacePage ? ' doctor-workspace-shell' : ''}${isAdminPage ? ' admin-site-shell' : ''}`} id="home">
@@ -770,6 +782,8 @@ function App() {
             onNavigate={showPublicInfo}
             onBackHome={showHome}
           />
+        ) : appRoute.page === 'not-found' ? (
+          <NotFoundPage onHome={showHome} />
         ) : (
           <TrangChu
             catalog={catalog}
