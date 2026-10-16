@@ -1,4 +1,3 @@
-import { config } from '../src/config.js';
 import { hasSupabaseConfig, supabase } from '../src/supabase.js';
 
 const TAT_CA_KHU_VUC = 'Tất cả khu vực';
@@ -110,11 +109,9 @@ async function main() {
     throw new Error('Thieu SUPABASE_URL hoac SUPABASE_SERVICE_ROLE_KEY trong backend/.env');
   }
 
-  console.log(`Seeding reference data to ${config.supabaseUrl}`);
-
   const { data, error } = await supabase
     .from('reference_data')
-    .upsert(rows, { onConflict: 'key' })
+    .upsert(rows, { onConflict: 'key', ignoreDuplicates: true })
     .select('key');
 
   if (error) throw error;

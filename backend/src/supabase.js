@@ -8,6 +8,7 @@ export const hasSupabaseConfig = Boolean(
 
 export const supabase = hasSupabaseConfig
   ? createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
+    global: { fetch: (url, options = {}) => fetch(url, { ...options, signal: options.signal || AbortSignal.timeout(8000) }) },
     auth: {
       autoRefreshToken: false,
       persistSession: false,

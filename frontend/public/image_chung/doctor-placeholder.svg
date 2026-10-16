@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="Ảnh đại diện bác sĩ">
+  <rect width="240" height="240" rx="24" fill="#e8f2fb"/>
+  <circle cx="120" cy="87" r="39" fill="#a7c2de"/>
+  <path d="M39 213c3-49 33-78 81-78s78 29 81 78" fill="#a7c2de"/>
+  <path d="M97 146v27h46v-27" fill="#fff" opacity=".84"/>
+  <path d="M120 151v39m-20-20h40" stroke="#4d83b7" stroke-width="10" stroke-linecap="round"/>
+</svg>

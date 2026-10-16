@@ -9,21 +9,8 @@ const ACCOUNT_ITEMS = [
 ];
 
 const BOOKING_ITEMS = [
-  {
-    id: 'doctor',
-    label: 'Đặt khám bác sĩ',
-    description: 'Chọn bác sĩ và khung giờ khám phù hợp',
-  },
-  {
-    id: 'hospital',
-    label: 'Đặt khám bệnh viện',
-    description: 'Đặt lịch tại bệnh viện đã kết nối',
-  },
-  {
-    id: 'clinic',
-    label: 'Đặt khám phòng khám',
-    description: 'Tìm phòng khám theo chuyên khoa và dịch vụ',
-  },
+  { id: 'specialty', label: 'Chuyên khoa / Dịch vụ', description: 'Chọn chuyên khoa và xem chi phí khám' },
+  { id: 'doctor', label: 'Đội ngũ bác sĩ', description: 'Xem bác sĩ và khung giờ khám' },
 ];
 
 function lay_ten_hien_thi(user) {
@@ -38,13 +25,13 @@ function lay_ten_tat(user) {
 function ThanhDieuHuong({
   user,
   onHome,
+  onPublicInfo,
   onBook,
-  onHealthNews,
-  onDoctorWorkspace,
   onOpenAuth,
   onOpenAccount,
   onLogout,
 }) {
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const accountRef = useRef(null);
@@ -76,9 +63,7 @@ function ThanhDieuHuong({
     };
   }, [isAccountOpen, isBookingOpen]);
 
-  const openMedicalAssistant = () => {
-    window.dispatchEvent(new CustomEvent('midhealth:open-chatbot'));
-  };
+
 
   return (
     <header className="site-header">
@@ -86,7 +71,10 @@ function ThanhDieuHuong({
         <BieuTuongLogo />
       </button>
 
-      <nav className="main-nav" aria-label="Điều hướng chính">
+      <button type="button" className="clinic-mobile-toggle" aria-controls="clinic-main-nav" aria-expanded={mobileOpen} onClick={() => setMobileOpen(!mobileOpen)}>{mobileOpen ? 'Đóng ✕' : 'Menu ☰'}</button>
+      <nav id="clinic-main-nav" className={'main-nav' + (mobileOpen ? ' mobile-open' : '')} aria-label="Điều hướng chính" onClick={event => { if (event.target.closest('a, button') && !event.target.closest('.main-nav-booking')) setMobileOpen(false); }}>
+        <button type="button" onClick={onHome}>Trang chủ</button>
+        <button type="button" onClick={() => onPublicInfo('gioi-thieu')}>Giới thiệu</button>
         <div className="booking-menu" ref={bookingRef}>
           <button
             className={isBookingOpen ? 'main-nav-booking active' : 'main-nav-booking'}
@@ -123,9 +111,7 @@ function ThanhDieuHuong({
             </div>
           ) : null}
         </div>
-        <a href="/tin-tuc" onClick={(event) => { event.preventDefault(); onHealthNews(); }}>Tin Y tế</a>
-        <button type="button" onClick={openMedicalAssistant}>Trợ lý y khoa</button>
-        <a href="/danh-cho-bac-si" onClick={(event) => { event.preventDefault(); onDoctorWorkspace(); }}>Dành cho bác sĩ</a>
+        <button type="button" onClick={() => onPublicInfo('lien-he')}>Liên hệ</button>
       </nav>
 
       {user ? (

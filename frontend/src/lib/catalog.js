@@ -1,50 +1,27 @@
+import { defaultClinic } from './clinic';
 import { apiBaseUrl } from './api_base';
 
-const catalogCacheKey = 'midhealth_catalog_cache_v1';
+export const catalogCacheKey = 'midhealth_catalog_cache_single_clinic_v7';
 const catalogCacheTtlMs = 5 * 60 * 1000;
 
 export const fallbackCatalog = {
+  source: 'unavailable',
+  bookingAvailable: false,
   doctors: [],
-  hospitals: [],
-  clinics: [],
+  clinic: defaultClinic,
+  services: [],
   specialties: [],
 };
-
-function normalizeName(value = '') {
-  return String(value)
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd')
-    .replace(/Đ/g, 'd')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
-    .replace(/\s+/g, ' ');
-}
-
-const hiddenSpecialties = new Set(['di ung mien dich']);
-
-function visibleSpecialty(name = '') {
-  return !hiddenSpecialties.has(normalizeName(name));
-}
-
-function cleanSpecialtyList(items = []) {
-  return items.filter((item) => visibleSpecialty(typeof item === 'string' ? item : item?.name));
-}
-
-function cleanFacilitySpecialties(items = []) {
-  return items.map((item) => ({
-    ...item,
-    specialties: cleanSpecialtyList(item.specialties || []),
-  }));
-}
 
 function normalizeCatalog(data = {}) {
   return {
     doctors: data.doctors || [],
-    hospitals: cleanFacilitySpecialties(data.hospitals || []),
-    clinics: cleanFacilitySpecialties(data.clinics || []),
-    specialties: cleanSpecialtyList(data.specialties || []),
+    clinic: { ...defaultClinic, ...data.clinic },
+    specialties: data.specialties || [],
+    services: data.services || [],
+    source: data.source || 'database',
+    bookingAvailable: data.bookingAvailable !== false,
+    notice: data.notice || '',
   };
 }
 
@@ -53,7 +30,9 @@ function readCatalogCache() {
   try {
     const cached = JSON.parse(window.sessionStorage.getItem(catalogCacheKey) || 'null');
     if (!cached?.savedAt || Date.now() - cached.savedAt > catalogCacheTtlMs) return null;
-    return normalizeCatalog(cached.data || {});
+    const catalog = normalizeCatalog(cached.data || {});
+    if (!catalog.specialties.length && !catalog.doctors.length) return null;
+    return catalog;
   } catch {
     return null;
   }
@@ -61,6 +40,7 @@ function readCatalogCache() {
 
 function writeCatalogCache(data) {
   if (typeof window === 'undefined') return;
+  if (!data.specialties.length && !data.doctors.length) return;
   try {
     window.sessionStorage.setItem(catalogCacheKey, JSON.stringify({ savedAt: Date.now(), data }));
   } catch {
@@ -68,18 +48,28 @@ function writeCatalogCache(data) {
   }
 }
 
-export async function fetchCatalog() {
+export async function fetchCatalog({ force = false } = {}) {
   const cached = readCatalogCache();
-  if (cached) return cached;
+  if (cached && !force) return cached;
 
-  const response = await fetch(`${apiBaseUrl}/api/catalog`);
-  const result = await response.json();
+  let response;
+  try {
+    response = await fetch(`${apiBaseUrl}/api/catalog`, { signal: AbortSignal.timeout(15000) });
+  } catch {
+    throw new Error('Không thể kết nối đến phòng khám. Vui lòng kiểm tra mạng và thử lại.');
+  }
+  let result;
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error('Máy chủ trả về dữ liệu không hợp lệ. Vui lòng thử lại sau.');
+  }
 
   if (!response.ok) {
-    throw new Error(result.message || 'Không thể tải dữ liệu danh mục.');
+    throw new Error(result.message || 'Không thể tải thông tin phòng khám. Vui lòng thử lại sau.');
   }
 
   const catalog = normalizeCatalog(result.data || {});
-  writeCatalogCache(catalog);
+  if (catalog.source === 'database') writeCatalogCache(catalog);
   return catalog;
 }

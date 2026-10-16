@@ -28,8 +28,9 @@ function TheChuyenKhoa({ specialties = [], onSelectSpecialty }) {
   return (
     <section className="content-section specialty-section" id="specialty">
       <div className="plain-head">
-        <h2>Đa dạng chuyên khoa khám</h2>
-        <p>Đặt khám dễ dàng và tiện lợi hơn với đầy đủ các chuyên khoa</p>
+        <span className="clinic-eyebrow">DỊCH VỤ TẠI PHÒNG KHÁM</span>
+        <h2>Chuyên khoa khám</h2>
+        <p>Chọn chuyên khoa để xem bác sĩ và lịch tiếp nhận tại MidHealth.</p>
       </div>
 
       <div className="specialty-grid">
@@ -40,11 +41,12 @@ function TheChuyenKhoa({ specialties = [], onSelectSpecialty }) {
             key={specialty.id || `${specialty.name}-${index}`}
             onClick={(event) => handleSelect(event, specialty)}
           >
-            <img src={resolveAssetPath('/images_chuyen_khoa', specialty.image)} alt={specialty.name} />
+            {specialty.image ? <img src={resolveAssetPath('/images_chuyen_khoa', specialty.image)} alt="" loading="lazy" /> : <span className="clinic-specialty-symbol" aria-hidden="true">+</span>}
             <span>{specialty.name}</span>
           </a>
         ))}
       </div>
+      {!visibleSpecialties.length && <p className="clinic-empty">Chuyên khoa của phòng khám đang được cập nhật.</p>}
 
       {hasMoreSpecialties && (
         <div className="specialty-actions">

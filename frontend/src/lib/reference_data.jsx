@@ -1,60 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { apiBaseUrl } from './api_base';
 
-const TAT_CA_PHUONG_XA = 'Tất cả phường/xã/khu vực';
-
-const VIETNAM_PROVINCES_2025 = [
-  'Thành phố Hà Nội',
-  'Thành phố Hải Phòng',
-  'Thành phố Huế',
-  'Thành phố Đà Nẵng',
-  'Thành phố Cần Thơ',
-  'Thành phố Hồ Chí Minh',
-  'Tỉnh Lai Châu',
-  'Tỉnh Điện Biên',
-  'Tỉnh Sơn La',
-  'Tỉnh Lạng Sơn',
-  'Tỉnh Quảng Ninh',
-  'Tỉnh Thanh Hóa',
-  'Tỉnh Nghệ An',
-  'Tỉnh Hà Tĩnh',
-  'Tỉnh Cao Bằng',
-  'Tỉnh Tuyên Quang',
-  'Tỉnh Lào Cai',
-  'Tỉnh Thái Nguyên',
-  'Tỉnh Phú Thọ',
-  'Tỉnh Bắc Ninh',
-  'Tỉnh Hưng Yên',
-  'Tỉnh Ninh Bình',
-  'Tỉnh Quảng Trị',
-  'Tỉnh Quảng Ngãi',
-  'Tỉnh Gia Lai',
-  'Tỉnh Đắk Lắk',
-  'Tỉnh Khánh Hòa',
-  'Tỉnh Lâm Đồng',
-  'Tỉnh Đồng Nai',
-  'Tỉnh Tây Ninh',
-  'Tỉnh Đồng Tháp',
-  'Tỉnh An Giang',
-  'Tỉnh Vĩnh Long',
-  'Tỉnh Cà Mau',
-];
-
-const FALLBACK_ADDRESS_DATA = VIETNAM_PROVINCES_2025.map((name) => ({
-  name,
-  districts: [
-    {
-      name: TAT_CA_PHUONG_XA,
-      wards: [TAT_CA_PHUONG_XA],
-    },
-  ],
-}));
-
-const FALLBACK_REGIONS = VIETNAM_PROVINCES_2025.map((name) => ({
-  name,
-  aliases: [name.replace(/^Thành phố |^Tỉnh /, '')],
-  districts: [TAT_CA_PHUONG_XA],
-}));
+const FALLBACK_ADDRESS_DATA = [];
+const FALLBACK_REGIONS = [];
 
 const FALLBACK_ETHNIC_GROUPS = [
   'Kinh', 'Tày', 'Thái', 'Mường', 'Khmer', 'Hoa', 'Nùng', "H'Mông", 'Dao', 'Gia Rai',
@@ -100,6 +48,23 @@ function withFallback(value, fallback) {
 }
 
 export async function fetchReferenceData() {
+  let addressData = FALLBACK_ADDRESS_DATA;
+  let regions = FALLBACK_REGIONS;
+  try {
+    const { default: units } = await import('../data/vietnam_admin_units_2026.json');
+    addressData = units.map((province) => ({
+      code: province.Code,
+      name: province.FullName,
+      aliases: [province.Name, province.FullName],
+      districts: province.Wards.map((ward) => ({
+        code: ward.Code,
+        name: ward.FullName,
+        kind: ward.AdministrativeUnitShortName,
+        wards: [],
+      })),
+    }));
+    regions = units.map((province) => ({ name: province.FullName, aliases: [province.Name], districts: [] }));
+  } catch { /* Continue with API data when the local list is unavailable. */ }
   try {
     const response = await fetch(`${apiBaseUrl}/api/reference-data`);
 
@@ -111,13 +76,13 @@ export async function fetchReferenceData() {
     const data = payload?.data || {};
 
     return {
-      regions: withFallback(data.regions, fallbackReferenceData.regions),
-      addressData: withFallback(data.addressData, fallbackReferenceData.addressData),
+      regions: regions.length ? regions : withFallback(data.regions, regions),
+      addressData,
       ethnicGroups: withFallback(data.ethnicGroups, fallbackReferenceData.ethnicGroups),
       occupations: withFallback(data.occupations, fallbackReferenceData.occupations),
     };
   } catch {
-    return fallbackReferenceData;
+    return { ...fallbackReferenceData, regions, addressData };
   }
 }
 

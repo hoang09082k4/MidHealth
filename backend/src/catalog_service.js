@@ -1,385 +1,62 @@
 import { hasSupabaseConfig, supabase } from './supabase.js';
-import {
-  clinics as seedClinics,
-  doctors as seedDoctors,
-  hospitals as seedHospitals,
-  specialties as seedSpecialties,
-} from '../scripts/catalog_seed_data.js';
+import { getClinic, defaultClinic } from './clinic_service.js';
+import { specialtyBasePrice } from './pricing.js';
+import { doctors as demoDoctors, specialties as demoSpecialties } from '../scripts/catalog_seed_data.js';
 
-function stripPrefix(value = '', prefix) {
-  return value?.startsWith(prefix) ? value.slice(prefix.length) : value;
+const imageName = (value = '') => value.replace(/^\/(?:image_doctor|images_chuyen_khoa)\//, '');
+export const demoMode = () => ['development', 'test'].includes(process.env.NODE_ENV);
+
+export function emptyClinicCatalog(clinic = defaultClinic) {
+  return { clinic, doctors: [], specialties: [], services: [], source: 'unavailable', bookingAvailable: false,
+    notice: 'Thông tin lịch khám đang được cập nhật. Vui lòng thử lại sau hoặc liên hệ phòng khám.' };
 }
 
-function doctorImage(value = '') {
-  return stripPrefix(value, '/image_doctor/');
-}
-
-function hospitalImage(value = '') {
-  return stripPrefix(value, '/image_benh_vien/');
-}
-
-function clinicImage(value = '') {
-  return stripPrefix(value, '/image_phong_kham/');
-}
-
-function specialtyImage(value = '') {
-  return stripPrefix(value, '/images_chuyen_khoa/');
-}
-
-function normalizeName(value = '') {
-  return String(value)
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd')
-    .replace(/Đ/g, 'd')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
-    .replace(/\s+/g, ' ');
-}
-
-const hiddenSpecialties = new Set(['di ung mien dich']);
-
-function isVisibleSpecialty(name = '') {
-  return !hiddenSpecialties.has(normalizeName(name));
-}
-
-function inferDoctorSpecialty(name = '') {
-  const knownSpecialties = {
-    'PGS. TS. BS Lâm Việt Trung': 'Tiêu hóa - Ngoại tiết niệu',
-  };
-  return knownSpecialties[name] || '';
-}
-
-function inferDoctorNotice(name = '') {
-  if (name.includes('Lâm Việt Trung')) {
-    return 'Bác sĩ Lâm Việt Trung nghỉ ngày 20/10 đến 26/10, 27/10 làm lại bình thường. Nếu bệnh nhân bận việc không đến khám được vui lòng hủy lịch khám đã đặt và đặt lại ngày khác.';
-  }
-  return '';
-}
-
-async function selectTable(table, query = '*') {
-  const { data, error } = await supabase.from(table).select(query);
-  if (error) throw error;
-  return data || [];
-}
-
-function isMissingColumnError(error) {
-  const message = String(error?.message || '').toLowerCase();
-  return error?.code === '42703'
-    || error?.code === 'PGRST204'
-    || message.includes('does not exist')
-    || message.includes('schema cache');
-}
-
-async function selectTableWithFallback(table, queries) {
-  let lastError;
-
-  for (const query of queries) {
-    try {
-      return await selectTable(table, query);
-    } catch (error) {
-      lastError = error;
-      if (!isMissingColumnError(error)) throw error;
-    }
-  }
-
-  throw lastError;
-}
-
-async function selectDoctors() {
-  return selectTableWithFallback('doctors', [
-    'id, initials, full_name, specialty_id, facility_id, workplace_text, avatar_url, unavailable_note, notice, is_active, homepage_featured, homepage_order',
-    'id, initials, full_name, specialty_id, facility_id, workplace_text, avatar_url, is_active, homepage_featured, homepage_order',
-    'id, initials, full_name, specialty_id, facility_id, workplace_text, avatar_url, unavailable_note, notice, is_active',
-    'id, initials, full_name, specialty_id, facility_id, workplace_text, avatar_url, is_active',
-  ]);
-}
-
-async function selectFacilities() {
-  return selectTableWithFallback('medical_facilities', [
-    'id, type, name, subtitle, intro, address, province, district, latitude, longitude, avatar_url, background_url, phone, hotline, is_active, homepage_featured, homepage_order',
-    'id, type, name, subtitle, intro, address, province, district, latitude, longitude, avatar_url, background_url, phone, hotline, is_active',
-  ]);
-}
-
-function compareHomepageOrder(a, b) {
-  return Number(a.homepageOrder ?? 100) - Number(b.homepageOrder ?? 100)
-    || String(a.name || '').localeCompare(String(b.name || ''), 'vi');
-}
-
-function slugifyFallback(value = '') {
-  return String(value)
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd')
-    .replace(/Đ/g, 'd')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'fallback';
-}
-
-function fallbackServices(items = []) {
-  return items.map((name, index) => ({
-    id: `fallback-service-${slugifyFallback(name)}-${index}`,
-    name,
-    description: '',
-    fee: 'Thanh toán tại cơ sở',
-  }));
-}
-
-function fallbackCatalog() {
-  return {
-    doctors: seedDoctors.map((doctor, index) => ({
-      id: `fallback-doctor-${index + 1}`,
-      initials: doctor.initials,
-      image: doctor.image,
-      name: doctor.name,
-      specialty: doctor.specialty,
-      workplace: doctor.workplace,
-      address: doctor.workplace,
-      province: 'TP. Hồ Chí Minh',
-      district: '',
-      notice: '',
-      homepageFeatured: true,
-      homepageOrder: index + 1,
-    })),
-    hospitals: seedHospitals.map((hospital, index) => ({
-      id: `fallback-hospital-${index + 1}`,
-      avatar: hospital.avatar,
-      background: hospital.background,
-      gallery: hospital.gallery || [hospital.background, hospital.avatar].filter(Boolean),
-      name: hospital.name,
-      subtitle: hospital.subtitle || '',
-      address: hospital.address,
-      province: 'TP. Hồ Chí Minh',
-      district: '',
-      intro: hospital.intro || '',
-      services: fallbackServices(hospital.services || hospital.specialties || []),
-      specialties: (hospital.specialties || []).filter(isVisibleSpecialty),
-      notes: hospital.notes || [],
-      hours: hospital.hours || [],
-      homepageFeatured: true,
-      homepageOrder: index + 1,
-    })),
-    clinics: seedClinics.map((clinic, index) => ({
-      id: `fallback-clinic-${index + 1}`,
-      avatar: clinic.avatar,
-      gallery: clinic.gallery || [clinic.avatar].filter(Boolean),
-      name: clinic.name,
-      subtitle: clinic.subtitle || '',
-      address: clinic.address,
-      province: 'TP. Hồ Chí Minh',
-      district: '',
-      phone: clinic.phone || '',
-      intro: clinic.intro || '',
-      services: fallbackServices(clinic.services || clinic.specialties || []),
-      specialties: (clinic.specialties || []).filter(isVisibleSpecialty),
-      doctors: clinic.doctors || [],
-      hours: clinic.hours || [],
-      homepageFeatured: true,
-      homepageOrder: index + 1,
-    })),
-    specialties: seedSpecialties
-      .filter((item) => isVisibleSpecialty(item.name))
-      .map((item, index) => ({
-        id: `fallback-specialty-${index + 1}`,
-        name: item.name,
-        image: item.image,
-      })),
-  };
-}
-
-function fallbackResult() {
-  return { ok: true, status: 200, data: fallbackCatalog() };
+export function demoClinicCatalog(clinic = defaultClinic) {
+  const specialties = demoSpecialties.map(item => ({ ...item, id: item.slug }));
+  return { clinic, specialties, doctors: demoDoctors.map(item => ({ ...item, id: item.slug, bookable: false })),
+    services: specialties.map(item => ({ ...item, fee: specialtyBasePrice(item.name) })),
+    source: 'demo', bookingAvailable: false, notice: 'Bạn đang xem dữ liệu mô phỏng MidHealth. Đặt lịch sẽ mở khi phòng khám công bố lịch tiếp nhận.' };
 }
 
 export async function getCatalog() {
-  if (!hasSupabaseConfig) {
-    return fallbackResult();
-  }
-
   try {
-    const [
-      specialties,
-      facilities,
-      facilityHours,
-      facilityNotes,
-      facilitySpecialties,
-      facilityServices,
-      facilityImages,
-      doctors,
-    ] = await Promise.all([
-      selectTable('clinic_specialties', 'id, name, image_url, is_active'),
-      selectFacilities(),
-      selectTable('facility_hours', 'facility_id, label, time_text, sort_order'),
-      selectTable('facility_notes', 'facility_id, title, lines, sort_order'),
-      selectTable('facility_specialties', 'facility_id, specialty_id, sort_order'),
-      selectTable('facility_services', 'id, facility_id, specialty_id, name, description, fee_text, sort_order, is_active'),
-      selectTable('facility_images', 'facility_id, image_url, sort_order'),
-      selectDoctors(),
-    ]);
-
-    const specialtyNameById = new Map(specialties.map((item) => [item.id, item.name]));
-    const facilityNameById = new Map(facilities.map((item) => [item.id, item.name]));
-
-    const activeSpecialties = specialties
-      .filter((item) => item.is_active && isVisibleSpecialty(item.name))
-      .map((item) => ({
-        id: item.id,
-        name: item.name,
-        image: specialtyImage(item.image_url || ''),
+    const clinic = await getClinic();
+    let doctors;
+    let specialties;
+    if (!hasSupabaseConfig) return { ok: true, status: 200,
+      data: demoMode() ? demoClinicCatalog(clinic) : emptyClinicCatalog(clinic) };
+    {
+      const [doctorResult, specialtyResult, profileResult] = await Promise.all([
+        supabase.from('doctors').select('*').eq('clinic_owned', true).eq('is_active', true).eq('is_demo', false).order('full_name'),
+        supabase.from('clinic_specialties').select('*').eq('clinic_owned', true).eq('is_active', true).order('name'),
+        supabase.from('clinic_profile').select('profile').eq('id', true).maybeSingle(),
+      ]);
+      if (doctorResult.error) throw doctorResult.error;
+      if (specialtyResult.error) throw specialtyResult.error;
+      specialties = (specialtyResult.data || []).map(item => ({ id: item.id, slug: item.slug, name: item.name, consultationFee: Number(item.consultation_fee), image: imageName(item.image_url || (item.slug === 'kham-tong-quat' ? '/images_chuyen_khoa/Noitongquat.webp' : '')) }));
+      const specialtyNames = new Map(specialties.map(item => [item.id, item.name]));
+      const doctorContacts = profileResult.error ? {} : profileResult.data?.profile?.doctorContacts || {};
+      const publicText = value => typeof value === 'string' ? value.trim() : '';
+      doctors = (doctorResult.data || []).map(item => ({
+        id: item.id, slug: item.slug, name: item.full_name, initials: item.initials,
+        title: item.title, specialtyId: item.specialty_id, specialty: specialtyNames.get(item.specialty_id) || '',
+        image: imageName(item.avatar_url || ''), intro: item.intro || '', yearsExperience: item.years_experience,
+        consultationFee: item.consultation_fee == null ? null : Number(item.consultation_fee),
+        shortDescription: publicText(doctorContacts[item.id]?.shortDescription),
+        contactEmail: publicText(doctorContacts[item.id]?.email),
+        contactPhone: publicText(doctorContacts[item.id]?.phone),
+        education: publicText(doctorContacts[item.id]?.education),
+        expertise: publicText(doctorContacts[item.id]?.expertise),
+        workplace: publicText(item.workplace_text) || clinic.name,
+        address: clinic.address, notice: item.unavailable_note || item.notice || '',
+        homepageFeatured: item.homepage_featured !== false, homepageOrder: item.homepage_order, bookable: item.is_demo !== true || demoMode(),
+        isDemo: item.is_demo === true,
       }));
-
-    const hoursByFacility = new Map();
-    facilityHours
-      .sort((a, b) => a.sort_order - b.sort_order)
-      .forEach((item) => {
-        const current = hoursByFacility.get(item.facility_id) || [];
-        current.push({ label: item.label, time: item.time_text });
-        hoursByFacility.set(item.facility_id, current);
-      });
-
-    const notesByFacility = new Map();
-    facilityNotes
-      .sort((a, b) => a.sort_order - b.sort_order)
-      .forEach((item) => {
-        const current = notesByFacility.get(item.facility_id) || [];
-        current.push({ title: item.title, lines: item.lines || [] });
-        notesByFacility.set(item.facility_id, current);
-      });
-
-    const specialtiesByFacility = new Map();
-    facilitySpecialties
-      .sort((a, b) => a.sort_order - b.sort_order)
-      .forEach((item) => {
-        const current = specialtiesByFacility.get(item.facility_id) || [];
-        const name = specialtyNameById.get(item.specialty_id);
-        if (name && isVisibleSpecialty(name) && !current.includes(name)) current.push(name);
-        specialtiesByFacility.set(item.facility_id, current);
-      });
-
-    const servicesByFacility = new Map();
-    facilityServices
-      .filter((item) => item.is_active)
-      .sort((a, b) => a.sort_order - b.sort_order)
-      .forEach((item) => {
-        const current = servicesByFacility.get(item.facility_id) || [];
-        if (!current.some((service) => service.name === item.name)) {
-          current.push({
-            id: item.id,
-            specialtyId: item.specialty_id,
-            name: item.name,
-            description: item.description || '',
-            fee: item.fee_text || '',
-          });
-        }
-        servicesByFacility.set(item.facility_id, current);
-      });
-
-    const imagesByFacility = new Map();
-    facilityImages
-      .sort((a, b) => a.sort_order - b.sort_order)
-      .forEach((item) => {
-        const current = imagesByFacility.get(item.facility_id) || [];
-        current.push(item.image_url);
-        imagesByFacility.set(item.facility_id, current);
-      });
-
-    const doctorNamesByFacility = new Map();
-    doctors.forEach((doctor) => {
-      if (!doctor.facility_id) return;
-      const current = doctorNamesByFacility.get(doctor.facility_id) || [];
-      current.push(doctor.full_name);
-      doctorNamesByFacility.set(doctor.facility_id, current);
-    });
-
-    const mappedDoctors = doctors
-      .filter((doctor) => doctor.is_active)
-      .map((doctor) => {
-        const facility = facilities.find((item) => item.id === doctor.facility_id);
-        return {
-          id: doctor.id,
-          initials: doctor.initials,
-          image: doctorImage(doctor.avatar_url || ''),
-          name: doctor.full_name,
-          specialty: specialtyNameById.get(doctor.specialty_id) || inferDoctorSpecialty(doctor.full_name),
-          workplace: facilityNameById.get(doctor.facility_id) || doctor.workplace_text || '',
-          address: facility?.address || doctor.workplace_text || '',
-          province: facility?.province || '',
-          district: facility?.district || '',
-          latitude: facility?.latitude || null,
-          longitude: facility?.longitude || null,
-          notice: doctor.unavailable_note || doctor.notice || inferDoctorNotice(doctor.full_name),
-          homepageFeatured: doctor.homepage_featured !== false,
-          homepageOrder: Number(doctor.homepage_order ?? 100),
-        };
-      })
-      .sort(compareHomepageOrder);
-
-    const mappedHospitals = facilities
-      .filter((facility) => facility.is_active && facility.type === 'hospital')
-      .map((facility) => ({
-        id: facility.id,
-        avatar: hospitalImage(facility.avatar_url || ''),
-        background: hospitalImage(facility.background_url || ''),
-        gallery: (imagesByFacility.get(facility.id) || []).map(hospitalImage),
-        name: facility.name,
-        subtitle: facility.subtitle || '',
-        address: facility.address,
-        province: facility.province || '',
-        district: facility.district || '',
-        latitude: facility.latitude,
-        longitude: facility.longitude,
-        intro: facility.intro || '',
-        services: servicesByFacility.get(facility.id) || [],
-        specialties: specialtiesByFacility.get(facility.id) || [],
-        notes: notesByFacility.get(facility.id) || [],
-        hours: hoursByFacility.get(facility.id) || [],
-        homepageFeatured: facility.homepage_featured !== false,
-        homepageOrder: Number(facility.homepage_order ?? 100),
-      }))
-      .sort(compareHomepageOrder);
-
-    const mappedClinics = facilities
-      .filter((facility) => facility.is_active && facility.type === 'clinic')
-      .map((facility) => {
-        const avatar = clinicImage(facility.avatar_url || '');
-        const gallery = (imagesByFacility.get(facility.id) || []).map(clinicImage);
-        return {
-          id: facility.id,
-          avatar,
-          gallery: gallery.length ? gallery : [avatar].filter(Boolean),
-          name: facility.name,
-          subtitle: facility.subtitle || '',
-          address: facility.address,
-          province: facility.province || '',
-          district: facility.district || '',
-          latitude: facility.latitude,
-          longitude: facility.longitude,
-          phone: facility.phone || facility.hotline || '',
-          intro: facility.intro || '',
-          services: servicesByFacility.get(facility.id) || [],
-          specialties: specialtiesByFacility.get(facility.id) || [],
-          doctors: doctorNamesByFacility.get(facility.id) || [],
-          hours: hoursByFacility.get(facility.id) || [],
-          homepageFeatured: facility.homepage_featured !== false,
-          homepageOrder: Number(facility.homepage_order ?? 100),
-        };
-      })
-      .sort(compareHomepageOrder);
-
-    return {
-      ok: true,
-      status: 200,
-      data: {
-        doctors: mappedDoctors,
-        hospitals: mappedHospitals,
-        clinics: mappedClinics,
-        specialties: activeSpecialties,
-      },
-    };
-  } catch (error) {
-    return fallbackResult();
+    }
+    doctors.sort((a, b) => (a.homepageOrder ?? 100) - (b.homepageOrder ?? 100));
+    return { ok: true, status: 200, data: { clinic, doctors, specialties,
+      services: specialties.map(item => ({ ...item, specialtyId: item.id, fee: item.consultationFee })), source: 'database', bookingAvailable: true } };
+  } catch {
+    return { ok: true, status: 200, data: emptyClinicCatalog() };
   }
 }

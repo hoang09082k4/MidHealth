@@ -1,3 +1,4 @@
+import { useClinic } from '../../lib/clinic';
 import BieuTuongLogo from '../dung_chung/bieu_tuong_logo';
 
 const INFO_LINKS = {
@@ -67,7 +68,8 @@ function FooterInfoLink({ item, onNavigate }) {
   );
 }
 
-function MucBaoMatFooter({ onNavigate, onOpenBookingOverview, onOpenHealthNews }) {
+function MucBaoMatFooter({ onNavigate, onOpenBookingOverview }) {
+  const clinic = useClinic();
   const year = new Date().getFullYear();
   const publicSiteUrl = import.meta.env.VITE_PUBLIC_SITE_URL
     || (typeof window !== 'undefined' ? window.location.origin : 'https://midhealth.vn');
@@ -95,21 +97,22 @@ function MucBaoMatFooter({ onNavigate, onOpenBookingOverview, onOpenHealthNews }
       <div className="footer-grid">
         <section className="footer-brand" aria-labelledby="footer-brand-title">
           <div id="footer-brand-title" className="footer-logo"><BieuTuongLogo /></div>
-          <p className="footer-eyebrow">NỀN TẢNG ĐẶT KHÁM TRỰC TUYẾN</p>
+          <p className="footer-eyebrow">{clinic.name}</p>
           <p>
-            Hỗ trợ người bệnh tìm cơ sở y tế, chọn lịch khám và quản lý phiếu khám trực tuyến
+            Đặt lịch với bác sĩ của phòng khám và quản lý phiếu khám trực tuyến
             trên một giao diện thống nhất.
           </p>
           <div className="footer-contact">
             <div>
               <span>Email hỗ trợ</span>
-              <a href="mailto:cskh@midhealth.vn">cskh@midhealth.vn</a>
+              <a href={`mailto:${clinic.email}`}>{clinic.email || 'Đang cập nhật'}</a>
             </div>
             <div>
               <span>Cấp cứu y tế</span>
               <a href="tel:115">Gọi 115</a>
             </div>
           </div>
+          {clinic.socialLinks?.length ? <div className="footer-social-row">{clinic.socialLinks.map(link => <a key={link.url} href={link.url} target="_blank" rel="noreferrer">{link.label}</a>)}</div> : null}
           {SOCIAL_CHANNELS.length > 0 ? (
             <div className="footer-social-section">
               <strong>Kết nối với MidHealth</strong>
@@ -129,15 +132,7 @@ function MucBaoMatFooter({ onNavigate, onOpenBookingOverview, onOpenHealthNews }
           <a href="/dat-kham/bac-si" onClick={(event) => { event.preventDefault(); onOpenBookingOverview?.('doctor'); }}>
             Đặt khám bác sĩ
           </a>
-          <a href="/dat-kham/benh-vien" onClick={(event) => { event.preventDefault(); onOpenBookingOverview?.('hospital'); }}>
-            Đặt khám bệnh viện
-          </a>
-          <a href="/dat-kham/phong-kham" onClick={(event) => { event.preventDefault(); onOpenBookingOverview?.('clinic'); }}>
-            Đặt khám phòng khám
-          </a>
-          <a href="/tin-tuc" onClick={(event) => { event.preventDefault(); onOpenHealthNews?.(); }}>
-            Tin y tế
-          </a>
+          <a href="/dat-kham/chuyen-khoa" onClick={(event) => { event.preventDefault(); onOpenBookingOverview?.('specialty'); }}>Chuyên khoa / Dịch vụ</a>
         </nav>
 
         <nav aria-labelledby="footer-help-title">

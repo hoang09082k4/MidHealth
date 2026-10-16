@@ -1,3 +1,4 @@
+import { ClinicContact, useClinic } from '../../lib/clinic';
 import { INFO_LINKS } from './bao_mat_footer';
 
 const UPDATED_DATE = '10/06/2026';
@@ -18,13 +19,13 @@ const PAGE_ORDER = [
 const PAGE_CONTENT = {
   'gioi-thieu': {
     title: 'Giới thiệu MidHealth',
-    lead: 'MidHealth là đồ án website hỗ trợ người bệnh tìm kiếm và đặt lịch khám trực tuyến.',
+    lead: 'Website của phòng khám MidHealth, giúp bạn xem bác sĩ, chuyên khoa và đặt lịch trực tiếp.',
     sections: [
       {
-        title: 'Phạm vi nền tảng',
+        title: 'Dịch vụ của phòng khám',
         paragraphs: [
-          'MidHealth cung cấp công cụ tra cứu bác sĩ, chuyên khoa, bệnh viện, phòng khám; lựa chọn khung giờ; tạo phiếu khám điện tử và quản lý lịch hẹn.',
-          'MidHealth đóng vai trò nền tảng công nghệ hỗ trợ kết nối. Việc khám, chẩn đoán, kê đơn và điều trị thuộc trách nhiệm chuyên môn của bác sĩ và cơ sở y tế.',
+          'Bạn có thể xem đội ngũ bác sĩ, chuyên khoa của phòng khám, chọn khung giờ, nhận phiếu khám điện tử và quản lý lịch hẹn.',
+          'Việc thăm khám, chẩn đoán và điều trị do đội ngũ chuyên môn của phòng khám thực hiện.',
         ],
       },
       {
@@ -50,8 +51,8 @@ const PAGE_CONTENT = {
     lead: 'Các bước cơ bản để tạo và theo dõi một lịch hẹn trên MidHealth.',
     sections: [
       {
-        title: '1. Tìm nơi khám phù hợp',
-        paragraphs: ['Tìm theo bác sĩ, chuyên khoa, bệnh viện hoặc phòng khám. Đọc kỹ địa chỉ, lịch làm việc, giá dự kiến và điều kiện tiếp nhận.'],
+        title: '1. Chọn chuyên khoa và bác sĩ',
+        paragraphs: ['Chọn chuyên khoa và bác sĩ của phòng khám. Đọc kỹ địa chỉ, lịch làm việc, giá dự kiến và điều kiện tiếp nhận.'],
       },
       {
         title: '2. Chọn lịch và khai báo thông tin',
@@ -59,11 +60,11 @@ const PAGE_CONTENT = {
       },
       {
         title: '3. Kiểm tra và xác nhận',
-        paragraphs: ['Kiểm tra cơ sở y tế, bác sĩ, dịch vụ, thời gian, chi phí và chính sách hủy trước khi xác nhận hoặc thanh toán.'],
+        paragraphs: ['Kiểm tra thông tin phòng khám, bác sĩ, dịch vụ, thời gian, chi phí và chính sách hủy trước khi xác nhận hoặc thanh toán.'],
       },
       {
         title: '4. Nhận phiếu khám điện tử',
-        paragraphs: ['Lưu mã lịch hẹn và có mặt theo hướng dẫn của cơ sở y tế. Lịch có thể thay đổi do tình huống chuyên môn hoặc cấp cứu; người bệnh sẽ được thông báo khi hệ thống nhận được cập nhật.'],
+        paragraphs: ['Lưu mã lịch hẹn và có mặt theo hướng dẫn của phòng khám. Lịch có thể thay đổi do tình huống chuyên môn hoặc cấp cứu; người bệnh sẽ được thông báo khi hệ thống nhận được cập nhật.'],
       },
       {
         title: '5. Hủy hoặc đổi lịch',
@@ -76,8 +77,8 @@ const PAGE_CONTENT = {
     lead: 'Thông tin nhanh dành cho người bệnh trước và sau khi đặt lịch.',
     sections: [
       {
-        title: 'Đặt lịch có thay thế việc đăng ký tại cơ sở y tế không?',
-        paragraphs: ['Tùy quy trình của từng cơ sở. Phiếu điện tử xác nhận yêu cầu đặt lịch; người bệnh vẫn có thể phải xuất trình giấy tờ, làm thủ tục tiếp nhận hoặc chờ phân luồng tại nơi khám.'],
+        title: 'Đặt lịch có thay thế việc đăng ký tại phòng khám không?',
+        paragraphs: ['Theo quy trình tiếp nhận của phòng khám. Phiếu điện tử xác nhận yêu cầu đặt lịch; người bệnh vẫn có thể phải xuất trình giấy tờ, làm thủ tục tiếp nhận hoặc chờ phân luồng tại nơi khám.'],
       },
       {
         title: 'Giờ khám có được bảo đảm tuyệt đối không?',
@@ -85,7 +86,7 @@ const PAGE_CONTENT = {
       },
       {
         title: 'Ai chịu trách nhiệm về chẩn đoán và điều trị?',
-        paragraphs: ['Bác sĩ và cơ sở y tế trực tiếp cung cấp dịch vụ chịu trách nhiệm chuyên môn. MidHealth không tự chẩn đoán, kê đơn hoặc thay đổi chỉ định điều trị.'],
+        paragraphs: ['Bác sĩ của phòng khám chịu trách nhiệm chuyên môn trong quá trình thăm khám. Nội dung trên website chỉ hỗ trợ tra cứu, không thay thế việc khám trực tiếp.'],
       },
       {
         title: 'Tôi có thể yêu cầu xóa dữ liệu không?',
@@ -122,7 +123,7 @@ const PAGE_CONTENT = {
   },
   'dieu-khoan-su-dung': {
     title: 'Điều khoản sử dụng',
-    lead: 'Quy định cơ bản khi truy cập và sử dụng nền tảng đặt khám MidHealth.',
+    lead: 'Quy định cơ bản khi truy cập và sử dụng website đặt khám MidHealth.',
     sections: [
       {
         title: '1. Chấp thuận điều khoản',
@@ -130,7 +131,7 @@ const PAGE_CONTENT = {
       },
       {
         title: '2. Vai trò của MidHealth',
-        paragraphs: ['MidHealth cung cấp hạ tầng tra cứu, đặt lịch, thanh toán và trao đổi thông tin. Hợp đồng khám chữa bệnh, chất lượng chuyên môn, giá cuối cùng và quyết định điều trị thuộc bác sĩ hoặc cơ sở y tế cung cấp dịch vụ.'],
+        paragraphs: ['Website MidHealth cung cấp thông tin và tiếp nhận lịch hẹn trực tiếp cho phòng khám. Phòng khám tiếp nhận người bệnh, công bố chi phí và chịu trách nhiệm về dịch vụ do mình cung cấp.'],
       },
       {
         title: '3. Tài khoản và tính chính xác',
@@ -143,19 +144,19 @@ const PAGE_CONTENT = {
       },
       {
         title: '4. Đặt lịch, giá và thanh toán',
-        paragraphs: ['Thông tin lịch, giá và phạm vi dịch vụ được hiển thị trước bước xác nhận. Chi phí có thể thay đổi nếu bác sĩ chỉ định thêm dịch vụ sau khi thăm khám; khoản phát sinh phải được cơ sở y tế thông báo.'],
+        paragraphs: ['Thông tin lịch, giá và phạm vi dịch vụ được hiển thị trước bước xác nhận. Chi phí có thể thay đổi nếu bác sĩ chỉ định thêm dịch vụ sau khi thăm khám; khoản phát sinh phải được phòng khám thông báo.'],
       },
       {
         title: '5. Hành vi bị cấm',
         bullets: [
           'Can thiệp hệ thống, dò quét trái phép, phát tán mã độc hoặc vượt quyền truy cập.',
           'Thu thập dữ liệu người dùng khác, đăng nội dung sai lệch hoặc xâm phạm quyền riêng tư.',
-          'Dùng nền tảng cho cấp cứu, hành vi trái pháp luật hoặc gây cản trở hoạt động y tế.',
+          'Dùng website cho cấp cứu, hành vi trái pháp luật hoặc gây cản trở hoạt động y tế.',
         ],
       },
       {
         title: '6. Tạm ngừng và thay đổi',
-        paragraphs: ['MidHealth có thể giới hạn tài khoản khi phát hiện rủi ro bảo mật, gian lận hoặc vi phạm điều khoản. Thay đổi quan trọng sẽ được thông báo trên nền tảng trước khi áp dụng khi phù hợp.'],
+        paragraphs: ['MidHealth có thể giới hạn tài khoản khi phát hiện rủi ro bảo mật, gian lận hoặc vi phạm điều khoản. Thay đổi quan trọng sẽ được thông báo trên website trước khi áp dụng khi phù hợp.'],
       },
       {
         title: '7. Luật áp dụng và tranh chấp',
@@ -171,7 +172,7 @@ const PAGE_CONTENT = {
         title: '1. Dữ liệu có thể được thu thập',
         bullets: [
           'Thông tin tài khoản và liên hệ: họ tên, email, số điện thoại, ngày sinh.',
-          'Thông tin đặt khám: cơ sở y tế, bác sĩ, chuyên khoa, thời gian và trạng thái lịch.',
+          'Thông tin đặt khám: bác sĩ, chuyên khoa, thời gian và trạng thái lịch.',
           'Dữ liệu sức khỏe do người dùng chủ động cung cấp; đây có thể là dữ liệu cá nhân nhạy cảm.',
           'Dữ liệu kỹ thuật và an toàn: địa chỉ IP, thiết bị, thời điểm đăng nhập, nhật ký thao tác và sự kiện bảo mật.',
           'Thông tin giao dịch cần thiết; MidHealth không nên lưu số thẻ đầy đủ hoặc mã bảo mật thẻ.',
@@ -193,7 +194,7 @@ const PAGE_CONTENT = {
       },
       {
         title: '4. Chia sẻ dữ liệu',
-        paragraphs: ['Dữ liệu có thể được chuyển cho bác sĩ/cơ sở y tế được chọn, nhà cung cấp xác thực, lưu trữ, gửi thông báo, thanh toán hoặc cơ quan có thẩm quyền khi có căn cứ. Đối tác chỉ nhận phạm vi cần thiết và phải có nghĩa vụ bảo mật phù hợp.'],
+        paragraphs: ['Dữ liệu có thể được chuyển cho bác sĩ và nhân viên tiếp nhận của phòng khám, nhà cung cấp xác thực, lưu trữ, gửi thông báo, thanh toán hoặc cơ quan có thẩm quyền khi có căn cứ. Đối tác chỉ nhận phạm vi cần thiết và phải có nghĩa vụ bảo mật phù hợp.'],
       },
       {
         title: '5. Thời hạn lưu trữ và bảo vệ',
@@ -232,7 +233,7 @@ const PAGE_CONTENT = {
       },
       {
         title: 'Quản lý lựa chọn',
-        paragraphs: ['Bạn có thể xóa hoặc chặn cookie trong cài đặt trình duyệt. Khi bổ sung cookie không thiết yếu, nền tảng phải có bảng lựa chọn cho phép chấp nhận, từ chối và thay đổi quyết định.'],
+        paragraphs: ['Bạn có thể xóa hoặc chặn cookie trong cài đặt trình duyệt. Khi bổ sung cookie không thiết yếu, website phải có bảng lựa chọn cho phép chấp nhận, từ chối và thay đổi quyết định.'],
       },
     ],
   },
@@ -255,7 +256,7 @@ const PAGE_CONTENT = {
       {
         title: 'Trường hợp xem xét hoàn tiền',
         bullets: [
-          'Cơ sở y tế hủy lịch và không có lịch thay thế được người bệnh chấp thuận.',
+          'Phòng khám hủy lịch và không có lịch thay thế được người bệnh chấp thuận.',
           'Giao dịch bị ghi nhận trùng hoặc đã trừ tiền nhưng hệ thống xác nhận thất bại.',
           'Người bệnh hủy trong thời hạn được hoàn theo điều kiện hiển thị lúc đặt.',
         ],
@@ -280,7 +281,7 @@ const PAGE_CONTENT = {
       },
       {
         title: 'Bước 2. Xác nhận và phân loại',
-        paragraphs: ['Bộ phận hỗ trợ xác nhận đã tiếp nhận, kiểm tra danh tính ở mức cần thiết và chuyển yêu cầu đến nhóm tài khoản, thanh toán, dữ liệu hoặc cơ sở y tế liên quan.'],
+        paragraphs: ['Bộ phận hỗ trợ xác nhận đã tiếp nhận, kiểm tra danh tính ở mức cần thiết và chuyển yêu cầu đến nhóm tài khoản, thanh toán, dữ liệu hoặc bộ phận phụ trách của phòng khám.'],
       },
       {
         title: 'Bước 3. Đối chiếu và phản hồi',
@@ -298,15 +299,15 @@ const PAGE_CONTENT = {
   },
   'mien-tru-trach-nhiem-y-khoa': {
     title: 'Miễn trừ trách nhiệm y khoa',
-    lead: 'MidHealth hỗ trợ đặt lịch và cung cấp nội dung tham khảo, không thay thế cơ sở khám chữa bệnh.',
+    lead: 'Website của phòng khám MidHealth hỗ trợ đặt lịch và cung cấp nội dung tham khảo trước và sau khi đi khám.',
     sections: [
       {
         title: 'Không phải chẩn đoán hoặc đơn thuốc',
-        paragraphs: ['Bài viết, kết quả tìm kiếm và phản hồi tự động không tạo quan hệ bác sĩ - người bệnh, không phải chẩn đoán, đơn thuốc hoặc chỉ định điều trị. Không tự ý dùng hoặc ngừng thuốc dựa trên nội dung nền tảng.'],
+        paragraphs: ['Bài viết, kết quả tìm kiếm và phản hồi tự động không tạo quan hệ bác sĩ - người bệnh, không phải chẩn đoán, đơn thuốc hoặc chỉ định điều trị. Không tự ý dùng hoặc ngừng thuốc dựa trên nội dung website.'],
       },
       {
         title: 'Thông tin bác sĩ và lịch khám',
-        paragraphs: ['Thông tin chuyên môn phải được đối chiếu từ hồ sơ do bác sĩ/cơ sở y tế cung cấp. Lịch và giá có thể thay đổi; thông tin xác nhận cuối cùng thuộc cơ sở cung cấp dịch vụ.'],
+        paragraphs: ['Thông tin chuyên môn phải được đối chiếu từ hồ sơ do bác sĩ/phòng khám cung cấp. Lịch và giá có thể thay đổi; thông tin xác nhận cuối cùng thuộc phòng khám.'],
       },
       {
         title: 'Tình trạng khẩn cấp',
@@ -322,10 +323,11 @@ const PAGE_CONTENT = {
 };
 
 function TrangThongTin({ slug, onNavigate, onBackHome }) {
+  const clinic = useClinic();
   const page = PAGE_CONTENT[slug] || PAGE_CONTENT['gioi-thieu'];
 
   return (
-    <div className="public-info-page">
+    <div className={`public-info-page${slug === 'gioi-thieu' ? ' public-info-about' : ''}`}>
       <div className="public-info-hero">
         <button type="button" onClick={onBackHome}>← Trang chủ</button>
         <p>TRUNG TÂM THÔNG TIN MIDHEALTH</p>
@@ -353,6 +355,7 @@ function TrangThongTin({ slug, onNavigate, onBackHome }) {
         </aside>
 
         <article className="public-info-content">
+          {(slug === 'gioi-thieu' || slug === 'lien-he') && <><p>{clinic.intro}</p><ClinicContact /></>}
           {page.sections.map((section) => (
             <section className={section.tone ? `info-section info-section-${section.tone}` : 'info-section'} key={section.title}>
               <h2>{section.title}</h2>
