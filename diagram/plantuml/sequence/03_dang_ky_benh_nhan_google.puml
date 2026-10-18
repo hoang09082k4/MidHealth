@@ -1,0 +1,30 @@
+@startuml
+title Đăng ký bệnh nhân lần đầu bằng Google
+autonumber
+skinparam ParticipantFontSize 10
+actor "Khách truy cập" as Guest
+boundary "Giao diện đăng ký\nD:\MidHealth\frontend\src\components\xac_thuc\dang_nhap_dang_ky\nD:\MidHealth\frontend\src\lib\appointments" as UI
+participant "Firebase Authentication" as Firebase
+control "MidHealth API\nD:\MidHealth\backend\src\server\nD:\MidHealth\backend\src\profile_service" as API
+database "CSDL MidHealth — Supabase PostgreSQL\nD:\MidHealth\supabase\schema\nschema public\npublic.app_users\npublic.patient_profiles" as DB
+
+Guest -> UI: Chọn đăng ký bằng Google
+UI -> Firebase: OAuth Google
+Firebase --> UI: Firebase user, email đã xác minh
+UI --> Guest: Yêu cầu tạo mật khẩu và hồ sơ lần đầu
+Guest -> UI: Nhập mật khẩu và thông tin hồ sơ
+UI -> Firebase: updatePassword
+Firebase --> UI: Mật khẩu đã tạo
+UI -> Firebase: Lấy ID token
+Firebase --> UI: ID token
+UI -> API: GET /api/auth/me?portal=patient&allowIncomplete=1
+API -> Firebase: verifyIdToken
+Firebase --> API: UID, email đã xác minh
+API -> DB: UPSERT public.app_users (role=patient)
+DB --> API: Tài khoản patient được nhận diện
+UI -> API: POST /api/patient/account-profile
+API -> DB: UPSERT public.patient_profiles
+DB --> API: Hồ sơ được liên kết
+API --> UI: Đăng ký hoàn tất
+UI --> Guest: Mở cổng bệnh nhân
+@enduml

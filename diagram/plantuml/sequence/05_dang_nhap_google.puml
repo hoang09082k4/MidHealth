@@ -1,0 +1,38 @@
+@startuml
+title Đăng nhập và kiểm tra cổng bệnh nhân bằng Google
+autonumber
+skinparam ParticipantFontSize 10
+actor "Người dùng" as User
+boundary "Giao diện đăng nhập\nD:\MidHealth\frontend\src\components\xac_thuc\dang_nhap_dang_ky" as UI
+participant "Firebase Authentication" as Firebase
+control "MidHealth API\nD:\MidHealth\backend\src\server\nD:\MidHealth\backend\src\authorization_service\nD:\MidHealth\backend\src\account_service" as API
+database "CSDL MidHealth — Supabase PostgreSQL\nD:\MidHealth\supabase\schema\nschema public\npublic.app_users\npublic.patient_profiles" as DB
+
+User -> UI: Chọn đăng nhập Google
+UI -> Firebase: OAuth Google
+Firebase --> UI: Firebase user và ID token
+UI -> API: POST /api/auth/google (portal=account)
+API -> Firebase: verifyIdToken
+Firebase --> API: UID, email hợp lệ / token lỗi
+alt Token không hợp lệ
+  API --> UI: 401 - token không hợp lệ
+  UI --> User: Hiển thị lỗi
+else Token hợp lệ
+  API -> DB: SELECT/UPSERT public.app_users (create patient only)
+  DB --> API: Vai trò / từ chối tài khoản nội bộ
+  alt Role là bệnh nhân
+    UI -> API: GET /api/auth/me?portal=patient&optional=1
+    API -> DB: SELECT public.app_users, public.patient_profiles
+    DB --> API: Hồ sơ đầy đủ / thiếu hồ sơ
+    alt Hồ sơ đầy đủ
+      API --> UI: allowed = true
+      UI --> User: Mở cổng bệnh nhân
+    else Hồ sơ chưa hoàn tất
+      API --> UI: PATIENT_PROFILE_INCOMPLETE
+      UI --> User: Mở bước bổ sung hồ sơ
+    end
+  else Role nội bộ
+    UI --> User: Mở workspace theo role
+  end
+end
+@enduml

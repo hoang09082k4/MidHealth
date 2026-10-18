@@ -1,11 +1,8 @@
-import crypto from 'node:crypto';
 import { config } from './config.js';
 import { hasSupabaseConfig, supabase } from './supabase.js';
+import { isFirebaseAdminConfigured, verifyFirebaseIdToken } from './firebase_admin_auth.js';
 
 const FIREBASE_AUTH_BASE_URL = 'https://identitytoolkit.googleapis.com/v1';
-const FIREBASE_CERTS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
-const DEFAULT_FIREBASE_PROJECT_ID = 'midhealth-1c1b9';
-let firebaseCertsCache = { certs: null, expiresAt: 0 };
 
 export const hasFirebaseConfig = Boolean(config.firebaseApiKey);
 
@@ -25,6 +22,7 @@ async function firebaseRequest(path, payload) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10000),
     });
     data = await response.json();
   } catch {
@@ -47,6 +45,7 @@ async function firebaseRequest(path, payload) {
 }
 
 function mapFirebaseError(code = '') {
+  if (code.includes('INVALID_LOGIN_CREDENTIALS')) return 'Email hoặc mật khẩu không đúng. Vui lòng kiểm tra thông tin tài khoản được cấp.';
   if (code.includes('MISSING_PASSWORD')) return 'Vui lòng nhập mật khẩu.';
   if (code.includes('USER_NOT_FOUND')) return 'Không tìm thấy tài khoản Firebase.';
   if (code.includes('TOKEN_EXPIRED')) return 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
@@ -98,11 +97,19 @@ export function loginWithEmail({ email, password }) {
   });
 }
 
+export function updateFirebaseDisplayName(idToken, displayName) {
+  return firebaseRequest('accounts:update', { idToken, displayName, returnSecureToken: true });
+}
+
 export function sendPasswordResetEmail(email) {
   return firebaseRequest('accounts:sendOobCode', {
     requestType: 'PASSWORD_RESET',
     email,
   });
+}
+
+export function deleteNewFirebaseAccount(idToken) {
+  return firebaseRequest('accounts:delete', { idToken });
 }
 
 function normalizePhone(value = '') {
@@ -163,83 +170,31 @@ export function lookupAccount(idToken) {
   return firebaseRequest('accounts:lookup', { idToken });
 }
 
-export async function verifyIdToken(idToken) {
+export async function verifyIdToken(idToken, lookup = lookupAccount, verifyAdminToken = verifyFirebaseIdToken) {
   if (!idToken) return null;
 
-  const result = await lookupAccount(idToken);
-  if (!result.ok) return verifyIdTokenWithPublicCerts(idToken);
-  return result.data.users?.[0] || null;
-}
-
-function decodeBase64Url(value = '') {
-  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
-  return Buffer.from(padded, 'base64');
-}
-
-function parseJwtPart(value = '') {
-  return JSON.parse(decodeBase64Url(value).toString('utf8'));
-}
-
-function parseCacheMaxAge(cacheControl = '') {
-  const match = cacheControl.match(/max-age=(\d+)/i);
-  return match ? Number(match[1]) * 1000 : 60 * 60 * 1000;
-}
-
-function allowedFirebaseProjectIds() {
-  return Array.from(new Set([config.firebaseProjectId, DEFAULT_FIREBASE_PROJECT_ID].filter(Boolean)));
-}
-
-async function getFirebaseCerts() {
-  if (firebaseCertsCache.certs && Date.now() < firebaseCertsCache.expiresAt) return firebaseCertsCache.certs;
-
-  const response = await fetch(FIREBASE_CERTS_URL);
-  if (!response.ok) throw new Error('Unable to fetch Firebase public certificates.');
-
-  const certs = await response.json();
-  firebaseCertsCache = {
-    certs,
-    expiresAt: Date.now() + parseCacheMaxAge(response.headers.get('cache-control') || ''),
-  };
-  return certs;
-}
-
-async function verifyIdTokenWithPublicCerts(idToken) {
-  try {
-    const parts = String(idToken).split('.');
-    if (parts.length !== 3) return null;
-
-    const [encodedHeader, encodedPayload, encodedSignature] = parts;
-    const header = parseJwtPart(encodedHeader);
-    const payload = parseJwtPart(encodedPayload);
-    const projectIds = allowedFirebaseProjectIds();
-
-    if (header.alg !== 'RS256' || !header.kid) return null;
-    if (!projectIds.includes(payload.aud)) return null;
-    if (payload.iss !== `https://securetoken.google.com/${payload.aud}`) return null;
-    if (!payload.sub || typeof payload.sub !== 'string') return null;
-    if (payload.exp * 1000 <= Date.now()) return null;
-
-    const certs = await getFirebaseCerts();
-    const cert = certs[header.kid];
-    if (!cert) return null;
-
-    const verifier = crypto.createVerify('RSA-SHA256');
-    verifier.update(`${encodedHeader}.${encodedPayload}`);
-    verifier.end();
-
-    const signature = decodeBase64Url(encodedSignature);
-    if (!verifier.verify(cert, signature)) return null;
-
-    return {
-      localId: payload.sub,
-      uid: payload.sub,
-      email: payload.email,
-      displayName: payload.name || payload.email,
-      emailVerified: Boolean(payload.email_verified),
-      providerUserInfo: payload.firebase?.sign_in_provider ? [{ providerId: payload.firebase.sign_in_provider }] : [],
-    };
-  } catch {
-    return null;
+  if (lookup === lookupAccount && isFirebaseAdminConfigured()) {
+    const decoded = await verifyAdminToken(idToken, true);
+    if (decoded?.uid) {
+      const providerId = decoded.firebase?.sign_in_provider;
+      return {
+        ...decoded,
+        localId: decoded.uid,
+        displayName: decoded.name || '',
+        photoUrl: decoded.picture || '',
+        emailVerified: Boolean(decoded.email_verified),
+        providerUserInfo: providerId
+          ? [{ providerId: providerId === 'password' ? 'password.com' : providerId }]
+          : [],
+      };
+    }
+    // Admin verification can fail when the runtime cannot obtain Google OAuth
+    // credentials. Firebase Auth's lookup endpoint independently validates the
+    // ID token and reports disabled, expired, revoked, or otherwise invalid users.
   }
+
+  const result = await lookup(idToken);
+  if (!result.ok) return null;
+  const user = result.data?.users?.[0];
+  return user?.localId && !user.disabled ? user : null;
 }

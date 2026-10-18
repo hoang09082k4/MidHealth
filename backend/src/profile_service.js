@@ -1,12 +1,13 @@
-import { linkPatientProfileToAppUser, upsertAppUser } from './account_service.js';
+import { claimWalkInPatientProfile, linkPatientProfileToAppUser, upsertAppUser } from './account_service.js';
 import { hasSupabaseConfig, supabase } from './supabase.js';
+import { validateBookingPatient } from './booking_policy.js';
 
 function clean(value) {
   return typeof value === 'string' ? value.trim() : value;
 }
 
 function normalizeEmail(email = '') {
-  return clean(email).toLowerCase();
+  return typeof email === 'string' ? email.trim().toLowerCase() : '';
 }
 
 function mapGender(gender) {
@@ -15,11 +16,10 @@ function mapGender(gender) {
   return 'other';
 }
 
-async function findExistingPatientProfile({ firebaseUid, appUserId, email }) {
+async function findExistingPatientProfile({ firebaseUid, appUserId }) {
   const lookups = [
     ['firebase_uid', firebaseUid],
     ['app_user_id', appUserId],
-    ['email', email],
   ].filter(([, value]) => value);
 
   for (const [column, value] of lookups) {
@@ -38,12 +38,12 @@ async function findExistingPatientProfile({ firebaseUid, appUserId, email }) {
 
 export async function savePatientProfile(firebaseUser, payload = {}) {
   if (!hasSupabaseConfig) {
-    return { ok: true, skipped: true, data: null };
+    return { ok: false, status: 503, data: { message: 'Chưa kết nối cơ sở dữ liệu để lưu hồ sơ.' } };
   }
 
   const profile = payload.profile || {};
   const fullName = clean(profile.fullName || payload.fullName || firebaseUser.displayName);
-  const email = normalizeEmail(profile.email || payload.email || firebaseUser.email);
+  const email = normalizeEmail(firebaseUser.email);
   const phone = clean(profile.phone);
   const dateOfBirth = clean(profile.dateOfBirth);
 
@@ -54,16 +54,23 @@ export async function savePatientProfile(firebaseUser, payload = {}) {
       data: { message: 'Thiếu thông tin hồ sơ bắt buộc để lưu Supabase.' },
     };
   }
+  const validationError = validateBookingPatient({ fullName, phone, dateOfBirth, email });
+  if (validationError) return { ok: false, status: 400, data: { message: validationError } };
 
   const accountResult = await upsertAppUser(firebaseUser, {
     authProvider: payload.authProvider || 'password',
     fullName,
     email,
-    emailVerified: true,
+    emailVerified: Boolean(firebaseUser.emailVerified || firebaseUser.emailVerifiedByOtp),
     markLogin: true,
-    allowPatientIdentityRelink: true,
   });
   if (!accountResult.ok) return accountResult;
+  const emailVerified = Boolean(firebaseUser.emailVerified || firebaseUser.emailVerifiedByOtp || accountResult.data?.email_verified);
+
+  const claimedWalkIn = await claimWalkInPatientProfile(firebaseUser, accountResult.data?.id, {
+    fullName, phone, dateOfBirth, gender: mapGender(profile.gender), emailVerified,
+  });
+  if (!claimedWalkIn.ok) return claimedWalkIn;
 
   const profileRow = {
     firebase_uid: firebaseUser.localId,
@@ -84,11 +91,13 @@ export async function savePatientProfile(firebaseUser, payload = {}) {
     referral_code: clean(profile.referralCode) || null,
     role: 'patient',
     status: 'active',
-    email_verified: true,
+    email_verified: emailVerified,
     last_login_at: new Date().toISOString(),
   };
 
-  const { data: existingProfile, error: lookupError } = await findExistingPatientProfile({
+  let { data: existingProfile, error: lookupError } = claimedWalkIn.data?.id
+    ? { data: claimedWalkIn.data, error: null }
+    : await findExistingPatientProfile({
     firebaseUid: firebaseUser.localId,
     appUserId: accountResult.data?.id,
     email,
@@ -96,6 +105,22 @@ export async function savePatientProfile(firebaseUser, payload = {}) {
 
   if (lookupError) {
     return { ok: false, status: 500, data: { message: lookupError.message } };
+  }
+
+  if (!existingProfile) {
+    const { data: emailOwner, error: emailLookupError } = await supabase
+      .from('patient_profiles')
+      .select('id, firebase_uid')
+      .ilike('email', email)
+      .maybeSingle();
+    if (emailLookupError) return { ok: false, status: 500, data: { message: emailLookupError.message } };
+    if (emailOwner?.firebase_uid === firebaseUser.localId) {
+      existingProfile = emailOwner;
+    } else if (emailOwner) return {
+      ok: false,
+      status: 409,
+      data: { message: 'Email này đã có hồ sơ bệnh nhân. Vui lòng đăng nhập tài khoản cũ hoặc liên hệ quản trị viên.' },
+    };
   }
 
   const { data, error } = existingProfile?.id
@@ -112,7 +137,12 @@ export async function savePatientProfile(firebaseUser, payload = {}) {
       .single();
 
   if (error) {
-    return { ok: false, status: 500, data: { message: error.message } };
+    const emailConflict = error.code === '23505' && error.message?.includes('patient_profiles_email_lower_unique_idx');
+    return { ok: false, status: emailConflict ? 409 : 500, data: {
+      message: emailConflict
+        ? 'Email này đã có hồ sơ bệnh nhân. Vui lòng đăng nhập tài khoản cũ hoặc liên hệ quản trị viên.'
+        : error.message,
+    } };
   }
 
   await linkPatientProfileToAppUser(firebaseUser.localId, accountResult.data?.id);
@@ -121,10 +151,7 @@ export async function savePatientProfile(firebaseUser, payload = {}) {
 }
 
 export async function hasCompletePatientProfile(firebaseUser = {}) {
-  // In the Vercel fallback mode there is no persistent profile table. Saving a
-  // profile is intentionally skipped, so the matching access check must not
-  // reject every otherwise valid Firebase session.
-  if (!hasSupabaseConfig) return true;
+  if (!hasSupabaseConfig) return false;
   if (!firebaseUser.localId) return false;
 
   const { data, error } = await supabase
@@ -144,7 +171,7 @@ export async function hasCompletePatientProfile(firebaseUser = {}) {
 
 export async function ensureProfileTableReady() {
   if (!hasSupabaseConfig) {
-    return { ok: true, skipped: true };
+    return { ok: false, status: 503, data: { message: 'Chưa kết nối cơ sở dữ liệu để lưu hồ sơ.' } };
   }
 
   const { error } = await supabase

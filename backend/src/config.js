@@ -48,10 +48,33 @@ export function pickEnv(...names) {
   return names.map((name) => process.env[name]).find((value) => String(value || '').trim()) || '';
 }
 
+function firebaseAdminCredentials() {
+  const serviceAccountFile = pickEnv('GOOGLE_APPLICATION_CREDENTIALS');
+  const serviceAccountJson = pickEnv('FIREBASE_SERVICE_ACCOUNT_JSON');
+  const candidates = [serviceAccountJson];
+  if (serviceAccountFile) {
+    try {
+      candidates.push(fs.readFileSync(path.resolve(process.cwd(), serviceAccountFile), 'utf8'));
+    } catch { /* Fall back to the other supported credential sources. */ }
+  }
+  for (const json of candidates) {
+    if (!json) continue;
+    try {
+      const parsed = JSON.parse(json);
+      if (parsed.client_email && parsed.private_key) return { clientEmail: parsed.client_email, privateKey: parsed.private_key.replace(/\\n/g, '\n'), projectId: parsed.project_id || '' };
+    } catch { /* Fall back to the next supported credential source. */ }
+  }
+  const clientEmail = pickEnv('FIREBASE_CLIENT_EMAIL');
+  const privateKey = pickEnv('FIREBASE_PRIVATE_KEY').replace(/\\n/g, '\n');
+  return clientEmail && privateKey ? { clientEmail, privateKey, projectId: '' } : null;
+}
+
 export const config = {
   port: process.env.PORT || 4000,
+  trustProxy: process.env.TRUST_PROXY === 'true',
   firebaseApiKey: pickEnv('FIREBASE_API_KEY', 'VITE_FIREBASE_API_KEY') || defaultFirebaseApiKey,
   firebaseProjectId: pickEnv('FIREBASE_PROJECT_ID', 'VITE_FIREBASE_PROJECT_ID') || defaultFirebaseProjectId,
+  firebaseAdminCredentials: firebaseAdminCredentials(),
   supabaseUrl: pickEnv('SUPABASE_URL', 'VITE_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL'),
   supabaseServiceRoleKey: pickEnv(
     'SUPABASE_SERVICE_ROLE_KEY',

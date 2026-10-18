@@ -1,0 +1,51 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle stickman
+skinparam shadowing false
+skinparam usecase {
+  BackgroundColor #F8FBFF
+  BorderColor #2878B8
+  ArrowColor #526579
+}
+title Use case đăng ký bệnh nhân và xác thực tài khoản
+
+actor "Người dùng cổng bệnh nhân" as Patient
+actor "Tài khoản nội bộ\n(nhân viên, bác sĩ,\ntrưởng khoa, Admin)" as InternalUser
+actor "Dịch vụ email OTP" as Email
+actor "Firebase Authentication" as Firebase
+
+rectangle "MidHealth - Xác thực và truy cập" {
+  usecase "Đăng ký tài khoản\nbệnh nhân bằng email" as RegisterEmail
+  usecase "Xác minh email\nbằng mã OTP" as VerifyOTP
+  usecase "Tạo mật khẩu và\nhoàn tất hồ sơ bệnh nhân" as CompleteRegistration
+  usecase "Đăng ký / đăng nhập\nbệnh nhân bằng Google" as GooglePatient
+  usecase "Hoàn tất hồ sơ và mật khẩu\nkhi đăng ký Google lần đầu" as CompleteGoogleProfile
+  usecase "Đăng nhập email\nvà mật khẩu" as Login
+  usecase "Kiểm tra vai trò và\ntrạng thái tài khoản" as CheckAccess
+  usecase "Đặt lại mật khẩu\nbệnh nhân" as ResetPassword
+  usecase "Đăng xuất" as Logout
+}
+
+Patient --> RegisterEmail
+Patient --> GooglePatient
+Patient --> ResetPassword
+Patient --> Login
+Patient --> Logout
+InternalUser --> Login
+InternalUser --> Logout
+RegisterEmail .> VerifyOTP : <<include>>
+RegisterEmail .> CompleteRegistration : <<include>>
+VerifyOTP --> Email
+Login .> CheckAccess : <<include>>
+GooglePatient .> CheckAccess : <<include>>
+CompleteGoogleProfile .> GooglePatient : <<extend>>
+Login --> Firebase
+GooglePatient --> Firebase
+note right of InternalUser
+  Tài khoản nhân viên, bác sĩ,
+  trưởng khoa do Admin cấp;
+  không có đăng ký công khai.
+end note
+@enduml
+

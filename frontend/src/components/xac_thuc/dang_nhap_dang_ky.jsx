@@ -7,7 +7,7 @@ import {
   updateProfile,
 } from 'firebase/auth';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { savePatientProfile } from '../../lib/appointments';
+import { saveRegistrationProfile } from '../../lib/appointments';
 import {
   firebaseAuth,
   getGoogleRedirectResult,
@@ -189,6 +189,9 @@ async function goi_api(path, payload) {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    if (path === '/api/auth/login' && /INVALID_LOGIN_CREDENTIALS|INVALID_PASSWORD|EMAIL_NOT_FOUND|USER_NOT_FOUND/i.test(`${data.code || ''} ${data.message || ''}`)) {
+      throw new Error('Email hoặc mật khẩu không đúng. Vui lòng thử lại.');
+    }
     throw new Error(data.message || 'Không thể xử lý yêu cầu.');
   }
 
@@ -256,7 +259,12 @@ function lay_thong_bao_loi(error) {
   if (code.includes('auth/operation-not-allowed')) return 'Firebase chưa bật phương thức đăng nhập Email/Password.';
   if (code.includes('auth/network-request-failed')) return 'Không kết nối được Firebase. Vui lòng kiểm tra mạng hoặc cấu hình Firebase.';
 
-  if (code.includes('auth/invalid-credential')) return 'Email hoặc mật khẩu không đúng.';
+  if (['auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found'].some((item) => code.includes(item))) {
+    return 'Email hoặc mật khẩu không đúng. Vui lòng thử lại.';
+  }
+  if (/INVALID_LOGIN_CREDENTIALS|INVALID_PASSWORD|EMAIL_NOT_FOUND|USER_NOT_FOUND/i.test(error?.message || '')) {
+    return 'Email hoặc mật khẩu không đúng. Vui lòng thử lại.';
+  }
   if (code.includes('auth/email-already-in-use')) return 'Email này đã được đăng ký.';
   if (code.includes('auth/weak-password')) return 'Mật khẩu cần tối thiểu 6 ký tự.';
   if (code.includes('auth/invalid-email')) return 'Email không hợp lệ.';
@@ -294,10 +302,13 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
   const profileFormRef = useRef(null);
   const cardVideoRef = useRef(null);
   const googleRedirectHandledRef = useRef(false);
+  const submitInFlightRef = useRef(false);
   const [mode, setMode] = useState('signin');
   const [signupStep, setSignupStep] = useState(1);
   const [otpSent, setOtpSent] = useState(false);
   const [otpToken, setOtpToken] = useState('');
+  const [resendAvailableAt, setResendAvailableAt] = useState(0);
+  const [resendSeconds, setResendSeconds] = useState(0);
   const [googleSignupUser, setGoogleSignupUser] = useState(null);
   const [signupAuthUser, setSignupAuthUser] = useState(null);
   const [form, setForm] = useState({
@@ -314,14 +325,20 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
   const [cardUpload, setCardUpload] = useState({ loading: false, type: '', fileName: '', previewUrl: '', result: null, error: '' });
   const [autofilledFields, setAutofilledFields] = useState([]);
   const [cardCamera, setCardCamera] = useState({ active: false, type: '', status: '', quality: null });
+  useEffect(() => {
+    if (!resendAvailableAt) {
+      setResendSeconds(0);
+      return undefined;
+    }
+    const updateCountdown = () => setResendSeconds(Math.max(0, Math.ceil((resendAvailableAt - Date.now()) / 1000)));
+    updateCountdown();
+    const timer = window.setInterval(updateCountdown, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendAvailableAt]);
   const { addressData, ethnicGroups, occupations } = useReferenceData();
   const selectedProvince = useMemo(
-    () => addressData.find((item) => item.name === form.profile.province),
+    () => addressData.find((item) => item.name === form.profile.province || item.aliases?.includes(form.profile.province)),
     [addressData, form.profile.province],
-  );
-  const selectedDistrict = useMemo(
-    () => selectedProvince?.districts.find((item) => item.name === form.profile.district),
-    [selectedProvince, form.profile.district],
   );
 
   useEffect(() => {
@@ -336,6 +353,24 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
   }, []);
 
   useEffect(() => {
+    if (initialMode === 'complete-profile') {
+      const currentUser = firebaseAuth.currentUser;
+      setMode('signup');
+      setSignupStep(3);
+      setSignupAuthUser(currentUser);
+      setGoogleSignupUser(null);
+      setForm((current) => ({
+        ...current,
+        email: currentUser?.email || current.email,
+        profile: {
+          ...current.profile,
+          fullName: current.profile.fullName || currentUser?.displayName || '',
+          email: currentUser?.email || current.profile.email,
+        },
+      }));
+      setMessage('Tài khoản đã được tạo. Vui lòng hoàn tất lưu hồ sơ đăng ký.');
+      return;
+    }
     if (initialMode === 'signup-entry') {
       mo_form_dang_ky();
       return;
@@ -392,6 +427,7 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
     if (field === 'email') {
       setOtpSent(false);
       setOtpToken('');
+      setResendAvailableAt(0);
       setGoogleSignupUser(null);
       setSignupAuthUser(null);
       setSignupStep(1);
@@ -599,6 +635,7 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
     setSignupStep(1);
     setOtpSent(false);
     setOtpToken('');
+    setResendAvailableAt(0);
     setGoogleSignupUser(null);
     setSignupAuthUser(null);
     setMessage('');
@@ -616,6 +653,7 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
     setMode('signup');
     setSignupStep(1);
     setOtpSent(true);
+    setResendAvailableAt(Date.now() + 60000);
     setOtpToken('');
     setForm((current) => ({ ...current, otp: '' }));
     setMessage('Đã gửi mã OTP đến Gmail. Vui lòng nhập mã để tiếp tục.');
@@ -662,7 +700,7 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
 
     await updatePassword(googleSignupUser, form.password);
     await xac_minh_cong_benh_nhan(googleSignupUser, { allowIncomplete: true });
-    await savePatientProfile(googleSignupUser, profile);
+    await saveRegistrationProfile(googleSignupUser, profile);
     await xac_minh_cong_benh_nhan(googleSignupUser);
     return googleSignupUser;
   };
@@ -716,11 +754,11 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
       await updateProfile(authUser, { displayName: form.profile.fullName });
     }
     await xac_minh_cong_benh_nhan(authUser, { allowIncomplete: true });
-    await savePatientProfile(authUser, {
+    await saveRegistrationProfile(authUser, {
       ...form.profile,
       email: form.email.trim(),
       fullName: form.profile.fullName,
-    });
+    }, otpToken);
     await xac_minh_cong_benh_nhan(authUser);
     return authUser;
   };
@@ -760,21 +798,23 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
     }
 
     const idToken = await credential.user.getIdToken();
-    await goi_api('/api/auth/google', { idToken, portal: 'patient' });
-    try {
-      await xac_minh_cong_benh_nhan(credential.user);
-    } catch (error) {
-      if (la_loi_ho_so_chua_hoan_tat(error)) {
-        chuyen_sang_hoan_tat_ho_so_google(
-          credential.user,
-          'Tài khoản Google đã đăng nhập. Vui lòng hoàn tất hồ sơ để sử dụng MidHealth.',
-        );
-        return;
+    const account = await goi_api('/api/auth/google', { idToken, portal: 'account' });
+    const role = account?.appUser?.role;
+    if (role === 'patient') {
+      try {
+        await xac_minh_cong_benh_nhan(credential.user);
+      } catch (error) {
+        if (la_loi_ho_so_chua_hoan_tat(error)) {
+          chuyen_sang_hoan_tat_ho_so_google(
+            credential.user,
+            'Tài khoản Google đã đăng nhập. Vui lòng hoàn tất hồ sơ để sử dụng MidHealth.',
+          );
+          return;
+        }
+        throw error;
       }
-      throw error;
     }
-    onAuthSuccess(credential.user);
-    onBack();
+    onAuthSuccess(credential.user, role);
   };
 
   const dang_nhap_google = async () => {
@@ -811,13 +851,13 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
       throw new Error('Vui lòng kiểm tra lại email và mật khẩu.');
     }
 
-    await goi_api('/api/auth/login', {
+    const account = await goi_api('/api/auth/login', {
       email: form.email.trim(),
       password: form.password,
-      portal: 'patient',
+      portal: 'account',
     });
     const credential = await signInWithEmailAndPassword(firebaseAuth, form.email.trim(), form.password);
-    return credential.user;
+    return { user: credential.user, role: account?.appUser?.role };
   };
 
   const handleOtpChange = (index, value) => {
@@ -834,20 +874,38 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
     setMessage('');
     setIsLoading(true);
 
     try {
       if (mode === 'signin') {
-        const authUser = await dang_nhap_email();
+        const { user: authUser, role } = await dang_nhap_email();
         try {
-          await xac_minh_cong_benh_nhan(authUser);
+          if (role === 'patient') await xac_minh_cong_benh_nhan(authUser);
         } catch (error) {
+          if (la_loi_ho_so_chua_hoan_tat(error)) {
+            setSignupAuthUser(authUser);
+            setGoogleSignupUser(null);
+            setMode('signup');
+            setSignupStep(3);
+            setForm((current) => ({
+              ...current,
+              email: authUser.email || current.email,
+              profile: {
+                ...current.profile,
+                email: authUser.email || current.profile.email,
+                fullName: current.profile.fullName || authUser.displayName || '',
+              },
+            }));
+            setMessage('Tài khoản đã đăng nhập. Vui lòng hoàn tất hồ sơ để sử dụng MidHealth.');
+            return;
+          }
           await signOut(firebaseAuth);
           throw error;
         }
-        onAuthSuccess(authUser);
-        onBack();
+        onAuthSuccess(authUser, role);
         return;
       }
 
@@ -881,10 +939,10 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
         ? await hoan_tat_ho_so_google()
         : await hoan_tat_ho_so_email();
       onAuthSuccess(authUser);
-      onBack();
     } catch (error) {
       setMessage(lay_thong_bao_loi(error));
     } finally {
+      submitInFlightRef.current = false;
       setIsLoading(false);
     }
   };
@@ -984,7 +1042,7 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
             {!googleSignupUser && otpSent && (
               <div className="resend-otp">
                 Không nhận được mã OTP?
-                <button type="button" onClick={bat_dau_dang_ky} disabled={isLoading}>Thử lại</button>
+                <button type="button" onClick={bat_dau_dang_ky} disabled={isLoading || resendSeconds > 0}>{resendSeconds > 0 ? `Gửi lại mã sau ${resendSeconds} giây` : 'Thử lại'}</button>
               </div>
             )}
           </div>
@@ -1118,7 +1176,7 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
                 <label className={lop_tu_dong_dien('healthInsuranceNumber')}>Mã thẻ Bảo hiểm y tế<input value={form.profile.healthInsuranceNumber} onChange={(event) => cap_nhat_ho_so('healthInsuranceNumber', event.target.value)} placeholder="Mã số trên thẻ Bảo hiểm y tế" /></label>
                 <label className={fieldErrors['profile.province'] ? `${lop_tu_dong_dien('province')} has-field-error` : lop_tu_dong_dien('province')}>Tỉnh / Thành phố <span>*</span><select value={form.profile.province} onChange={(event) => cap_nhat_ho_so('province', event.target.value)}><option value="">Chọn tỉnh/thành phố của bạn</option>{addressData.map((province) => <option key={province.name}>{province.name}</option>)}</select>{fieldErrors['profile.province'] && <small className="field-error">{fieldErrors['profile.province']}</small>}</label>
                 <label className={lop_tu_dong_dien('district')}>Phường/Xã/Khu vực<select value={form.profile.district} onChange={(event) => cap_nhat_ho_so('district', event.target.value)}><option value="">Chọn phường/xã/khu vực</option>{(selectedProvince?.districts || []).map((district) => <option key={district.name}>{district.name}</option>)}</select></label>
-                <label className={lop_tu_dong_dien('ward')}>Tổ/Ấp/Đơn vị chi tiết<select value={form.profile.ward} onChange={(event) => cap_nhat_ho_so('ward', event.target.value)}><option value="">Chọn thông tin chi tiết</option>{(selectedDistrict?.wards || []).map((ward) => <option key={ward}>{ward}</option>)}</select></label>
+                <label className={lop_tu_dong_dien('ward')}>Tổ/Ấp/Đơn vị chi tiết<input value={form.profile.ward} onChange={(event) => cap_nhat_ho_so('ward', event.target.value)} placeholder="Nhập tổ, ấp hoặc khu vực (không bắt buộc)" /></label>
                 <label className={fieldErrors['profile.address'] ? `${lop_tu_dong_dien('address')} has-field-error` : lop_tu_dong_dien('address')}>Địa chỉ cụ thể <span>*</span><input value={form.profile.address} onChange={(event) => cap_nhat_ho_so('address', event.target.value)} placeholder="Số nhà, tên đường" />{fieldErrors['profile.address'] && <small className="field-error">{fieldErrors['profile.address']}</small>}</label>
                 <label>Mã giới thiệu<input value={form.profile.referralCode} onChange={(event) => cap_nhat_ho_so('referralCode', event.target.value)} placeholder="Mã của người giới thiệu" /></label>
                 <label>Nghề nghiệp<select value={form.profile.occupation} onChange={(event) => cap_nhat_ho_so('occupation', event.target.value)}><option value="">Chọn nghề nghiệp</option>{occupations.map((item) => <option key={item}>{item}</option>)}</select></label>
@@ -1146,8 +1204,8 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
             <div className="auth-bubble bubble-doctor">BS</div>
             <div className="auth-caption">
               Đặt khám <strong>DỄ DÀNG HƠN</strong><br />
-              trên website <b>MidHealth</b> với <strong>600+</strong> bác sĩ,<br />
-              <strong>100</strong> phòng khám, <strong>25</strong> bệnh viện
+              tại <b>MidHealth</b> với đội ngũ bác sĩ<br />
+              và lịch khám của phòng khám
             </div>
           </div>
         </div>
@@ -1207,8 +1265,8 @@ function DangNhapDangKy({ initialMode = 'signin', onBack, onAuthSuccess }) {
           <div className="auth-bubble bubble-doctor">BS</div>
           <div className="auth-caption">
             Đặt khám <strong>DỄ DÀNG HƠN</strong><br />
-            trên website <b>MidHealth</b> với <strong>600+</strong> bác sĩ,<br />
-            <strong>100</strong> phòng khám, <strong>25</strong> bệnh viện
+            tại <b>MidHealth</b> với đội ngũ bác sĩ<br />
+            và lịch khám của phòng khám
           </div>
         </div>
       </div>

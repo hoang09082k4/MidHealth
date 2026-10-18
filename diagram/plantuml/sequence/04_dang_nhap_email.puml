@@ -1,0 +1,31 @@
+@startuml
+title Đăng nhập bằng email và mật khẩu
+autonumber
+skinparam ParticipantFontSize 10
+actor "Người dùng" as User
+boundary "Giao diện đăng nhập\nD:\MidHealth\frontend\src\components\xac_thuc\dang_nhap_dang_ky" as UI
+control "MidHealth API\nD:\MidHealth\backend\src\server\nD:\MidHealth\backend\src\firebase_auth\nD:\MidHealth\backend\src\authorization_service\nD:\MidHealth\backend\src\account_service" as API
+participant "Firebase Authentication" as Firebase
+database "CSDL MidHealth — Supabase PostgreSQL\nD:\MidHealth\supabase\schema\nschema public\npublic.app_users" as DB
+
+User -> UI: Nhập email và mật khẩu
+UI -> API: POST /api/auth/login (portal=account)
+API -> Firebase: Xác thực thông tin đăng nhập
+Firebase --> API: UID hợp lệ / thông tin sai
+alt Sai thông tin
+  API --> UI: 401 - đăng nhập thất bại
+  UI --> User: Hiển thị lỗi
+else Xác thực thành công
+  API -> DB: SELECT public.app_users (role, status by UID)
+  DB --> API: Tài khoản / không tìm thấy
+  alt Tài khoản active
+    API --> UI: 200 - appUser và role
+    UI -> Firebase: signInWithEmailAndPassword
+    Firebase --> UI: Firebase user và ID token
+    UI --> User: Mở workspace theo role
+  else Sai portal hoặc bị khóa
+    API --> UI: 403 - không được phép
+    UI --> User: Báo lỗi quyền truy cập
+  end
+end
+@enduml

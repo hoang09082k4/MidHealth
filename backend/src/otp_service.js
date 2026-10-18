@@ -1,18 +1,16 @@
 import crypto from 'node:crypto';
 import nodemailer from 'nodemailer';
 import { config } from './config.js';
+import { hasSupabaseConfig, supabase } from './supabase.js';
 
-const otpStore = new Map();
-const verifiedOtpTokens = new Map();
 const OTP_LENGTH = 6;
-const MAX_ATTEMPTS = 5;
-const RESEND_COOLDOWN_MS = 60 * 1000;
 const VERIFIED_TOKEN_EXPIRES_SECONDS = 10 * 60;
 
 export const hasOtpConfig = Boolean(
   config.gmailUser
   && config.gmailAppPassword
   && config.jwtSecret,
+  // Verification state must survive serverless instance changes.
 );
 
 function base64Url(input) {
@@ -52,6 +50,7 @@ export function verifyOtpToken(token) {
   try {
     if (!token || !config.jwtSecret) return null;
 
+    if (typeof token !== 'string' || token.split('.').length !== 3) return null;
     const [encodedHeader, encodedBody, signature] = token.split('.');
     if (!encodedHeader || !encodedBody || !signature) return null;
 
@@ -71,8 +70,10 @@ export function verifyOtpToken(token) {
     if (!isValid) return null;
 
     const payload = JSON.parse(Buffer.from(encodedBody, 'base64url').toString('utf8'));
-    if (payload.exp < Math.floor(Date.now() / 1000)) return null;
-    if (payload.purpose !== 'email_otp') return null;
+    const header = JSON.parse(Buffer.from(encodedHeader, 'base64url').toString('utf8'));
+    if (header.alg !== 'HS256' || header.typ !== 'JWT') return null;
+    if (!Number.isFinite(payload.exp) || payload.exp <= Math.floor(Date.now() / 1000)) return null;
+    if (payload.purpose !== 'email_otp' || !payload.jti || !isEmail(payload.email)) return null;
 
     return payload;
   } catch {
@@ -80,35 +81,27 @@ export function verifyOtpToken(token) {
   }
 }
 
-export function consumeOtpToken(token, expectedEmail) {
-  const payload = getUsableOtpToken(token, expectedEmail);
-  if (!payload) return null;
-
-  verifiedOtpTokens.delete(payload.jti);
-  return payload;
+async function otpRpc(name, args) {
+  if (!hasSupabaseConfig) throw new Error('OTP storage is not configured.');
+  const { data, error } = await supabase.rpc(name, args);
+  if (error) throw new Error('OTP storage is unavailable.');
+  return data;
 }
 
-export function getUsableOtpToken(token, expectedEmail) {
+export async function consumeOtpToken(token, expectedEmail) {
   const payload = verifyOtpToken(token);
   const email = normalizeEmail(expectedEmail);
-
   if (!payload || !payload.jti || payload.email !== email) return null;
-
-  const storedToken = verifiedOtpTokens.get(payload.jti);
-  if (!storedToken || storedToken.email !== email || storedToken.expiresAt < Date.now()) {
-    verifiedOtpTokens.delete(payload.jti);
-    return null;
-  }
-
-  return payload;
+  const consumed = await otpRpc('consume_email_otp', { p_email: email, p_verification_id: payload.jti });
+  return consumed === true ? payload : null;
 }
 
 function normalizeEmail(email = '') {
-  return email.trim().toLowerCase();
+  return typeof email === 'string' ? email.trim().toLowerCase() : '';
 }
 
 function isEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  return typeof email === 'string' && email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function hashOtp(email, otp) {
@@ -126,6 +119,9 @@ function createOtp() {
 function createTransporter() {
   return nodemailer.createTransport({
     service: 'gmail',
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 20000,
     auth: {
       user: config.gmailUser,
       pass: config.gmailAppPassword.replace(/\s/g, ''),
@@ -134,8 +130,8 @@ function createTransporter() {
 }
 
 export async function sendEmailOtp(rawEmail) {
-  if (!hasOtpConfig) {
-    return { ok: false, status: 500, data: { message: 'Backend chưa cấu hình gửi OTP.' } };
+  if (!hasOtpConfig || !hasSupabaseConfig) {
+    return { ok: false, status: 503, data: { message: 'Dịch vụ xác thực email chưa sẵn sàng.' } };
   }
 
   const email = normalizeEmail(rawEmail);
@@ -143,8 +139,14 @@ export async function sendEmailOtp(rawEmail) {
     return { ok: false, status: 400, data: { message: 'Email không hợp lệ.' } };
   }
 
-  const currentOtp = otpStore.get(email);
-  if (currentOtp && Date.now() - currentOtp.lastSentAt < RESEND_COOLDOWN_MS) {
+  const otp = createOtp();
+  const otpHash = hashOtp(email, otp);
+  const lifetime = Math.max(1, Math.min(Number(config.otpExpiresMinutes) || 5, 10));
+  const created = await otpRpc('request_email_otp', {
+    p_email: email, p_hash: otpHash,
+    p_expires_at: new Date(Date.now() + lifetime * 60 * 1000).toISOString(),
+  });
+  if (created === 'cooldown') {
     return {
       ok: false,
       status: 429,
@@ -152,16 +154,9 @@ export async function sendEmailOtp(rawEmail) {
     };
   }
 
-  const otp = createOtp();
-  const expiresAt = Date.now() + config.otpExpiresMinutes * 60 * 1000;
-  otpStore.set(email, {
-    hash: hashOtp(email, otp),
-    expiresAt,
-    attempts: 0,
-    lastSentAt: Date.now(),
-  });
-
-  await createTransporter().sendMail({
+  if (created !== 'created') throw new Error('OTP could not be created.');
+  try {
+    await createTransporter().sendMail({
     from: `"MidHealth" <${config.gmailUser}>`,
     to: email,
     subject: 'Mã OTP xác thực MidHealth',
@@ -170,59 +165,42 @@ export async function sendEmailOtp(rawEmail) {
         <h2>Mã OTP của bạn</h2>
         <p>Dùng mã bên dưới để xác thực tài khoản MidHealth:</p>
         <p style="font-size:32px;font-weight:800;letter-spacing:6px;color:#1976df">${otp}</p>
-        <p>Mã có hiệu lực trong ${config.otpExpiresMinutes} phút. Không chia sẻ mã này cho bất kỳ ai.</p>
+        <p>Mã có hiệu lực trong ${lifetime} phút. Không chia sẻ mã này cho bất kỳ ai.</p>
       </div>
     `,
-  });
+    });
+  } catch {
+    await otpRpc('release_failed_email_otp', { p_email: email, p_hash: otpHash }).catch(() => {});
+    return { ok: false, status: 503, data: { message: 'Không thể gửi email. Vui lòng thử lại.' } };
+  }
 
   return {
     ok: true,
     status: 200,
     data: {
       message: 'Đã gửi mã OTP đến email.',
-      expiresInMinutes: config.otpExpiresMinutes,
+      expiresInMinutes: lifetime,
     },
   };
 }
 
-export function verifyEmailOtp(rawEmail, otp = '') {
+export async function verifyEmailOtp(rawEmail, otp = '') {
   const email = normalizeEmail(rawEmail);
-  const storedOtp = otpStore.get(email);
 
-  if (!isEmail(email) || !/^\d{6}$/.test(otp)) {
+  if (!isEmail(email) || typeof otp !== 'string' || !/^\d{6}$/.test(otp)) {
     return { ok: false, status: 400, data: { message: 'Email hoặc OTP không hợp lệ.' } };
   }
 
-  if (!storedOtp) {
-    return { ok: false, status: 400, data: { message: 'OTP không tồn tại hoặc đã hết hạn.' } };
-  }
-
-  if (storedOtp.expiresAt < Date.now()) {
-    otpStore.delete(email);
-    return { ok: false, status: 400, data: { message: 'OTP đã hết hạn.' } };
-  }
-
-  if (storedOtp.attempts >= MAX_ATTEMPTS) {
-    otpStore.delete(email);
-    return { ok: false, status: 429, data: { message: 'Bạn đã nhập sai OTP quá nhiều lần.' } };
-  }
-
-  const isValid = crypto.timingSafeEqual(
-    Buffer.from(storedOtp.hash),
-    Buffer.from(hashOtp(email, otp)),
-  );
-
-  if (!isValid) {
-    otpStore.set(email, { ...storedOtp, attempts: storedOtp.attempts + 1 });
-    return { ok: false, status: 400, data: { message: 'OTP không đúng.' } };
-  }
-
-  otpStore.delete(email);
   const jti = crypto.randomUUID();
-  verifiedOtpTokens.set(jti, {
-    email,
-    expiresAt: Date.now() + VERIFIED_TOKEN_EXPIRES_SECONDS * 1000,
+  const result = await otpRpc('verify_email_otp', {
+    p_email: email, p_hash: hashOtp(email, otp), p_verification_id: jti,
   });
+  if (result !== 'verified') {
+    return {
+      ok: false, status: result === 'locked' ? 429 : 400,
+      data: { message: result === 'locked' ? 'Bạn đã nhập sai OTP quá nhiều lần. Vui lòng yêu cầu mã mới.' : 'OTP không đúng hoặc đã hết hạn.' },
+    };
+  }
   const token = signJwt({ purpose: 'email_otp', email, jti }, VERIFIED_TOKEN_EXPIRES_SECONDS);
 
   return {

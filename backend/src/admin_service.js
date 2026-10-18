@@ -1,284 +1,19 @@
+import { getClinic } from './clinic_service.js';
+import { clinicDateTime, validDate } from './booking_policy.js';
 import { hasSupabaseConfig, supabase } from './supabase.js';
-import { syncCatalogManagedAccounts } from './catalog_account_service.js';
-import { logProviderWorkspaceEvent, reviewProviderWorkspace } from './provider_workspace_service.js';
+import { logAdminEvent } from './admin_audit_service.js';
 import { APP_ROLES, requireRoles } from './authorization_service.js';
+import { sumPaidRevenuePages } from './admin_revenue.js';
+import { isFirebaseAdminConfigured, updateFirebaseUserPassword } from './firebase_admin_auth.js';
 
 function clean(value) {
   return typeof value === 'string' ? value.trim() : value;
 }
 
-function todayDateValue() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-}
+function todayDateValue() { return clinicDateTime().date; }
 
 function normalizeKey(value = '') {
   return String(value || '').trim().toLowerCase();
-}
-
-const bootstrapAdminEmails = new Set(
-  (process.env.ADMIN_EMAILS || 'admin@gmail.com')
-    .split(',')
-    .map((email) => normalizeKey(email))
-    .filter(Boolean),
-);
-
-function firebaseUid(firebaseUser = {}) {
-  return clean(firebaseUser.localId || firebaseUser.uid);
-}
-
-function firebaseEmail(firebaseUser = {}) {
-  return normalizeKey(firebaseUser.email);
-}
-
-function isBootstrapAdmin(firebaseUser = {}) {
-  return bootstrapAdminEmails.has(firebaseEmail(firebaseUser));
-}
-
-async function ensureBootstrapAdmin(firebaseUser = {}) {
-  if (!hasSupabaseConfig || !isBootstrapAdmin(firebaseUser)) return;
-
-  const uid = firebaseUid(firebaseUser);
-  const email = firebaseEmail(firebaseUser);
-  if (!uid || !email) return;
-
-  const row = {
-    firebase_uid: uid,
-    email,
-    full_name: clean(firebaseUser.displayName) || 'MidHealth Admin',
-    avatar_url: clean(firebaseUser.photoUrl || firebaseUser.photoURL) || null,
-    role: 'admin',
-    status: 'active',
-    auth_provider: firebaseUser.providerUserInfo?.[0]?.providerId?.includes('google') ? 'google' : 'password',
-    email_verified: Boolean(firebaseUser.emailVerified),
-    last_login_at: new Date().toISOString(),
-  };
-
-  const { data: existing, error: lookupError } = await supabase
-    .from('app_users')
-    .select('id')
-    .or(`firebase_uid.eq.${uid},email.eq.${email}`)
-    .limit(1)
-    .maybeSingle();
-
-  if (lookupError) throw lookupError;
-
-  const result = existing?.id
-    ? await supabase.from('app_users').update(row).eq('id', existing.id)
-    : await supabase.from('app_users').insert(row);
-
-  if (result.error) throw result.error;
-}
-
-function slugify(value = '') {
-  return String(value)
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[đĐ]/g, 'd')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-function articleContent(value = '') {
-  const content = String(value || '').trim();
-  if (/<[a-z][\s\S]*>/i.test(content)) return content;
-  return content
-    .split(/\n{2,}/)
-    .map((paragraph) => `<p>${paragraph.replace(/\n/g, '<br>')}</p>`)
-    .join('');
-}
-
-async function uploadArticleImage(dataUrl, articleSlug) {
-  if (!dataUrl) return '';
-  const match = String(dataUrl).match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
-  if (!match) throw new Error('Ảnh phải có định dạng JPG, PNG hoặc WebP.');
-  const bytes = Buffer.from(match[2], 'base64');
-  if (bytes.length > 4 * 1024 * 1024) throw new Error('Ảnh bài viết không được vượt quá 4 MB.');
-
-  const extension = match[1] === 'image/png' ? 'png' : match[1] === 'image/webp' ? 'webp' : 'jpg';
-  const bucket = 'health-articles';
-  const filePath = `${articleSlug}-${Date.now()}.${extension}`;
-  const { error: lookupError } = await supabase.storage.getBucket(bucket);
-  if (lookupError) {
-    const { error: bucketError } = await supabase.storage.createBucket(bucket, {
-      public: true,
-      fileSizeLimit: 4 * 1024 * 1024,
-      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
-    });
-    if (bucketError) throw bucketError;
-  }
-
-  const { error } = await supabase.storage.from(bucket).upload(filePath, bytes, {
-    contentType: match[1],
-    upsert: false,
-  });
-  if (error) throw error;
-  return supabase.storage.from(bucket).getPublicUrl(filePath).data.publicUrl;
-}
-
-function articleStoragePath(url = '') {
-  const marker = '/storage/v1/object/public/health-articles/';
-  const index = String(url).indexOf(marker);
-  return index === -1 ? '' : decodeURIComponent(String(url).slice(index + marker.length));
-}
-
-function mergeAccountRow(base = {}, incoming = {}) {
-  return {
-    ...base,
-    ...incoming,
-    sourceTypes: Array.from(new Set([...(base.sourceTypes || []), ...(incoming.sourceTypes || [])])),
-    displayName: base.displayName || incoming.displayName || '',
-    email: base.email || incoming.email || '',
-    role: base.role || incoming.role || '',
-    accountStatus: base.accountStatus || incoming.accountStatus || '',
-    workspaceStatus: base.workspaceStatus || incoming.workspaceStatus || '',
-    catalogStatus: base.catalogStatus || incoming.catalogStatus || '',
-    homepageFeatured: incoming.homepageFeatured ?? base.homepageFeatured ?? false,
-    homepageOrder: incoming.homepageOrder ?? base.homepageOrder ?? 100,
-    specialty: base.specialty || incoming.specialty || '',
-    workplace: base.workplace || incoming.workplace || '',
-    address: base.address || incoming.address || '',
-    phone: base.phone || incoming.phone || '',
-    createdAt: base.createdAt || incoming.createdAt || '',
-    updatedAt: [base.updatedAt, incoming.updatedAt].filter(Boolean).sort().at(-1) || '',
-    hasLoginAccount: Boolean(base.hasLoginAccount || incoming.hasLoginAccount),
-    hasWorkspace: Boolean(base.hasWorkspace || incoming.hasWorkspace),
-    hasCatalog: Boolean(base.hasCatalog || incoming.hasCatalog),
-  };
-}
-
-function buildAccountDirectory({ users = [], providers = [], doctors = [], facilities = [] }) {
-  const rows = new Map();
-  const aliases = new Map();
-
-  function resolveKey(keys) {
-    return keys.map((key) => aliases.get(key)).find(Boolean) || keys[0];
-  }
-
-  function put(keys, incoming) {
-    const cleanKeys = keys.filter(Boolean);
-    const key = resolveKey(cleanKeys);
-    const merged = mergeAccountRow(rows.get(key), {
-      id: key,
-      ...incoming,
-      linkedKeys: Array.from(new Set([...(rows.get(key)?.linkedKeys || []), ...cleanKeys])),
-    });
-    rows.set(key, merged);
-    cleanKeys.forEach((alias) => aliases.set(alias, key));
-  }
-
-  users.forEach((user) => {
-    const keys = [
-      `user:${user.id}`,
-      user.email ? `email:${normalizeKey(user.email)}` : '',
-    ];
-    put(keys, {
-      sourceTypes: ['account'],
-      userId: user.id,
-      displayName: user.full_name || user.email,
-      email: user.email,
-      role: user.role,
-      kind: ['clinic', 'hospital', 'doctor'].includes(user.role) ? user.role : user.role,
-      accountStatus: user.status,
-      authProvider: user.auth_provider,
-      createdAt: user.created_at,
-      updatedAt: user.updated_at || user.created_at,
-      hasLoginAccount: true,
-    });
-  });
-
-  providers.forEach((provider) => {
-    const isFacility = ['clinic', 'hospital'].includes(provider.mode);
-    const keys = [
-      `workspace:${provider.id}`,
-      provider.app_user_id ? `user:${provider.app_user_id}` : '',
-      provider.linked_doctor_id ? `doctor:${provider.linked_doctor_id}` : '',
-      provider.linked_facility_id ? `facility:${provider.linked_facility_id}` : '',
-      provider.email ? `email:${normalizeKey(provider.email)}` : '',
-    ];
-    put(keys, {
-      sourceTypes: ['workspace'],
-      workspaceId: provider.id,
-      userId: provider.app_user_id || '',
-      doctorId: provider.linked_doctor_id || '',
-      facilityId: provider.linked_facility_id || '',
-      displayName: isFacility ? provider.clinic_name : provider.owner_name,
-      email: provider.email,
-      role: provider.provider_role || provider.mode,
-      kind: provider.mode,
-      workspaceStatus: provider.status,
-      specialty: provider.specialty || '',
-      workplace: provider.clinic_name || '',
-      address: provider.clinic_address || '',
-      phone: provider.owner_phone || '',
-      createdAt: provider.created_at,
-      updatedAt: provider.updated_at || provider.created_at,
-      hasWorkspace: true,
-    });
-  });
-
-  doctors.forEach((doctor) => {
-    const keys = [
-      `doctor:${doctor.id}`,
-      doctor.full_name ? `doctor-name:${normalizeKey(doctor.full_name)}` : '',
-    ];
-    put(keys, {
-      sourceTypes: ['catalog_doctor'],
-      doctorId: doctor.id,
-      displayName: doctor.full_name,
-      role: 'doctor',
-      kind: 'doctor',
-      catalogStatus: doctor.is_active ? 'active' : 'disabled',
-      homepageFeatured: doctor.homepage_featured !== false,
-      homepageOrder: Number(doctor.homepage_order ?? 100),
-      specialty: doctor.clinic_specialties?.name || '',
-      workplace: doctor.medical_facilities?.name || doctor.workplace_text || '',
-      address: doctor.medical_facilities?.address || '',
-      createdAt: doctor.created_at,
-      updatedAt: doctor.updated_at || doctor.created_at,
-      hasCatalog: true,
-    });
-  });
-
-  facilities.forEach((facility) => {
-    const keys = [
-      `facility:${facility.id}`,
-      facility.name ? `facility-name:${normalizeKey(facility.name)}` : '',
-    ];
-    put(keys, {
-      sourceTypes: ['catalog_facility'],
-      facilityId: facility.id,
-      displayName: facility.name,
-      role: facility.type,
-      kind: facility.type,
-      catalogStatus: facility.is_active ? 'active' : 'disabled',
-      homepageFeatured: facility.homepage_featured !== false,
-      homepageOrder: Number(facility.homepage_order ?? 100),
-      workplace: facility.subtitle || '',
-      address: facility.address || '',
-      phone: facility.phone || facility.hotline || '',
-      createdAt: facility.created_at,
-      updatedAt: facility.updated_at || facility.created_at,
-      hasCatalog: true,
-    });
-  });
-
-  return Array.from(rows.values())
-    .map((row) => ({
-      ...row,
-      sourceLabel: [
-        row.hasLoginAccount ? (row.authProvider === 'catalog' ? 'Tài khoản catalog' : 'Tài khoản') : '',
-        row.hasWorkspace ? 'Workspace' : '',
-        row.hasCatalog ? 'Catalog' : '',
-      ].filter(Boolean).join(' + '),
-      needsLinking: row.hasCatalog
-        && ['doctor', 'clinic', 'hospital'].includes(row.kind)
-        && !row.hasLoginAccount
-        && !row.hasWorkspace,
-      duplicateResolved: (row.linkedKeys || []).length > 1,
-    }))
-    .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
 }
 
 async function countRows(table, queryBuilder = null) {
@@ -289,8 +24,53 @@ async function countRows(table, queryBuilder = null) {
   return count || 0;
 }
 
+async function fetchAdminUsers() {
+  const pageSize = 200;
+  const roles = ['patient', 'staff', 'doctor', 'head', 'admin'];
+  const readPage = (start, includeDoctorId) => supabase.from('app_users')
+    .select([
+      'id', 'email', 'full_name', 'role', ...(includeDoctorId ? ['doctor_id'] : []),
+      'firebase_uid', 'status', 'auth_provider', 'last_login_at', 'created_at', 'updated_at',
+    ].join(', '))
+    .in('role', roles)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: true })
+    .range(start, start + pageSize - 1);
+
+  let includeDoctorId = true;
+  let page;
+  let error;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    ({ data: page, error } = await readPage(0, includeDoctorId));
+    if (error?.code !== '42703') break;
+    if (error.message.includes('doctor_id') && includeDoctorId) includeDoctorId = false;
+    else break;
+  }
+  if (error) return { data: null, error, doctorAccountsAvailable: false };
+
+  const rows = [...(page || [])];
+  let start = pageSize;
+  while (page?.length === pageSize) {
+    ({ data: page, error } = await readPage(start, includeDoctorId));
+    if (error) return { data: null, error, doctorAccountsAvailable: includeDoctorId };
+    rows.push(...(page || []));
+    start += pageSize;
+  }
+  return { data: rows, error: null, doctorAccountsAvailable: includeDoctorId };
+}
+
+async function sumPaidRevenue() {
+  return sumPaidRevenuePages(async (lastId, pageSize) => {
+    let query = supabase.from('payments').select('id,amount')
+      .eq('status', 'paid').order('id', { ascending: true }).limit(pageSize);
+    if (lastId) query = query.gt('id', lastId);
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  });
+}
+
 async function fetchAdminAccount(firebaseUser) {
-  await ensureBootstrapAdmin(firebaseUser);
   return requireRoles(firebaseUser, APP_ROLES.ADMIN, {
     message: 'Tài khoản không có quyền admin.',
   });
@@ -298,82 +78,6 @@ async function fetchAdminAccount(firebaseUser) {
 
 export async function requireAdmin(firebaseUser) {
   return fetchAdminAccount(firebaseUser);
-}
-
-function demoAdminDashboard(firebaseUser = {}, admin = {}) {
-  const now = new Date().toISOString();
-  return {
-    admin: {
-      id: admin.data?.id || 'demo-admin',
-      email: admin.data?.email || firebaseUser.email || 'admin@gmail.com',
-      fullName: admin.data?.full_name || firebaseUser.displayName || 'MidHealth Admin',
-      role: 'admin',
-    },
-    metrics: {
-      totalUsers: 3,
-      totalPatients: 1,
-      totalProviders: 1,
-      pendingProviders: 0,
-      approvedProviders: 1,
-      totalAppointments: 2,
-      todayAppointments: 1,
-      pendingAppointments: 1,
-      noShowAppointments: 0,
-      unpaidPayments: 1,
-      paidPayments: 1,
-      revenue: 350000,
-      totalDoctors: 5,
-      totalFacilities: 4,
-      publishedArticles: 8,
-    },
-    providers: [
-      {
-        id: 'demo-provider-workspace',
-        email: 'hoang_2251220149@dau.edu.vn',
-        owner_name: 'Bac si MidHealth Demo',
-        mode: 'doctor',
-        provider_role: 'doctor',
-        status: 'approved',
-        specialty: 'Noi tong quat',
-        clinic_name: 'Workspace demo MidHealth',
-        updated_at: now,
-      },
-    ],
-    appointments: [],
-    users: [
-      {
-        id: 'demo-admin',
-        email: admin.data?.email || 'admin@gmail.com',
-        full_name: admin.data?.full_name || 'MidHealth Admin',
-        role: 'admin',
-        status: 'active',
-        auth_provider: 'password',
-        created_at: now,
-        updated_at: now,
-      },
-      {
-        id: 'demo-provider',
-        email: 'hoang_2251220149@dau.edu.vn',
-        full_name: 'Bac si MidHealth Demo',
-        role: 'doctor',
-        status: 'active',
-        auth_provider: 'password',
-        created_at: now,
-        updated_at: now,
-      },
-    ],
-    accountDirectory: [],
-    articles: [],
-    healthCategories: [],
-    events: [
-      {
-        id: 'demo-event',
-        event_type: 'demo_mode_enabled',
-        message: 'Vercel dang chay che do demo vi chua cau hinh Supabase.',
-        created_at: now,
-      },
-    ],
-  };
 }
 
 export async function getAdminDashboard(firebaseUser) {
@@ -385,7 +89,7 @@ export async function getAdminDashboard(firebaseUser) {
       ok: false,
       status: 503,
       data: {
-        message: 'Backend Vercel chua cau hinh Supabase. Hay them SUPABASE_URL va SUPABASE_SERVICE_ROLE_KEY trong Vercel Environment Variables roi redeploy.',
+        message: 'Backend chưa cấu hình Supabase. Hãy đặt SUPABASE_URL và SUPABASE_SERVICE_ROLE_KEY trong môi trường chạy server rồi khởi động lại.',
         code: 'SUPABASE_CONFIG_MISSING',
       },
     };
@@ -396,9 +100,6 @@ export async function getAdminDashboard(firebaseUser) {
     const [
       totalUsers,
       totalPatients,
-      totalProviders,
-      pendingProviders,
-      approvedProviders,
       totalAppointments,
       todayAppointments,
       pendingAppointments,
@@ -406,93 +107,66 @@ export async function getAdminDashboard(firebaseUser) {
       unpaidPayments,
       paidPayments,
       totalDoctors,
-      totalFacilities,
-      publishedArticles,
     ] = await Promise.all([
-      countRows('app_users'),
+      countRows('app_users', query => query.in('role', ['patient', 'staff', 'doctor', 'head', 'admin'])),
       countRows('patient_profiles'),
-      countRows('provider_workspaces'),
-      countRows('provider_workspaces', (query) => query.eq('status', 'pending_review')),
-      countRows('provider_workspaces', (query) => query.eq('status', 'approved')),
       countRows('appointments'),
       countRows('appointments', (query) => query.eq('appointment_date', today)),
       countRows('appointments', (query) => query.eq('status', 'pending')),
       countRows('appointments', (query) => query.eq('status', 'no_show')),
       countRows('payments', (query) => query.neq('status', 'paid')),
       countRows('payments', (query) => query.eq('status', 'paid')),
-      countRows('doctors'),
-      countRows('medical_facilities'),
-      countRows('health_articles', (query) => query.eq('status', 'published')),
+      countRows('doctors', query => query.eq('clinic_owned', true)),
     ]);
 
-    const { data: revenueRows, error: revenueError } = await supabase
-      .from('payments')
-      .select('amount')
-      .eq('status', 'paid');
-    if (revenueError) throw revenueError;
+    const revenue = await sumPaidRevenue();
 
-    const { data: providerRows, error: providerError } = await supabase
-      .from('provider_workspaces')
-      .select('*')
-      .order('updated_at', { ascending: false })
-      .limit(300);
-    if (providerError) throw providerError;
-
-    const { data: appointmentRows, error: appointmentError } = await supabase
+    const fullAppointmentColumns = 'id, doctor_id, specialty_id, appointment_slot_id, appointment_date, appointment_time_text, patient_name, patient_phone, status, payment_status, final_amount, clinic_snapshot, checked_in_at, delay_minutes, delay_note, clinician_absent, patient_medical_profiles(date_of_birth), queue_tickets(appointment_code), doctors(full_name)';
+    const basicAppointmentColumns = 'id, doctor_id, specialty_id, appointment_slot_id, appointment_date, appointment_time_text, patient_name, patient_phone, status, payment_status, final_amount, clinic_snapshot, patient_medical_profiles(date_of_birth), queue_tickets(appointment_code), doctors(full_name)';
+    let appointmentColumns = fullAppointmentColumns;
+    let { data: appointmentRows, error: appointmentError } = await supabase
       .from('appointments')
-      .select('id, appointment_date, appointment_time_text, patient_name, patient_phone, status, payment_status, final_amount, doctors(full_name), medical_facilities(name)')
+      .select(appointmentColumns)
       .order('created_at', { ascending: false })
-      .limit(30);
+      .limit(500);
+    const visitWorkflowAvailable = !appointmentError;
+    if (appointmentError?.code === '42703' || appointmentError?.code === 'PGRST200') {
+      appointmentColumns = basicAppointmentColumns;
+      ({ data: appointmentRows, error: appointmentError } = await supabase
+        .from('appointments')
+        .select(appointmentColumns)
+        .order('created_at', { ascending: false })
+        .limit(500));
+    }
     if (appointmentError) throw appointmentError;
+    const priorityRows = [];
+    let lastPendingId = null;
+    for (;;) {
+      let query = supabase.from('appointments').select(appointmentColumns)
+        .eq('status', 'pending').order('id', { ascending: true }).limit(500);
+      if (lastPendingId) query = query.gt('id', lastPendingId);
+      const { data: page, error: pendingError } = await query;
+      if (pendingError) throw pendingError;
+      priorityRows.push(...(page || []));
+      if (!page || page.length < 500) break;
+      lastPendingId = page[page.length - 1].id;
+    }
+    const seenAppointmentIds = new Set(priorityRows.map(item => item.id));
+    appointmentRows = [...priorityRows, ...(appointmentRows || []).filter(item => !seenAppointmentIds.has(item.id))];
 
-    const { data: userRows, error: userError } = await supabase
-      .from('app_users')
-      .select('id, email, full_name, role, status, auth_provider, last_login_at, created_at, updated_at')
-      .order('created_at', { ascending: false })
-      .limit(200);
+    const { data: userRows, error: userError, doctorAccountsAvailable } = await fetchAdminUsers();
     if (userError) throw userError;
+    const { data: doctorRows, error: doctorListError } = await supabase.from('doctors')
+      .select('id, full_name, specialty_id, is_active').eq('clinic_owned', true).eq('is_demo', false).order('full_name');
+    if (doctorListError) throw doctorListError;
 
-    const { data: doctorRows, error: doctorError } = await supabase
-      .from('doctors')
-      .select('id, full_name, specialty_id, facility_id, workplace_text, is_active, homepage_featured, homepage_order, created_at, updated_at, clinic_specialties(name), medical_facilities(name, address)')
-      .order('updated_at', { ascending: false })
-      .limit(300);
-    if (doctorError) throw doctorError;
-
-    const { data: facilityRows, error: facilityError } = await supabase
-      .from('medical_facilities')
-      .select('id, type, name, subtitle, address, phone, hotline, is_active, homepage_featured, homepage_order, created_at, updated_at')
-      .order('updated_at', { ascending: false })
-      .limit(300);
-    if (facilityError) throw facilityError;
-
-    const { data: articleRows, error: articleError } = await supabase
-      .from('health_articles')
-      .select('id, category_id, title, slug, summary, content, thumbnail_url, status, is_featured, published_at, updated_at, view_count, category:health_categories(id, name, slug)')
-      .order('updated_at', { ascending: false })
-      .limit(100);
-    if (articleError) throw articleError;
-
-    const { data: healthCategoryRows, error: healthCategoryError } = await supabase
-      .from('health_categories')
-      .select('id, name, slug, status')
-      .eq('status', 'active')
-      .order('name');
-    if (healthCategoryError) throw healthCategoryError;
-
-    const { data: eventRows, error: eventError } = await supabase
-      .from('provider_workspace_events')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(40);
-    const events = eventError ? [] : (eventRows || []);
-
-    const revenue = (revenueRows || []).reduce((total, row) => total + Number(row.amount || 0), 0);
+    const clinic = await getClinic();
 
     return {
       ok: true,
       status: 200,
       data: {
+        clinic,
         admin: {
           id: admin.data.id,
           email: admin.data.email,
@@ -502,9 +176,6 @@ export async function getAdminDashboard(firebaseUser) {
         metrics: {
           totalUsers,
           totalPatients,
-          totalProviders,
-          pendingProviders,
-          approvedProviders,
           totalAppointments,
           todayAppointments,
           pendingAppointments,
@@ -513,21 +184,13 @@ export async function getAdminDashboard(firebaseUser) {
           paidPayments,
           revenue,
           totalDoctors,
-          totalFacilities,
-          publishedArticles,
         },
-        providers: providerRows || [],
         appointments: appointmentRows || [],
+        visitWorkflowAvailable,
         users: userRows || [],
-        accountDirectory: buildAccountDirectory({
-          users: userRows || [],
-          providers: providerRows || [],
-          doctors: doctorRows || [],
-          facilities: facilityRows || [],
-        }),
-        articles: articleRows || [],
-        healthCategories: healthCategoryRows || [],
-        events,
+        doctorAccountsAvailable,
+        firebaseAdminConfigured: isFirebaseAdminConfigured(),
+        doctors: doctorRows || [],
       },
     };
   } catch (error) {
@@ -535,171 +198,54 @@ export async function getAdminDashboard(firebaseUser) {
   }
 }
 
-export async function saveHealthArticleAsAdmin(firebaseUser, articleId, payload = {}) {
-  const admin = await requireAdmin(firebaseUser);
+export async function getAdminAuditEvents(firebaseUser, filters = {}, dependencies = {}) {
+  const checkAdmin = dependencies.requireAdmin || requireAdmin;
+  const client = dependencies.client || supabase;
+  const admin = await checkAdmin(firebaseUser);
   if (!admin.ok) return admin;
-
-  const title = clean(payload.title);
-  const categoryId = clean(payload.categoryId);
-  const summary = clean(payload.summary);
-  const content = articleContent(payload.content);
-  const status = ['draft', 'published', 'archived'].includes(payload.status) ? payload.status : 'draft';
-  if (!title || !categoryId || !content) {
-    return { ok: false, status: 400, data: { message: 'Tiêu đề, chuyên mục và nội dung là bắt buộc.' } };
+  if (!hasSupabaseConfig && !dependencies.client) {
+    return { ok: false, status: 503, data: { message: 'Chưa cấu hình cơ sở dữ liệu.' } };
   }
 
-  try {
-    let slug = slugify(payload.slug || title);
-    if (!slug) slug = `bai-viet-${Date.now()}`;
-    const duplicateQuery = supabase.from('health_articles').select('id').eq('slug', slug).limit(1);
-    const { data: duplicateRows, error: duplicateError } = articleId
-      ? await duplicateQuery.neq('id', articleId)
-      : await duplicateQuery;
-    if (duplicateError) throw duplicateError;
-    if (duplicateRows?.length) slug = `${slug}-${Date.now().toString().slice(-6)}`;
-
-    const uploadedUrl = await uploadArticleImage(payload.imageDataUrl, slug);
-    const row = {
-      category_id: categoryId,
-      title,
-      slug,
-      summary: summary || null,
-      content,
-      thumbnail_url: uploadedUrl || clean(payload.thumbnailUrl) || '',
-      status,
-      is_featured: Boolean(payload.isFeatured),
-      published_at: payload.publishedAt || new Date().toISOString(),
-      published_date: payload.publishedAt || new Date().toISOString(),
-      updated_date: new Date().toISOString(),
-    };
-
-    const query = articleId
-      ? supabase.from('health_articles').update(row).eq('id', articleId)
-      : supabase.from('health_articles').insert(row);
-    const { data, error } = await query.select('*, category:health_categories(id, name, slug)').single();
-    if (error) throw error;
-
-    await logProviderWorkspaceEvent({
-      actor: firebaseUser,
-      actorRole: 'admin',
-      eventType: articleId ? 'health_article_updated' : 'health_article_created',
-      entityType: 'health_article',
-      entityId: data.id,
-      message: articleId ? 'Admin updated a health article.' : 'Admin created a health article.',
-      metadata: { title, status, slug },
-    });
-    return { ok: true, status: articleId ? 200 : 201, data };
-  } catch (error) {
-    return { ok: false, status: 500, data: { message: error.message } };
+  const page = Math.max(1, Math.min(100000, Number.parseInt(filters.page, 10) || 1));
+  const pageSize = Math.max(10, Math.min(100, Number.parseInt(filters.pageSize, 10) || 50));
+  const eventType = String(filters.eventType || '').trim();
+  const actorRole = String(filters.actorRole || '').trim();
+  const search = String(filters.search || '').normalize('NFC').replace(/[^\p{L}\p{N}@._\-\s]/gu, ' ').trim().slice(0, 100);
+  const from = String(filters.from || '').trim();
+  const to = String(filters.to || '').trim();
+  const validDateFilter = value => !value || validDate(value);
+  if (!validDateFilter(from) || !validDateFilter(to) || (from && to && from > to)) {
+    return { ok: false, status: 400, data: { message: 'Khoảng ngày lọc nhật ký không hợp lệ.' } };
   }
-}
+  const allowedEventTypes = new Set([
+    'user_updated', 'user_password_reset', 'appointment_status_updated', 'appointment_checked_in',
+    'clinician_marked_absent', 'clinician_delay_updated', 'appointment_rescheduled',
+    'appointment_received', 'appointment_cancelled_by_patient', 'appointment_cancelled_by_payment',
+  ]);
+  const allowedRoles = new Set(['admin', 'staff', 'doctor', 'head', 'patient', 'system']);
+  if (eventType && !allowedEventTypes.has(eventType)) return { ok: false, status: 400, data: { message: 'Loại sự kiện không hợp lệ.' } };
+  if (actorRole && !allowedRoles.has(actorRole)) return { ok: false, status: 400, data: { message: 'Vai trò người thực hiện không hợp lệ.' } };
 
-export async function deleteHealthArticleAsAdmin(firebaseUser, articleId) {
-  const admin = await requireAdmin(firebaseUser);
-  if (!admin.ok) return admin;
-
-  const { data: article, error: findError } = await supabase
-    .from('health_articles')
-    .select('id, thumbnail_url')
-    .eq('id', articleId)
-    .maybeSingle();
-  if (findError) return { ok: false, status: 500, data: { message: findError.message } };
-  if (!article) return { ok: false, status: 404, data: { message: 'Không tìm thấy bài viết.' } };
-
-  const { error } = await supabase.from('health_articles').delete().eq('id', articleId);
-  if (error) return { ok: false, status: 500, data: { message: error.message } };
-  const storagePath = articleStoragePath(article.thumbnail_url);
-  if (storagePath) await supabase.storage.from('health-articles').remove([storagePath]);
-  return { ok: true, status: 200, data: { id: articleId } };
-}
-
-export async function syncCatalogAccountsAsAdmin(firebaseUser) {
-  const admin = await requireAdmin(firebaseUser);
-  if (!admin.ok) return admin;
-
-  try {
-    const result = await syncCatalogManagedAccounts();
-    await logProviderWorkspaceEvent({
-      actor: firebaseUser,
-      actorRole: 'admin',
-      eventType: 'catalog_accounts_synced',
-      entityType: 'catalog',
-      message: 'Admin synchronized catalog-managed accounts.',
-      metadata: result,
-    });
-    return { ok: true, status: 200, data: result };
-  } catch (error) {
-    return { ok: false, status: 500, data: { message: error.message } };
+  let query = client.from('admin_events').select('*', { count: 'exact' })
+    .order('created_at', { ascending: false }).order('id', { ascending: true });
+  if (eventType) query = query.eq('event_type', eventType);
+  if (actorRole) query = query.eq('actor_role', actorRole);
+  if (search) {
+    const pattern = `%${search.replace(/[,*()]/g, ' ')}%`;
+    query = query.or(`message.ilike.${pattern},actor_email.ilike.${pattern},event_type.ilike.${pattern}`);
   }
-}
-
-export async function updateCatalogEntityAsAdmin(firebaseUser, payload = {}) {
-  const admin = await requireAdmin(firebaseUser);
-  if (!admin.ok) return admin;
-
-  const entityType = clean(payload.entityType);
-  const entityId = clean(payload.entityId);
-  const active = payload.active;
-  const hasActive = typeof active === 'boolean';
-  const hasHomepageFeatured = typeof payload.homepageFeatured === 'boolean';
-  const homepageOrder = Number(payload.homepageOrder);
-  const hasHomepageOrder = payload.homepageOrder !== undefined
-    && Number.isInteger(homepageOrder)
-    && homepageOrder >= 0;
-  if (
-    !['doctor', 'facility'].includes(entityType)
-    || !entityId
-    || (!hasActive && !hasHomepageFeatured && !hasHomepageOrder)
-    || (payload.homepageOrder !== undefined && !hasHomepageOrder)
-  ) {
-    return { ok: false, status: 400, data: { message: 'Dữ liệu cập nhật catalog không hợp lệ.' } };
+  if (from) query = query.gte('created_at', `${from}T00:00:00+07:00`);
+  if (to) {
+    const nextDate = new Date(`${to}T00:00:00.000Z`);
+    nextDate.setUTCDate(nextDate.getUTCDate() + 1);
+    query = query.lt('created_at', `${nextDate.toISOString().slice(0, 10)}T00:00:00+07:00`);
   }
-
-  const table = entityType === 'doctor' ? 'doctors' : 'medical_facilities';
-  const patch = {};
-  if (hasActive) patch.is_active = active;
-  if (hasHomepageFeatured) patch.homepage_featured = payload.homepageFeatured;
-  if (hasHomepageOrder) patch.homepage_order = homepageOrder;
-  const { data, error } = await supabase
-    .from(table)
-    .update(patch)
-    .eq('id', entityId)
-    .select()
-    .single();
-  if (error) return { ok: false, status: 500, data: { message: error.message } };
-
-  await logProviderWorkspaceEvent({
-    actor: firebaseUser,
-    actorRole: 'admin',
-    eventType: hasActive
-      ? (active ? 'catalog_entity_enabled' : 'catalog_entity_disabled')
-      : 'catalog_homepage_priority_updated',
-    entityType,
-    entityId,
-    message: hasActive
-      ? (active ? 'Admin enabled catalog entity.' : 'Admin disabled catalog entity.')
-      : 'Admin updated homepage catalog priority.',
-    metadata: { table, ...patch },
-  });
-
-  return { ok: true, status: 200, data };
-}
-
-export async function reviewProviderAsAdmin(firebaseUser, workspaceId, payload = {}) {
-  const admin = await requireAdmin(firebaseUser);
-  if (!admin.ok) return admin;
-
-  const status = clean(payload.status);
-  if (!['approved', 'rejected', 'pending_review'].includes(status)) {
-    return { ok: false, status: 400, data: { message: 'Trạng thái duyệt không hợp lệ.' } };
-  }
-
-  return reviewProviderWorkspace(workspaceId, {
-    status,
-    reviewNote: clean(payload.reviewNote),
-    actor: firebaseUser,
-    actorRole: 'admin',
-  });
+  const start = (page - 1) * pageSize;
+  const { data, error, count } = await query.range(start, start + pageSize - 1);
+  if (error) return { ok: false, status: 503, data: { message: 'Không thể tải nhật ký. Vui lòng thử lại.' } };
+  const total = Number(count || 0);
+  return { ok: true, status: 200, data: { events: data || [], page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } };
 }
 
 export async function updateUserAsAdmin(firebaseUser, userId, payload = {}) {
@@ -708,7 +254,7 @@ export async function updateUserAsAdmin(firebaseUser, userId, payload = {}) {
 
   const { data: targetUser, error: targetError } = await supabase
     .from('app_users')
-    .select('id, auth_provider')
+    .select('id, auth_provider, role')
     .eq('id', userId)
     .single();
   if (targetError) return { ok: false, status: 500, data: { message: targetError.message } };
@@ -719,9 +265,13 @@ export async function updateUserAsAdmin(firebaseUser, userId, payload = {}) {
       data: { message: 'Hồ sơ catalog nội bộ không phải tài khoản đăng nhập. Hãy quản lý trạng thái tại Danh mục y tế.' },
     };
   }
+  if (['doctor', 'head'].includes(targetUser.role) && payload.role !== undefined && !['doctor', 'head'].includes(payload.role)) return { ok: false, status: 409, data: { message: 'Không đổi tài khoản bác sĩ sang vai trò khác tại đây.' } };
+  if (['doctor', 'head'].includes(payload.role) && !['doctor', 'head'].includes(targetUser.role)) return { ok: false, status: 409, data: { message: 'Tài khoản bác sĩ phải liên kết hồ sơ bác sĩ.' } };
 
+  if (userId === admin.data.id && ((payload.role && payload.role !== 'admin') || (payload.status && payload.status !== 'active'))) return { ok: false, status: 409, data: { message: 'Không thể tự khóa hoặc hạ quyền tài khoản đang quản trị.' } };
   const patch = {};
-  if (['patient', 'doctor', 'clinic', 'hospital', 'staff', 'admin'].includes(payload.role)) patch.role = payload.role;
+  if (payload.role !== undefined && !['patient', 'staff', 'doctor', 'head', 'admin'].includes(payload.role)) return { ok: false, status: 400, data: { message: 'Vai trò không hợp lệ.' } };
+  if (['patient', 'staff', 'doctor', 'head', 'admin'].includes(payload.role)) patch.role = payload.role;
   if (['active', 'disabled', 'pending'].includes(payload.status)) patch.status = payload.status;
   if (!Object.keys(patch).length) {
     return { ok: false, status: 400, data: { message: 'Không có dữ liệu cập nhật hợp lệ.' } };
@@ -735,7 +285,7 @@ export async function updateUserAsAdmin(firebaseUser, userId, payload = {}) {
     .single();
   if (error) return { ok: false, status: 500, data: { message: error.message } };
 
-  await logProviderWorkspaceEvent({
+  await logAdminEvent({
     actor: firebaseUser,
     actorRole: 'admin',
     eventType: 'user_updated',
@@ -746,4 +296,138 @@ export async function updateUserAsAdmin(firebaseUser, userId, payload = {}) {
   });
 
   return { ok: true, status: 200, data };
+}
+
+export async function resetClinicUserPasswordAsAdmin(firebaseUser, userId, payload = {}, dependencies = {}) {
+  const client = dependencies.client || supabase;
+  const checkAdmin = dependencies.requireAdmin || requireAdmin;
+  const updatePassword = dependencies.updateFirebaseUserPassword || updateFirebaseUserPassword;
+  const writeAudit = dependencies.logAdminEvent || logAdminEvent;
+  const admin = await checkAdmin(firebaseUser);
+  if (!admin.ok) return admin;
+  if (!client) return { ok: false, status: 503, data: { message: 'Backend chưa kết nối cơ sở dữ liệu.' } };
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId || '')) {
+    return { ok: false, status: 400, data: { message: 'Mã tài khoản không hợp lệ.' } };
+  }
+  const { data: account, error } = await client.from('app_users')
+    .select('id,firebase_uid,email,role,auth_provider,status').eq('id', userId).maybeSingle();
+  if (error) return { ok: false, status: 503, data: { message: 'Không thể đọc tài khoản cần cấp lại mật khẩu.' } };
+  if (!account) return { ok: false, status: 404, data: { message: 'Không tìm thấy tài khoản.' } };
+  if (!['doctor', 'head', 'staff'].includes(account.role) || account.auth_provider !== 'password') {
+    return { ok: false, status: 409, data: { message: 'Chỉ hỗ trợ cấp lại mật khẩu cho tài khoản bác sĩ và nhân viên dùng email/mật khẩu.' } };
+  }
+  if (account.status !== 'active') {
+    return { ok: false, status: 409, data: { message: 'Tài khoản đang bị khóa. Hãy xác minh và mở khóa tài khoản trước khi cấp lại mật khẩu.' } };
+  }
+  if (typeof account.firebase_uid !== 'string' || !account.firebase_uid.trim()) {
+    return { ok: false, status: 409, data: { message: 'Tài khoản chưa được liên kết với Firebase UID. Không thể đổi mật khẩu.' } };
+  }
+  if (typeof account.email !== 'string' || !account.email.trim()) {
+    return { ok: false, status: 409, data: { message: 'Tài khoản chưa có email đăng nhập. Không thể cấp lại mật khẩu.' } };
+  }
+
+  const password = typeof payload.password === 'string' ? payload.password : '';
+  if (password.length < 8 || password.length > 128) {
+    return { ok: false, status: 422, data: { message: 'Mật khẩu cần có từ 8 đến 128 ký tự.' } };
+  }
+  let updated;
+  try {
+    updated = await updatePassword(account.firebase_uid, password, { expectedEmail: account.email });
+  } catch {
+    return { ok: false, status: 502, data: { message: 'Backend không thể xác nhận kết quả cập nhật mật khẩu từ Firebase. Hãy kiểm tra trạng thái tài khoản trước khi thử lại.' } };
+  }
+  if (!updated || typeof updated.ok !== 'boolean') {
+    return { ok: false, status: 502, data: { message: 'Firebase không trả kết quả cập nhật mật khẩu hợp lệ.' } };
+  }
+  if (!updated.ok) {
+    return { ok: false, status: updated.status, data: {
+      ...(updated.code ? { code: updated.code } : {}),
+      ...(updated.passwordUpdated ? { passwordUpdated: true } : {}),
+      ...(updated.sessionsRevoked === false ? { sessionsRevoked: false } : {}),
+      message: updated.message,
+    } };
+  }
+  try {
+    await writeAudit({ actor: firebaseUser, actorRole: 'admin', eventType: 'user_password_reset',
+      entityType: 'app_user', entityId: account.id, message: 'Admin reset a clinic account password.',
+      metadata: { role: account.role } });
+  } catch {
+    console.warn('Password changed in Firebase, but the admin audit event could not be recorded.');
+  }
+  return { ok: true, status: 200, data: {
+    email: account.email, status: account.status, sessionsRevoked: true,
+    message: account.status === 'active'
+      ? 'Mật khẩu đã được cập nhật trên Firebase và các phiên đăng nhập cũ đã bị thu hồi. Hãy chuyển mật khẩu mới cho đúng người dùng qua kênh riêng.'
+      : 'Mật khẩu đã được cập nhật.',
+  } };
+}
+
+export async function updateAppointmentAsAdmin(user, appointmentId, payload = {}) {
+  const access = await requireRoles(user, [APP_ROLES.ADMIN]);
+  if (!access.ok) return access;
+  if (!hasSupabaseConfig) return { ok: false, status: 503, data: { message: 'Chưa kết nối cơ sở dữ liệu.' } };
+  if (!['confirmed', 'cancelled', 'no_show'].includes(payload.status)) return { ok: false, status: 400, data: { message: 'Trạng thái không hợp lệ. Hãy lưu kết quả khám để hoàn tất lịch.' } };
+  const { data, error } = await supabase.rpc('transition_clinic_appointment', { appointment_id_value: appointmentId, doctor_id_value: null, owner_id_value: null, status_value: payload.status });
+  if (error) return { ok: false, status: 409, data: { message: error.message } };
+  if (!data?.length) return { ok: false, status: 404, data: { message: 'Không tìm thấy lịch hẹn.' } };
+  await logAdminEvent({ actor: user, eventType: 'appointment_status_updated', entityType: 'appointment', entityId: appointmentId,
+    message: `Admin changed appointment status to ${payload.status}.`, metadata: { status: payload.status } });
+  return { ok: true, status: 200, data: data[0] };
+}
+
+export async function checkInAppointmentAsAdmin(user, appointmentId, payload = {}) {
+  const access = await requireRoles(user, [APP_ROLES.ADMIN, APP_ROLES.STAFF]);
+  if (!access.ok) return access;
+  if (!/^[0-9a-f-]{36}$/i.test(appointmentId) || typeof payload.patientName !== 'string' || !payload.patientName.trim() || !validDate(payload.birthDate) || payload.birthDate > clinicDateTime().date)
+    return { ok: false, status: 400, data: { message: 'Cần đối chiếu họ tên và ngày sinh bệnh nhân.' } };
+  const { data, error } = await supabase.rpc('check_in_clinic_appointment', {
+    appointment_id_value: appointmentId, patient_name_value: payload.patientName.trim(),
+    birth_date_value: payload.birthDate, actor_id_value: access.data.id,
+  });
+  if (error) return { ok: false, status: 409, data: { message: error.message === 'Patient identity does not match'
+    ? 'Họ tên hoặc ngày sinh không khớp hồ sơ. Không tiếp nhận; kiểm tra giấy tờ với bệnh nhân.' : error.message } };
+  if (!data?.length) return { ok: false, status: 404, data: { message: 'Không tìm thấy lịch khám.' } };
+  await logAdminEvent({ actor: user, actorRole: access.data.role, eventType: 'appointment_checked_in', entityType: 'appointment', entityId: appointmentId,
+    message: 'Clinic staff checked in an appointment.' });
+  return { ok: true, status: 200, data: data[0] };
+}
+
+export async function updateVisitDisruptionAsAdmin(user, appointmentId, payload = {}) {
+  const access = await requireRoles(user, [APP_ROLES.ADMIN]);
+  if (!access.ok) return access;
+  if (!/^[0-9a-f-]{36}$/i.test(appointmentId) || !['delay', 'absent'].includes(payload.kind))
+    return { ok: false, status: 400, data: { message: 'Yêu cầu thay đổi lịch không hợp lệ.' } };
+  const minutes = Number(payload.minutes);
+  if (payload.kind === 'delay' && (!Number.isInteger(minutes) || minutes < 1 || minutes > 240))
+    return { ok: false, status: 400, data: { message: 'Số phút trễ phải trong khoảng 1 đến 240.' } };
+  if (payload.kind === 'delay' && typeof payload.note !== 'string') return { ok: false, status: 400, data: { message: 'Ghi chú không hợp lệ.' } };
+  if (payload.kind === 'delay' && payload.note.length > 500) return { ok: false, status: 400, data: { message: 'Ghi chú tối đa 500 ký tự.' } };
+  const patch = payload.kind === 'absent'
+    ? { clinician_absent: true, absence_source: 'manual', delay_minutes: 0, delay_note: 'Bác sĩ vắng mặt; phòng khám sẽ liên hệ để đổi lịch hoặc hủy.' }
+    : { clinician_absent: false, absence_source: null, delay_minutes: minutes, delay_note: String(payload.note || '').trim().slice(0, 500) };
+  const { data, error } = await supabase.from('appointments').update(patch).eq('id', appointmentId)
+    .in('status', ['pending', 'confirmed']).eq('clinician_absent', false)
+    .select('id, clinician_absent, delay_minutes, delay_note').maybeSingle();
+  if (error) return { ok: false, status: 409, data: { message: error.message } };
+  if (!data) return { ok: false, status: 404, data: { message: 'Không tìm thấy lịch còn hiệu lực.' } };
+  await logAdminEvent({ actor: user, eventType: payload.kind === 'absent' ? 'clinician_marked_absent' : 'clinician_delay_updated', entityType: 'appointment', entityId: appointmentId,
+    message: payload.kind === 'absent' ? 'Admin marked clinician absent.' : 'Admin updated clinician delay.',
+    metadata: payload.kind === 'absent' ? {} : { minutes } });
+  return { ok: true, status: 200, data };
+}
+
+export async function rescheduleAppointmentAsAdmin(user, appointmentId, payload = {}) {
+  const access = await requireRoles(user, [APP_ROLES.ADMIN]);
+  if (!access.ok) return access;
+  if (!/^[0-9a-f-]{36}$/i.test(appointmentId) || !/^[0-9a-f-]{36}$/i.test(payload.slotId || ''))
+    return { ok: false, status: 400, data: { message: 'Vui lòng chọn khung giờ mới hợp lệ.' } };
+  const { data, error } = await supabase.rpc('reschedule_clinic_appointment', {
+    appointment_id_value: appointmentId, new_slot_id_value: payload.slotId,
+  });
+  if (error) return { ok: false, status: 409, data: { message: error.message === 'New slot is unavailable'
+    ? 'Khung giờ mới vừa hết chỗ hoặc bác sĩ không nhận khám. Vui lòng chọn lại.' : error.message } };
+  if (!data?.length) return { ok: false, status: 404, data: { message: 'Không tìm thấy lịch khám.' } };
+  await logAdminEvent({ actor: user, eventType: 'appointment_rescheduled', entityType: 'appointment', entityId: appointmentId,
+    message: 'Admin rescheduled an appointment.', metadata: { slotId: payload.slotId } });
+  return { ok: true, status: 200, data: data[0] };
 }

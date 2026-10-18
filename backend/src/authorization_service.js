@@ -1,127 +1,40 @@
-import { hasSupabaseConfig, supabase } from './supabase.js';
+import { supabase } from './supabase.js';
 
 export const APP_ROLES = Object.freeze({
   ADMIN: 'admin',
   PATIENT: 'patient',
   DOCTOR: 'doctor',
-  CLINIC: 'clinic',
-  HOSPITAL: 'hospital',
   STAFF: 'staff',
+  HEAD: 'head',
 });
 
 export const PORTAL_ROLES = Object.freeze({
   admin: [APP_ROLES.ADMIN],
-  provider: [APP_ROLES.DOCTOR, APP_ROLES.CLINIC, APP_ROLES.HOSPITAL],
   patient: [APP_ROLES.PATIENT],
+  doctor: [APP_ROLES.DOCTOR, APP_ROLES.HEAD],
+  staff: [APP_ROLES.STAFF],
+  account: [APP_ROLES.ADMIN, APP_ROLES.PATIENT, APP_ROLES.DOCTOR, APP_ROLES.STAFF, APP_ROLES.HEAD],
 });
 
 function clean(value) {
   return typeof value === 'string' ? value.trim() : value;
 }
 
-function normalizeEmail(value = '') {
-  return String(clean(value) || '').toLowerCase();
-}
-
-const demoRoleByEmail = new Map([
-  ['admin@gmail.com', APP_ROLES.ADMIN],
-  ['hoang_2251220149@dau.edu.vn', APP_ROLES.DOCTOR],
-]);
-
 export function firebaseUid(firebaseUser = {}) {
-  return clean(firebaseUser.localId || firebaseUser.uid);
+  return clean(firebaseUser?.localId || firebaseUser?.uid);
 }
 
-function authProvider(firebaseUser = {}) {
-  return firebaseUser?.providerUserInfo?.[0]?.providerId?.includes('google') ? 'google' : 'password';
-}
-
-async function ensureDemoPortalAccount(firebaseUser = {}) {
-  if (!hasSupabaseConfig) return null;
-
-  const email = normalizeEmail(firebaseUser?.email);
-  const role = demoRoleByEmail.get(email);
-  const uid = firebaseUid(firebaseUser);
-  if (!role || !uid || !email) return null;
-
-  const row = {
-    firebase_uid: uid,
-    email,
-    full_name: clean(firebaseUser?.displayName) || email,
-    avatar_url: clean(firebaseUser?.photoUrl || firebaseUser?.photoURL) || null,
-    role,
-    status: 'active',
-    auth_provider: authProvider(firebaseUser),
-    email_verified: Boolean(firebaseUser?.emailVerified),
-    last_login_at: new Date().toISOString(),
-  };
-
-  const { data: existingByUid, error: uidError } = await supabase
-    .from('app_users')
-    .select('id')
-    .eq('firebase_uid', uid)
-    .maybeSingle();
-  if (uidError) throw uidError;
-
-  if (existingByUid?.id) {
-    const { data, error } = await supabase
-      .from('app_users')
-      .update(row)
-      .eq('id', existingByUid.id)
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
-  }
-
-  const { data: existingByEmail, error: emailError } = await supabase
-    .from('app_users')
-    .select('id')
-    .eq('email', email)
-    .maybeSingle();
-  if (emailError) throw emailError;
-
-  const result = existingByEmail?.id
-    ? await supabase.from('app_users').update(row).eq('id', existingByEmail.id).select().single()
-    : await supabase.from('app_users').insert(row).select().single();
-
-  if (result.error) throw result.error;
-  return result.data;
-}
-
-export async function getAppUserByFirebaseUid(firebaseUser) {
-  if (!hasSupabaseConfig) {
-    const email = normalizeEmail(firebaseUser?.email);
-    const role = demoRoleByEmail.get(email) || APP_ROLES.PATIENT;
-    return {
-      ok: true,
-      status: 200,
-      demo: true,
-      data: {
-        id: `demo-${role}`,
-        firebase_uid: firebaseUid(firebaseUser) || `demo-${role}`,
-        email,
-        full_name: clean(firebaseUser?.displayName) || email || 'MidHealth Demo',
-        role,
-        status: 'active',
-        auth_provider: authProvider(firebaseUser),
-      },
-    };
-  }
-
+export async function getAppUserByFirebaseUid(firebaseUser, client = supabase) {
   const uid = firebaseUid(firebaseUser);
   if (!uid) {
     return { ok: false, status: 401, data: { message: 'Phiên đăng nhập không hợp lệ.' } };
   }
 
-  try {
-    const demoAccount = await ensureDemoPortalAccount(firebaseUser);
-    if (demoAccount) return { ok: true, status: 200, data: demoAccount };
-  } catch (error) {
-    return { ok: false, status: 500, data: { message: error.message } };
+  if (!client) {
+    return { ok: false, status: 503, data: { message: 'Chưa kết nối cơ sở dữ liệu để xác minh quyền truy cập.' } };
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('app_users')
     .select('*')
     .eq('firebase_uid', uid)
@@ -133,7 +46,7 @@ export async function getAppUserByFirebaseUid(firebaseUser) {
 }
 
 export async function requireRoles(firebaseUser, allowedRoles, options = {}) {
-  const account = await getAppUserByFirebaseUid(firebaseUser);
+  const account = await getAppUserByFirebaseUid(firebaseUser, options.client);
   if (!account.ok) return account;
 
   const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
@@ -158,7 +71,7 @@ export async function requireRoles(firebaseUser, allowedRoles, options = {}) {
 }
 
 export function rolesForPortal(portal = '') {
-  return PORTAL_ROLES[clean(portal).toLowerCase()] || [];
+  return typeof portal === 'string' ? PORTAL_ROLES[portal.trim().toLowerCase()] || [] : [];
 }
 
 export function isRoleAllowed(role, allowedRoles) {
@@ -166,12 +79,13 @@ export function isRoleAllowed(role, allowedRoles) {
   return roles.includes(role);
 }
 
-export async function requirePortal(firebaseUser, portal) {
+export async function requirePortal(firebaseUser, portal, options = {}) {
   const roles = rolesForPortal(portal);
   if (!roles.length) {
     return { ok: false, status: 400, data: { message: 'Cổng đăng nhập không hợp lệ.' } };
   }
   return requireRoles(firebaseUser, roles, {
+    ...options,
     message: 'Tài khoản không thuộc cổng đăng nhập này.',
   });
 }

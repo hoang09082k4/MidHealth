@@ -1,0 +1,31 @@
+@startuml
+title Hoàn tất tài khoản bệnh nhân sau xác minh OTP
+autonumber
+skinparam ParticipantFontSize 10
+actor "Bệnh nhân mới" as Patient
+boundary "Giao diện đăng ký\nD:\MidHealth\frontend\src\components\xac_thuc\dang_nhap_dang_ky\nD:\MidHealth\frontend\src\lib\appointments" as UI
+participant "Firebase Authentication" as Firebase
+control "MidHealth API\nD:\MidHealth\backend\src\server\nD:\MidHealth\backend\src\account_service\nD:\MidHealth\backend\src\profile_service" as API
+database "CSDL MidHealth — Supabase PostgreSQL\nD:\MidHealth\supabase\schema\nschema public\npublic.app_users\npublic.patient_profiles" as DB
+
+Patient -> UI: Nhập mật khẩu và hồ sơ
+UI -> Firebase: Tạo tài khoản email/mật khẩu
+Firebase --> UI: Firebase user
+UI -> Firebase: Lấy ID token
+Firebase --> UI: ID token
+UI -> API: GET /api/auth/me?portal=patient&allowIncomplete=1
+API -> Firebase: verifyIdToken
+Firebase --> API: UID, email hợp lệ
+API -> DB: UPSERT public.app_users (role=patient)
+DB --> API: Tài khoản được nhận diện
+UI -> API: POST /api/patient/account-profile
+API -> API: Kiểm tra và tiêu thụ OTP token
+API -> DB: UPSERT public.app_users; UPSERT public.patient_profiles
+DB --> API: Hồ sơ đã liên kết UID
+API --> UI: Đăng ký hoàn tất
+UI --> Patient: Mở cổng bệnh nhân
+note over API,DB
+  Chỉ bệnh nhân tự đăng ký công khai.
+  Nhân viên và bác sĩ do Admin cấp tài khoản.
+end note
+@enduml

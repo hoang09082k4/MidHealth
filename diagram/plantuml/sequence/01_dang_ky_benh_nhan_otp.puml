@@ -1,0 +1,30 @@
+@startuml
+title Đăng ký bệnh nhân bằng email OTP
+autonumber
+skinparam ParticipantFontSize 10
+actor "Khách truy cập" as Guest
+boundary "Giao diện đăng ký\nD:\MidHealth\frontend\src\components\xac_thuc\dang_nhap_dang_ky" as UI
+control "MidHealth API\nD:\MidHealth\backend\src\server\nD:\MidHealth\backend\src\otp_service" as API
+participant "Dịch vụ email" as Mail
+database "CSDL MidHealth — Supabase PostgreSQL\nD:\MidHealth\supabase\schema\nschema public\npublic.email_otp_challenges" as DB
+
+Guest -> UI: Nhập email, yêu cầu OTP
+UI -> API: POST /api/auth/otp/send
+API -> DB: RPC public.request_email_otp
+DB --> API: Đã lưu challenge / cooldown
+API -> Mail: Gửi OTP
+Mail --> API: Kết quả gửi
+API --> UI: Kết quả yêu cầu OTP
+Mail --> Guest: Email OTP
+Guest -> UI: Nhập mã OTP
+UI -> API: POST /api/auth/otp/verify
+API -> DB: RPC public.verify_email_otp
+DB --> API: Hợp lệ / sai / hết hạn / khóa
+alt OTP hợp lệ
+  API --> UI: OTP token dùng một lần
+  UI --> Guest: Cho phép tạo tài khoản
+else OTP không hợp lệ
+  API --> UI: Lỗi xác minh
+  UI --> Guest: Hiển thị lỗi / yêu cầu mã mới
+end
+@enduml

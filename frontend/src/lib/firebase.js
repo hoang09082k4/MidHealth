@@ -8,26 +8,15 @@ import {
 } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: 'AIzaSyBfkTA39JCh8YtBkj0Iyq-cL6Oruo7jk6M',
-  authDomain: 'midhealth-1c1b9.firebaseapp.com',
-  projectId: 'midhealth-1c1b9',
-  storageBucket: 'midhealth-1c1b9.firebasestorage.app',
-  messagingSenderId: '620573602820',
-  appId: '1:620573602820:web:24a4202de863356b5ff151',
-  measurementId: 'G-NR4CFHZ1DS',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyBfkTA39JCh8YtBkj0Iyq-cL6Oruo7jk6M',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'midhealth-1c1b9.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'midhealth-1c1b9',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:620573602820:web:24a4202de863356b5ff151',
 };
 
 export const firebaseApp = initializeApp(firebaseConfig);
 export const firebaseAuth = getAuth(firebaseApp);
 export const googleProvider = new GoogleAuthProvider();
-
-if (typeof window !== 'undefined') {
-  import('firebase/analytics')
-    .then(({ getAnalytics, isSupported }) => isSupported().then((supported) => {
-      if (supported) getAnalytics(firebaseApp);
-    }))
-    .catch(() => {});
-}
 
 export function signInWithGoogleRedirect() {
   googleProvider.setCustomParameters({ prompt: 'select_account' });
