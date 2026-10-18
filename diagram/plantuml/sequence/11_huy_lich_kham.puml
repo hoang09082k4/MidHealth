@@ -1,0 +1,24 @@
+@startuml
+title Bệnh nhân yêu cầu hủy lịch khám
+autonumber
+skinparam ParticipantFontSize 10
+actor "Bệnh nhân" as Patient
+boundary "Cổng bệnh nhân\nD:\MidHealth\frontend\src\lib\appointments\nD:\MidHealth\frontend\src\components\phieu_kham\phieu_kham_dien_tu" as UI
+control "MidHealth API\nD:\MidHealth\backend\src\server\nD:\MidHealth\backend\src\appointment_service" as API
+database "CSDL MidHealth — Supabase PostgreSQL\nD:\MidHealth\supabase\schema\nschema public\npublic.appointments\npublic.appointment_slots\npublic.payments" as DB
+
+Patient -> UI: Chọn lịch và yêu cầu hủy
+UI -> API: PATCH /api/appointments/{id}/cancel
+API -> DB: SELECT public.appointments, public.payments (owner and status)
+DB --> API: Lịch hợp lệ / không đủ điều kiện
+alt Đủ điều kiện hủy
+  API -> DB: RPC public.cancel_clinic_unpaid_appointment
+  DB -> DB: UPDATE public.appointments; release public.appointment_slots
+  DB --> API: Lịch đã hủy
+  API --> UI: Hủy thành công
+  UI --> Patient: Cập nhật trạng thái lịch
+else Không đủ điều kiện
+  API --> UI: Từ chối hủy / cần xử lý riêng
+  UI --> Patient: Hiển thị lý do
+end
+@enduml

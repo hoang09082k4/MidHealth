@@ -1,0 +1,16 @@
+@startuml
+title Tra cứu khung giờ khám còn chỗ
+autonumber
+skinparam ParticipantFontSize 10
+actor "Khách truy cập" as Guest
+boundary "Website MidHealth\nD:\MidHealth\frontend\src\lib\appointments\nD:\MidHealth\frontend\src\components\dat_lich_kham\dat_lich_bac_si" as UI
+control "MidHealth API\nD:\MidHealth\backend\src\server\nD:\MidHealth\backend\src\appointment_service" as API
+database "CSDL MidHealth — Supabase PostgreSQL\nD:\MidHealth\supabase\schema\nschema public\npublic.doctors\npublic.appointment_slots" as DB
+
+Guest -> UI: Chọn bác sĩ và ngày khám
+UI -> API: GET /api/doctors/{id}/slots?date=...
+API -> DB: SELECT public.doctors, public.appointment_slots
+DB --> API: Khung giờ và sức chứa còn lại
+API --> UI: Danh sách khung giờ
+UI --> Guest: Hiển thị giờ còn chỗ
+@enduml

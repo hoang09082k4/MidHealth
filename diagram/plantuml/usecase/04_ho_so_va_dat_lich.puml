@@ -1,0 +1,44 @@
+@startuml
+left to right direction
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam linetype polyline
+skinparam ArrowThickness 1
+skinparam nodesep 40
+skinparam ranksep 40
+skinparam actorStyle stickman
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  FontColor #000000
+}
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  FontColor #000000
+  ArrowColor #000000
+}
+title Use case hồ sơ bệnh nhân và đặt lịch trực tuyến
+
+actor "Bệnh nhân" as Patient
+actor "PayPal" as PayPal
+
+usecase "Đăng nhập cổng\nbệnh nhân" as Login
+usecase "Quản lý hồ sơ\nngười khám" as Profiles
+usecase "Đặt lịch khám" as Booking
+usecase "Chọn bác sĩ và\nkhung giờ còn chỗ" as SelectSlot
+usecase "Chọn hồ sơ người khám" as SelectProfile
+usecase "Nhập lý do khám" as VisitReason
+usecase "Tạo lịch hẹn và\nphiếu khám điện tử" as CreateTicket
+usecase "Thanh toán tiền cọc\nqua PayPal" as PayDeposit
+
+Patient --> Login
+Login --> Profiles
+Login --> Booking
+Booking ..> SelectSlot : <<include>>
+Booking ..> SelectProfile : <<include>>
+Booking ..> CreateTicket : <<include>>
+VisitReason ..> Booking : <<extend>> [nếu người đặt nhập lý do khám]
+PayDeposit ..> Booking : <<extend>> [khi lịch có tiền cọc]
+PayDeposit --> PayPal
+@enduml

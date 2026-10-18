@@ -1,0 +1,23 @@
+@startuml
+title Quản lý khung giờ khám theo quyền
+autonumber
+skinparam ParticipantFontSize 10
+actor "Bác sĩ / Trưởng khoa" as Manager
+boundary "Giao diện quản lý lịch\nD:\MidHealth\frontend\src\components\doctor\doctor_workspace\nD:\MidHealth\frontend\src\components\admin\admin_schedule" as UI
+control "MidHealth API\nD:\MidHealth\backend\src\server\nD:\MidHealth\backend\src\doctor_service\nD:\MidHealth\backend\src\admin_schedule_service" as API
+database "CSDL MidHealth — Supabase PostgreSQL\nD:\MidHealth\supabase\schema\nschema public\npublic.app_users\npublic.doctors\npublic.appointment_slots" as DB
+
+Manager -> UI: Xem hoặc cập nhật khung giờ
+UI -> API: GET/POST/PATCH /api/doctor/slots
+API -> DB: SELECT public.app_users, public.doctors (role and scope)
+DB --> API: Quyền hợp lệ / từ chối
+alt Có quyền
+  API -> DB: SELECT/INSERT/UPDATE public.appointment_slots
+  DB --> API: Danh sách / kết quả cập nhật
+  API --> UI: Lịch làm việc
+  UI --> Manager: Hiển thị lịch
+else Không có quyền
+  API --> UI: 403 - ngoài phạm vi được quản lý
+  UI --> Manager: Hiển thị lỗi quyền
+end
+@enduml

@@ -1,0 +1,18 @@
+@startuml
+title Bệnh nhân đặt lịch khám trực tuyến
+autonumber
+skinparam ParticipantFontSize 10
+actor "Bệnh nhân" as Patient
+boundary "Cổng bệnh nhân\nD:\MidHealth\frontend\src\lib\appointments\nD:\MidHealth\frontend\src\components\dat_lich_kham\dat_lich_bac_si" as UI
+control "MidHealth API\nD:\MidHealth\backend\src\server\nD:\MidHealth\backend\src\appointment_service" as API
+database "CSDL MidHealth — Supabase PostgreSQL\nD:\MidHealth\supabase\schema\nschema public\npublic.patient_profiles\npublic.patient_medical_profiles\npublic.appointment_slots\npublic.appointments\npublic.appointment_attachments\npublic.queue_tickets" as DB
+
+Patient -> UI: Chọn hồ sơ, bác sĩ, giờ khám
+UI -> API: POST /api/appointments
+API -> API: Xác minh ID token và quyền sở hữu hồ sơ
+API -> DB: RPC public.create_clinic_booking
+DB -> DB: Check public.appointment_slots; INSERT public.appointments and public.queue_tickets
+DB --> API: Mã hẹn và trạng thái
+API --> UI: Phiếu khám / yêu cầu thanh toán cọc
+UI --> Patient: Hiển thị kết quả đặt lịch
+@enduml

@@ -1,0 +1,45 @@
+@startuml
+left to right direction
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam linetype polyline
+skinparam ArrowThickness 1
+skinparam nodesep 40
+skinparam ranksep 40
+skinparam actorStyle stickman
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  FontColor #000000
+}
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  FontColor #000000
+  ArrowColor #000000
+}
+title Use case quản lý lịch hẹn, phiếu khám và số khám
+
+actor "Bệnh nhân" as Patient
+
+usecase "Đăng nhập\ncổng bệnh nhân" as PatientLogin
+usecase "Theo dõi lịch khám" as PatientAppointments
+usecase "Xem lịch khám đã đặt" as ListAppointments
+usecase "Xem và tải phiếu khám" as Ticket
+usecase "Xem kết quả khám và\nđơn thuốc" as Results
+usecase "Theo dõi trạng thái\nlịch khám" as TrackStatus
+usecase "Theo dõi số khám\nsau khi check-in" as Queue
+usecase "Yêu cầu hủy lịch" as Cancel
+usecase "Kiểm tra điều kiện\nđược hủy" as CheckCancellation
+
+Patient --> PatientLogin
+PatientLogin --> PatientAppointments
+
+PatientAppointments ..> ListAppointments : <<include>>
+Ticket ..> PatientAppointments : <<extend>> [khi mở phiếu khám]
+Results ..> Ticket : <<extend>> [khi kết quả khám đã được lưu]
+TrackStatus ..> PatientAppointments : <<extend>> [khi xem trạng thái]
+Queue ..> TrackStatus : <<extend>> [sau khi được check-in]
+Cancel ..> PatientAppointments : <<extend>> [khi yêu cầu hủy]
+Cancel ..> CheckCancellation : <<include>>
+@enduml
