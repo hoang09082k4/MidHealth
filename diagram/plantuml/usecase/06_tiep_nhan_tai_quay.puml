@@ -1,0 +1,51 @@
+@startuml
+left to right direction
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam linetype polyline
+skinparam ArrowThickness 1
+skinparam nodesep 40
+skinparam ranksep 40
+skinparam actorStyle stickman
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  FontColor #000000
+}
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  FontColor #000000
+  ArrowColor #000000
+}
+title Use case nhân viên tiếp nhận bệnh nhân tại quầy
+
+actor "Nhân viên" as Staff
+
+usecase "Đăng nhập cổng\nnhân viên" as Login
+usecase "Đăng ký khám\ntại quầy" as CounterBooking
+usecase "Tìm hoặc xác định hồ sơ\nngười bệnh" as ResolvePatient
+usecase "Tra cứu hồ sơ\nngười bệnh" as SearchPatient
+usecase "Xác minh danh tính\nngười bệnh" as VerifyIdentity
+usecase "Tạo hoặc cập nhật hồ sơ\nngười bệnh" as EditPatient
+usecase "Chọn chuyên khoa, bác sĩ\nvà khung giờ còn chỗ" as SelectSlot
+usecase "Ghi nhận tiền cọc\ntại quầy" as RecordCashDeposit
+usecase "Tạo lịch hẹn và\nphiếu khám" as CreateTicket
+usecase "Check-in đúng ngày khám" as CheckIn
+usecase "Tra cứu lịch bằng mã hẹn" as FindAppointment
+usecase "Xác minh điều kiện\ncheck-in" as VerifyEligibility
+
+Staff --> Login
+Login --> CounterBooking
+Login --> CheckIn
+CounterBooking ..> ResolvePatient : <<include>>
+ResolvePatient ..> SearchPatient : <<include>>
+CounterBooking ..> VerifyIdentity : <<include>>
+CounterBooking ..> SelectSlot : <<include>>
+CounterBooking ..> CreateTicket : <<include>>
+EditPatient ..> ResolvePatient : <<extend>> [nếu chưa có hồ sơ hoặc cần cập nhật]
+RecordCashDeposit ..> CounterBooking : <<extend>> [nếu lịch yêu cầu cọc]
+CheckIn ..> FindAppointment : <<include>>
+CheckIn ..> VerifyEligibility : <<include>>
+CheckIn ..> VerifyIdentity : <<include>>
+@enduml

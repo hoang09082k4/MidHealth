@@ -1,0 +1,21 @@
+@startuml
+title Bác sĩ ghi kết quả khám chuyên khoa
+autonumber
+skinparam ParticipantFontSize 10
+actor "Bác sĩ" as Doctor
+boundary "Workspace bác sĩ\nD:\MidHealth\frontend\src\components\doctor\doctor_workspace" as UI
+control "MidHealth API\nD:\MidHealth\backend\src\server\nD:\MidHealth\backend\src\doctor_service" as API
+database "CSDL MidHealth — Supabase PostgreSQL\nD:\MidHealth\supabase\schema\nschema public\npublic.app_users\npublic.clinical_encounters\npublic.clinical_material_usage\npublic.appointment_slots" as DB
+
+Doctor -> UI: Mở workspace và chọn lượt khám
+UI -> API: GET /api/doctor/workspace
+API -> DB: SELECT public.clinical_encounters (assigned doctor)
+DB --> API: Các lượt được phân công
+Doctor -> UI: Ghi nhận triệu chứng và kết quả
+UI -> API: POST /api/doctor/encounters/{id}/result
+API -> DB: RPC public.record_specialty_exam
+DB -> DB: UPDATE public.clinical_encounters; INSERT public.clinical_material_usage; SELECT/lock public.appointment_slots; INSERT referred public.clinical_encounters
+DB --> API: Kết quả đã lưu
+API --> UI: Xác nhận ghi kết quả
+UI --> Doctor: Hiển thị kết quả
+@enduml

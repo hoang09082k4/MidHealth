@@ -1,0 +1,22 @@
+@startuml
+title Trưởng khoa kết luận và hoàn tất đợt khám
+autonumber
+skinparam ParticipantFontSize 10
+actor "Trưởng khoa" as Head
+boundary "Workspace chuyên môn\nD:\MidHealth\frontend\src\components\doctor\doctor_workspace" as UI
+control "MidHealth API\nD:\MidHealth\backend\src\server\nD:\MidHealth\backend\src\doctor_service" as API
+database "CSDL MidHealth — Supabase PostgreSQL\nD:\MidHealth\supabase\schema\nschema public\npublic.appointments\npublic.clinical_encounters\npublic.appointment_clinical_notes\npublic.prescription_items\npublic.clinical_material_usage" as DB
+
+Head -> UI: Mở đợt khám và tổng hợp kết quả
+UI -> API: POST /api/doctor/appointments/{id}/complete
+API -> DB: RPC public.finalize_clinic_visit
+DB -> DB: Check public.clinical_encounters; INSERT public.appointment_clinical_notes, public.prescription_items, public.clinical_material_usage; UPDATE public.appointments
+DB --> API: Hoàn tất / còn lượt chưa xử lý
+alt Đủ điều kiện
+  API --> UI: Hồ sơ đã hoàn tất
+  UI --> Head: Xác nhận kết thúc đợt khám
+else Còn lượt khám chờ xử lý
+  API --> UI: Từ chối hoàn tất
+  UI --> Head: Hiển thị lượt khám còn chờ
+end
+@enduml

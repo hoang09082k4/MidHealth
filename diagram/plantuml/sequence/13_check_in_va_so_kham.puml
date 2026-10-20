@@ -1,0 +1,38 @@
+@startuml
+title Tiếp nhận bệnh nhân đến khám
+autonumber
+skinparam ParticipantFontSize 10
+actor "Nhân viên" as Staff
+boundary "Giao diện Tiếp nhận bệnh nhân\nD:\MidHealth\frontend\src\components\staff\staff_workspace" as UI
+control "MidHealth API\nD:\MidHealth\backend\src\server\nD:\MidHealth\backend\src\staff_service" as API
+database "CSDL MidHealth — Supabase PostgreSQL\nD:\MidHealth\supabase\schema\nschema public\npublic.queue_tickets\npublic.appointments\npublic.patient_medical_profiles\npublic.clinical_encounters\npublic.admin_events" as DB
+
+Staff -> UI: Nhập mã hẹn và tra cứu lịch
+UI -> API: GET /api/staff/appointments?code=...
+API -> DB: SELECT public.queue_tickets\nliên kết public.appointments, public.doctors
+DB --> API: Lịch hẹn và thông tin bác sĩ / không tìm thấy
+API --> UI: Hiển thị lịch phù hợp
+alt Mã hẹn hợp lệ
+  UI --> Staff: Hiển thị họ tên, ngày sinh và trạng thái thanh toán
+  Staff -> UI: Đối chiếu giấy tờ, nhập họ tên và ngày sinh
+  UI -> API: POST /api/staff/check-in (code, patientName, birthDate)
+  API -> DB: Tra lại public.queue_tickets theo mã hẹn
+  DB --> API: appointment_id / không tìm thấy
+  API -> DB: RPC public.check_in_clinic_appointment
+  DB -> DB: Kiểm tra lịch đã xác nhận, đúng ngày,\nđã thanh toán cọc, bác sĩ không vắng và đúng danh tính
+  alt Đủ điều kiện check-in
+    DB -> DB: UPDATE checked_in_at, checked_in_by;\nINSERT public.clinical_encounters (stage 1)
+    DB --> API: Check-in thành công
+    API -> DB: INSERT public.admin_events
+    DB --> API: Đã ghi nhật ký thao tác
+    API --> UI: Kết quả check-in thành công
+    UI --> Staff: Xác nhận người bệnh đã đến khám
+  else Không đạt điều kiện
+    DB --> API: Lý do từ chối; không đổi trạng thái lịch
+    API --> UI: Lỗi check-in
+    UI --> Staff: Hiển thị lý do cần xử lý
+  end
+else Không tìm thấy mã hẹn
+  UI --> Staff: Báo không tìm thấy lịch, yêu cầu kiểm tra mã
+end
+@enduml

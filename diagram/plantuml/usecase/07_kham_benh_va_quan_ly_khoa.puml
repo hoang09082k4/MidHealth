@@ -1,0 +1,79 @@
+@startuml
+left to right direction
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam linetype polyline
+skinparam ArrowThickness 1
+skinparam nodesep 40
+skinparam ranksep 40
+skinparam actorStyle stickman
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  FontColor #000000
+}
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  FontColor #000000
+  ArrowColor #000000
+}
+title Use case bác sĩ và trưởng khoa
+
+actor "Bác sĩ" as Doctor
+actor "Trưởng khoa" as Head
+
+usecase "Đăng nhập\ncổng bác sĩ" as DoctorLogin
+usecase "Đăng nhập\ncổng trưởng khoa" as HeadLogin
+usecase "Thực hiện lượt khám\nchuyên khoa" as RecordVisit
+usecase "Xem lịch được phân công\nvà danh sách lượt khám" as ViewSchedule
+usecase "Xem hồ sơ và tiền sử\nsức khỏe người bệnh" as ViewHistory
+usecase "Ghi triệu chứng và\nnhận định ban đầu" as SpecialistNote
+usecase "Ghi kết quả khám\nchuyên khoa" as SpecialtyResult
+usecase "Xem kết quả các lượt\nkhám chuyên khoa" as ReviewResults
+usecase "Chuyển người bệnh đến\nchuyên khoa tiếp theo" as ReferSpecialty
+usecase "Tổng hợp kết quả, kết luận\nvà hoàn tất hồ sơ khám" as FinalizeVisit
+usecase "Rà soát dị ứng và\ntiền sử thuốc" as ReviewMedicationSafety
+usecase "Kê đơn thuốc" as Prescription
+usecase "Ghi nhận vật tư\nđã sử dụng" as RecordMaterials
+usecase "Bổ sung kết quả hồ sơ khám" as Addendum
+usecase "Xem hồ sơ lượt khám đã hoàn tất" as CompletedVisit
+usecase "Mở, sửa hoặc đóng\nkhung giờ khám" as ManageSlots
+usecase "Cập nhật hồ sơ bác sĩ\nvà thông tin hiển thị" as DoctorProfile
+usecase "Cập nhật dịch vụ khám\nvà nội dung hiển thị" as ManageServices
+usecase "Giao việc và theo dõi\ncông việc trong khoa" as DepartmentTasks
+usecase "Xem báo cáo hoạt động\nchuyên khoa" as DepartmentReport
+usecase "Xem báo cáo lịch khám\ncủa bác sĩ" as DoctorReport
+
+Doctor --> DoctorLogin
+Doctor --> RecordVisit
+Doctor --> ManageSlots
+Doctor --> DoctorProfile
+Doctor --> ManageServices
+Doctor --> DoctorReport
+Head --> HeadLogin
+Head --> RecordVisit
+Head --> FinalizeVisit
+Head --> CompletedVisit
+Head --> ManageSlots
+Head --> DoctorProfile
+Head --> ManageServices
+Head --> DepartmentTasks
+Head --> DepartmentReport
+Head --> DoctorReport
+RecordVisit ..> ViewSchedule : <<include>>
+ViewHistory ..> RecordVisit : <<extend>>
+' Điều kiện mở rộng: khi cần xem tiền sử sức khỏe
+RecordVisit ..> SpecialistNote : <<include>>
+RecordVisit ..> SpecialtyResult : <<include>>
+FinalizeVisit ..> ReviewResults : <<include>>
+ReferSpecialty ..> RecordVisit : <<extend>>
+' Điều kiện mở rộng: khi cần khám thêm chuyên khoa
+Prescription ..> FinalizeVisit : <<extend>>
+' Điều kiện mở rộng: khi có chỉ định thuốc
+Prescription ..> ReviewMedicationSafety : <<include>>
+RecordMaterials ..> FinalizeVisit : <<extend>>
+' Điều kiện mở rộng: khi có vật tư được sử dụng
+Addendum ..> CompletedVisit : <<extend>>
+' Điều kiện mở rộng: khi cần bổ sung hồ sơ
+@enduml

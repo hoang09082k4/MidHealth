@@ -1,0 +1,37 @@
+@startuml
+title Nhân viên đăng ký khám tại quầy
+autonumber
+skinparam ParticipantFontSize 10
+actor "Nhân viên" as Staff
+boundary "Giao diện Tiếp nhận bệnh nhân\nD:\MidHealth\frontend\src\components\staff\staff_workspace" as UI
+control "MidHealth API\nD:\MidHealth\backend\src\server\nD:\MidHealth\backend\src\staff_service" as API
+database "CSDL MidHealth — Supabase PostgreSQL\nD:\MidHealth\supabase\schema\nschema public\npublic.app_users\npublic.patient_profiles\npublic.patient_medical_profiles\npublic.clinic_profile\npublic.clinic_specialties\npublic.doctors\npublic.appointment_slots\npublic.appointments\npublic.queue_tickets\npublic.payments" as DB
+
+Staff -> UI: Tìm hồ sơ theo tên, email hoặc số điện thoại
+UI -> API: GET /api/staff/patients?query=...
+API -> DB: SELECT public.patient_profiles, public.patient_medical_profiles
+DB --> API: Danh sách hồ sơ phù hợp / không tìm thấy
+alt Hồ sơ đã có
+  Staff -> UI: Đối chiếu giấy tờ, chọn hồ sơ và cập nhật nếu cần
+  UI -> API: PATCH /api/staff/patients/{id}
+  API -> DB: UPDATE public.patient_medical_profiles
+  DB --> API: Hồ sơ đã cập nhật
+else Hồ sơ mới
+  Staff -> UI: Nhập thông tin người bệnh sau khi kiểm tra trùng
+  UI -> API: POST /api/staff/patients
+  API -> DB: INSERT public.patient_profiles, public.patient_medical_profiles
+  DB --> API: Hồ sơ tại quầy, không tạo đăng nhập
+end
+Staff -> UI: Chọn ngày khám
+UI -> API: GET /api/staff/slots?date=...
+API -> DB: SELECT public.appointment_slots,\npublic.doctors, public.clinic_specialties
+DB --> API: Khung giờ hoạt động còn chỗ và mức phí
+API --> UI: Danh sách khung giờ có thể đặt
+Staff -> UI: Chọn khung giờ; xác nhận đã thu cọc nếu cần
+UI -> API: POST /api/staff/bookings\n(patientId, slotId, cashDepositReceived, reason)
+API -> DB: RPC public.create_clinic_walkin_booking
+DB -> DB: Kiểm tra nhân viên, hồ sơ, slot và cọc;\ntạo appointment, queue ticket và payment tiền mặt nếu có
+DB --> API: Mã lịch hẹn và phiếu khám
+API --> UI: Kết quả đặt lịch
+UI --> Staff: Hiển thị mã hẹn / phiếu khám
+@enduml
