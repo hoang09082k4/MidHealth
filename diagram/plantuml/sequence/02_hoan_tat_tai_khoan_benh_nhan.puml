@@ -24,8 +24,4 @@ API -> DB: UPSERT public.app_users; UPSERT public.patient_profiles
 DB --> API: Hồ sơ đã liên kết UID
 API --> UI: Đăng ký hoàn tất
 UI --> Patient: Mở cổng bệnh nhân
-note over API,DB
-  Chỉ bệnh nhân tự đăng ký công khai.
-  Nhân viên và bác sĩ do Admin cấp tài khoản.
-end note
 @enduml

@@ -1,0 +1,39 @@
+@startuml
+left to right direction
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam linetype polyline
+skinparam ArrowThickness 1
+skinparam nodesep 40
+skinparam ranksep 40
+skinparam actorStyle stickman
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  FontColor #000000
+}
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  FontColor #000000
+  ArrowColor #000000
+}
+title Use case tra cứu dịch vụ và thông tin phòng khám
+
+actor "Người truy cập website\n(khách hoặc bệnh nhân)" as Visitor
+
+usecase "Xem trang chủ và\nthông tin phòng khám" as Home
+usecase "Xem dịch vụ khám,\nchuyên khoa và chi phí" as Services
+usecase "Tìm bác sĩ theo tên\nhoặc chuyên khoa" as Search
+usecase "Xem kết quả tìm kiếm\nbác sĩ" as Results
+usecase "Xem hồ sơ bác sĩ" as DoctorProfile
+usecase "Xem lịch làm việc\nvà giờ khám còn chỗ" as Availability
+usecase "Lọc bác sĩ theo\ndịch vụ / chuyên khoa" as FilterService
+Visitor --> Home
+Visitor --> Services
+Visitor --> Search
+Search ..> Results : <<include>>
+FilterService ..> Search : <<extend>> [khi chọn lọc dịch vụ]
+DoctorProfile ..> Search : <<extend>> [khi chọn bác sĩ trong kết quả]
+Availability ..> DoctorProfile : <<extend>> [khi mở lịch bác sĩ]
+@enduml

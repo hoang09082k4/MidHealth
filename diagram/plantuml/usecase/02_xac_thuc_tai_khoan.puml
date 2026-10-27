@@ -1,51 +1,65 @@
-@startuml
+﻿@startuml
 left to right direction
-skinparam packageStyle rectangle
-skinparam actorStyle stickman
+skinparam backgroundColor #FFFFFF
 skinparam shadowing false
-skinparam usecase {
-  BackgroundColor #F8FBFF
-  BorderColor #2878B8
-  ArrowColor #526579
+skinparam linetype polyline
+skinparam ArrowThickness 1
+skinparam nodesep 32
+skinparam ranksep 38
+skinparam actorStyle stickman
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  FontColor #000000
 }
-title Use case đăng ký bệnh nhân và xác thực tài khoản
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  FontColor #000000
+  ArrowColor #000000
+}
+title Use case đăng ký và xác thực tài khoản
 
-actor "Người dùng cổng bệnh nhân" as Patient
+actor "Khách truy cập /\nBệnh nhân" as Patient
 actor "Tài khoản nội bộ\n(nhân viên, bác sĩ,\ntrưởng khoa, Admin)" as InternalUser
 actor "Dịch vụ email OTP" as Email
 actor "Firebase Authentication" as Firebase
 
-rectangle "MidHealth - Xác thực và truy cập" {
-  usecase "Đăng ký tài khoản\nbệnh nhân bằng email" as RegisterEmail
+  usecase "Đăng ký bệnh nhân" as Register
+  usecase "Đăng ký bằng email" as RegisterEmail
+  usecase "Đăng ký bằng Google" as RegisterGoogle
   usecase "Xác minh email\nbằng mã OTP" as VerifyOTP
-  usecase "Tạo mật khẩu và\nhoàn tất hồ sơ bệnh nhân" as CompleteRegistration
-  usecase "Đăng ký / đăng nhập\nbệnh nhân bằng Google" as GooglePatient
-  usecase "Hoàn tất hồ sơ và mật khẩu\nkhi đăng ký Google lần đầu" as CompleteGoogleProfile
-  usecase "Đăng nhập email\nvà mật khẩu" as Login
-  usecase "Kiểm tra vai trò và\ntrạng thái tài khoản" as CheckAccess
-  usecase "Đặt lại mật khẩu\nbệnh nhân" as ResetPassword
-  usecase "Đăng xuất" as Logout
-}
+  usecase "Tạo tài khoản, đặt mật khẩu\nvà hoàn tất hồ sơ" as CompleteRegistration
+  usecase "Hoàn tất hồ sơ và mật khẩu\nở lần đăng ký Google đầu tiên" as CompleteGoogle
 
-Patient --> RegisterEmail
-Patient --> GooglePatient
-Patient --> ResetPassword
-Patient --> Login
-Patient --> Logout
-InternalUser --> Login
-InternalUser --> Logout
-RegisterEmail .> VerifyOTP : <<include>>
-RegisterEmail .> CompleteRegistration : <<include>>
-VerifyOTP --> Email
-Login .> CheckAccess : <<include>>
-GooglePatient .> CheckAccess : <<include>>
-CompleteGoogleProfile .> GooglePatient : <<extend>>
-Login --> Firebase
-GooglePatient --> Firebase
-note right of InternalUser
-  Tài khoản nhân viên, bác sĩ,
-  trưởng khoa do Admin cấp;
-  không có đăng ký công khai.
-end note
+  usecase "Đăng nhập tài khoản" as Login
+  usecase "Đăng nhập bằng email\nvà mật khẩu" as LoginEmail
+  usecase "Đăng nhập bằng Google" as LoginGoogle
+  usecase "Đặt lại mật khẩu" as ResetPassword
+  usecase "Kiểm tra vai trò và\ntrạng thái tài khoản" as CheckAccess
+  usecase "Đăng xuất" as Logout
+
+Patient -- Register
+Patient -- Login
+Patient -- Logout
+InternalUser -- Login
+InternalUser -- Logout
+Email -- VerifyOTP
+Firebase -- RegisterGoogle
+Firebase -- LoginEmail
+Firebase -- LoginGoogle
+
+RegisterEmail ..> Register : <<extend>> [chọn đăng ký email]
+RegisterGoogle ..> Register : <<extend>> [chọn đăng ký Google]
+RegisterEmail ..> VerifyOTP : <<include>>
+RegisterEmail ..> CompleteRegistration : <<include>>
+CompleteGoogle ..> RegisterGoogle : <<extend>> [đăng ký lần đầu]
+LoginEmail ..> Login : <<extend>> [chọn đăng nhập email]
+LoginGoogle ..> Login : <<extend>> [chọn đăng nhập Google]
+ResetPassword ..> LoginEmail : <<extend>> [chọn quên mật khẩu]
+LoginEmail ..> CheckAccess : <<include>>
+LoginGoogle ..> CheckAccess : <<include>>
+
+
 @enduml
 

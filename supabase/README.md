@@ -1,69 +1,43 @@
 # MidHealth Supabase
 
-Thu muc nay dung de thiet lap va dong bo database Supabase cho do an.
+## Database đồng bộ
 
-## Cac file chinh
+Database Supabase đang hoạt động đã được đồng bộ trực tiếp với quy trình trưởng khoa ngày 16/10/2026. Không chạy lại schema.sql trên database đang có dữ liệu; schema.sql là cấu trúc chuẩn để khởi tạo database mới.
 
-- `schema.sql`: dinh nghia cau truc database hien tai, gom bang, view, function, trigger, index va RLS policy.
-- `seed.sql`: du lieu khoi tao/mau cho chuyen khoa, benh vien, phong kham, bac si, dich vu, slot kham va rule/knowledge chatbot.
-- `config.toml`: cau hinh Supabase CLI cho project local/remote.
+## Snapshot schema và dữ liệu mẫu
 
-## Cach quan ly database trong do an
+`schema.sql` là nguồn cấu trúc chuẩn cho database mới; `seed.sql` chỉ thêm dữ liệu mẫu. Các thay đổi vai trò, quy trình khám, đối soát thanh toán, check-in và phí khám chuyên khoa hiện đã được gộp vào snapshot `schema.sql`, không cần chạy các file migration để khởi tạo database mới. `schema.sql` có chốt an toàn và không phải script nâng cấp tại chỗ cho database đã có dữ liệu.
 
-Do an dung huong snapshot schema + seed:
+Database live đã có luồng chuyển khoa theo lịch nhận khám, ghi nhận vật tư theo người nhập, xác nhận rà soát dị ứng khi kê đơn và ghi chú bổ sung bất biến. Khi cập nhật database đang dùng, chỉ áp dụng các câu SQL đã rà soát trực tiếp lên đúng project; không xóa dữ liệu hoặc khởi tạo lại schema.
 
-- `schema.sql` la nguon chinh cho cau truc database hien tai. File nay phu hop de khoi tao nhanh database khi demo, bao ve do an hoac can reset moi.
-- `seed.sql` la du lieu mau cot loi cho luong dat lich kham: chuyen khoa, co so y te, bac si, dich vu va slot kham.
-- Cac script seed backend nhu `npm run seed:reference` va `npm run seed:health-news` dung cho cac tap du lieu lon/de cap nhat rieng.
-- `config.toml` tat migration files va cau hinh `db reset` chay `schema.sql` truoc `seed.sql`.
+Quy tắc hủy lịch bệnh nhân và bảo vệ thanh toán đã nằm trong snapshot `schema.sql`. Snapshot này dành cho database mới; không chạy lại trên database đang có dữ liệu. Thay đổi trên database hiện tại cần được áp dụng bằng SQL nâng cấp riêng đã rà soát cho đúng project.
 
-Cach giai thich ngan khi bao ve:
+Tiền cọc mặc định là **30% phí khám**, làm tròn lên 1 đồng. Tài liệu Word không quy định mức cọc nên admin cần kiểm tra và chỉnh tỷ lệ tại **Thông tin phòng khám** trước khi thu tiền thật. Tỷ lệ được lưu trong database và áp dụng cho lịch mới; lịch đã tạo giữ nguyên số cọc tại thời điểm đặt. Các lịch đã thanh toán trước khi nâng cấp vẫn giữ trạng thái cũ; những lịch đã xác nhận nhưng chưa thanh toán sẽ không được check-in cho tới khi ghi nhận cọc.
 
-> Em quan ly database theo huong snapshot schema. Toan bo cau truc hien tai nam trong `schema.sql`, du lieu mau nam trong `seed.sql` va cac script seed rieng. Cach nay giup em khoi tao lai database demo nhanh, tranh phai giai thich tung thay doi nho, nhung van dam bao schema co day du bang, khoa ngoai, index, trigger va RLS policy ma ung dung dang su dung.
+## Cấp lại mật khẩu tài khoản bác sĩ và nhân viên
 
-## Luong khoi tao toi uu
+Mật khẩu được lưu và cập nhật trực tiếp trong Firebase Authentication bằng Firebase Admin SDK. Backend tìm hồ sơ trong `app_users` theo `id`, dùng `firebase_uid` để cập nhật tài khoản Firebase, đồng thời kiểm tra `email`, `role`, `auth_provider` và `status`. Reset không ghi mật khẩu vào Supabase, không thêm cột database và không cần migration. Phiên đăng nhập Firebase cũ được thu hồi sau khi cập nhật thành công; người dùng đăng nhập lại bằng mật khẩu mới. Xem cấu hình credential trong `backend/README.md`.
 
-Luong khoi tao database cua do an la:
+## Tạo lại database hiện tại
 
-1. `schema.sql`
-2. `seed.sql`
-3. script seed backend neu can
+Nếu đã chọn xóa dữ liệu hiện có, chạy `node backend/scripts/prepare_database_reset.js` để tạo `artifacts/reset_midhealth_database.sql`. Mở tệp này bằng trình soạn thảo UTF-8, sao chép **toàn bộ nội dung** vào Supabase SQL Editor của đúng dự án rồi chạy một lần. Tệp xóa và tạo lại toàn bộ schema `public`, chạy `schema.sql` và `seed.sql`, sau đó khôi phục bản ghi admin bằng Firebase UID hiện có. Toàn bộ thao tác nằm trong một transaction: câu lệnh lỗi sẽ rollback. Dữ liệu cũ trong `public`, bao gồm lịch khám và tài khoản, sẽ mất. Firebase Authentication và Supabase Storage không bị xóa bởi SQL này.
 
-Bang `reference_data` dung de luu du lieu tham chieu dung chung cho frontend/backend, vi du:
+Không chạy script provision bác sĩ ảo cho phòng khám thật. Tài khoản bác sĩ thật phải được liên kết với hồ sơ đã xác minh qua trang quản trị.
 
-- danh sach khu vuc/tinh thanh,
-- danh sach dan toc,
-- danh sach nghe nghiep,
-- du lieu dia chi can cho form ho so va dat lich.
+## Cơ sở dữ liệu mới
 
-## Cach dung
+Chạy `schema.sql`, rồi `seed.sql` trong Supabase SQL Editor. `schema.sql` chứa toàn bộ cấu trúc tài khoản bác sĩ và quy trình khám; `seed.sql` chứa dữ liệu mẫu.
 
-Neu chay bang Supabase SQL Editor:
+`seed.sql` chỉ thêm các chuyên khoa mặc định. Nó không tạo bác sĩ, tài khoản bác sĩ, lịch trống hoặc dữ liệu đặt lịch. Quản trị viên thêm hồ sơ bác sĩ thật đã xác minh và lịch tiếp nhận từ trang quản trị.
 
-1. Chay `schema.sql`
-2. Chay `seed.sql`
-3. Vao thu muc `backend`, chay cac script seed bo sung neu can:
+## Hồ sơ và tài khoản bác sĩ
 
-```bash
-npm run seed:reference
-npm run seed:health-news
-```
+Seed có thể chạy lại an toàn: chuyên khoa đã có theo `slug` được giữ nguyên; script không cập nhật hoặc xóa hồ sơ bác sĩ hay lịch khám. Mỗi bác sĩ có hồ sơ riêng trong `doctors` và tài khoản đăng nhập riêng trong `app_users`, liên kết bằng `app_users.doctor_id`. Admin có thể tạo tài khoản từ hồ sơ bác sĩ đang hoạt động.
 
-Neu chay local bang Supabase CLI:
+Danh sách công khai gồm hồ sơ bác sĩ đang hoạt động của phòng khám. Nút đặt lịch chỉ mở khi bác sĩ có khung giờ tương lai còn chỗ trong `appointment_slots`; mỗi lượt đặt được kiểm tra lại trên server trước khi lưu.
 
-```bash
-supabase db reset
-```
+SQL không tự tạo người dùng Firebase. Với bác sĩ thật, dùng trang quản trị để tạo tài khoản sau khi đã nhập hồ sơ xác minh và cấu hình Firebase Admin SDK.
 
-Trong `config.toml`, `db reset` duoc cau hinh de chay `schema.sql` + `seed.sql`. Sau do seed du lieu bo sung qua backend:
+## Cơ sở dữ liệu hiện có
 
-```bash
-npm run seed:reference
-npm run seed:health-news
-```
-
-## Ghi chu
-
-`schema.sql` da co schema tong the cho cac module chinh: tai khoan/phan quyen, workspace doi tac, ho so benh nhan, dat lich kham, thanh toan, chatbot, du lieu tham chieu va Tin y te.
-
-Trong pham vi do an/demo, workflow snapshot schema + seed la don gian va on dinh: chi can cap nhat `schema.sql` khi thay doi cau truc va cap nhat `seed.sql` hoac script seed khi thay doi du lieu mau.
+`schema.sql` có chốt an toàn và không chạy trực tiếp trên cơ sở dữ liệu đã có `app_users`. Với database hiện tại đã được chọn xóa và tạo lại, dùng `artifacts/reset_midhealth_database.sql` theo hướng dẫn đầu trang; tệp này gộp schema, seed và bản ghi admin vào một transaction.

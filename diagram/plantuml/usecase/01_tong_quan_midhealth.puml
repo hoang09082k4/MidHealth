@@ -1,0 +1,56 @@
+@startuml
+left to right direction
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam linetype polyline
+skinparam ArrowThickness 1
+skinparam nodesep 40
+skinparam ranksep 40
+skinparam actorStyle stickman
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  FontColor #000000
+}
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  FontColor #000000
+  ArrowColor #000000
+}
+title Xây dựng website đặt lịch khám trực tuyến
+
+actor "Bệnh nhân /\nKhách truy cập" as Patient
+actor "Nhân viên" as Staff
+actor "Nhân sự chuyên môn\n(bác sĩ, trưởng khoa)" as ClinicalStaff
+actor "Admin" as Admin
+
+usecase "Tìm kiếm phòng khám,\ndịch vụ và bác sĩ" as Browse
+usecase "Đăng ký / đăng nhập\ncổng bệnh nhân" as PatientAccess
+usecase "Đăng nhập\nnhân viên" as StaffLogin
+usecase "Đăng nhập\nchuyên môn" as ClinicalLogin
+usecase "Đăng nhập\nquản trị" as AdminLogin
+usecase "Đặt lịch khám" as Booking
+usecase "Theo dõi lịch hẹn,\nphiếu khám và số khám" as PatientVisits
+usecase "Tiếp nhận bệnh nhân\ntại quầy" as FrontDesk
+usecase "Khám và hoàn tất\nhồ sơ chuyên môn" as ClinicalCare
+usecase "Điều phối hoạt động\nchuyên khoa" as Operations
+usecase "Quản trị phòng khám" as Administer
+usecase "Xem và xuất báo cáo" as Reports
+
+Patient --> PatientAccess
+Patient --> Browse
+Staff --> StaffLogin
+ClinicalStaff --> ClinicalLogin
+Admin --> AdminLogin
+PatientAccess --> Booking
+PatientAccess --> PatientVisits
+StaffLogin --> FrontDesk
+ClinicalLogin --> ClinicalCare
+ClinicalLogin --> Operations
+ClinicalLogin --> Reports
+AdminLogin --> Administer
+AdminLogin --> Operations
+AdminLogin --> Reports
+
+@enduml

@@ -1,96 +1,68 @@
 # MidHealth
 
-MidHealth là đồ án website đặt lịch khám gồm frontend React/Vite, backend Node.js, Supabase database, Firebase Auth, OTP email, phân quyền bệnh nhân/đối tác/admin, số khám điện tử, thanh toán, tin y tế và AI chatbot.
+MidHealth là website đặt lịch cho **một phòng khám duy nhất**, gồm frontend React/Vite, API Node.js, Supabase, Firebase Authentication, OTP email, thanh toán. Hệ thống có năm vai trò tài khoản: `patient`, `staff`, `doctor`, `head` và `admin`. Admin cấp tài khoản nhân viên, bác sĩ và trưởng khoa; các vai trò đăng nhập tại trang chung.
 
-## Cấu Trúc
+## Cấu trúc
 
-- `frontend`: giao diện React/Vite.
-- `backend`: API Node.js, auth, appointment, payment, provider workspace, admin, queue, chatbot.
-- `supabase`: schema, seed và cấu hình database.
-- `docs`: tài liệu demo, checklist nghiệm thu và báo cáo kiểm chứng.
-- `diagram`: tài liệu phân tích/use case/activity diagram.
+- `frontend`: giao diện người dùng và trang quản trị.
+- `backend`: API xác thực, danh mục phòng khám, lịch khám, thanh toán, số khám.
+- `supabase`: schema và seed của database.
+- `docs/SINGLE_CLINIC_REFACTOR_AUDIT.md`: phạm vi chuyển đổi và hướng dẫn nâng cấp database.
+- `docs/WORD_WORKFLOW_GAP.md`: đối chiếu quy trình với file Word.
 
-## Cài Đặt Nhanh
+`frontend/` chỉ chứa mã giao diện; `backend/` là Node API và cũng phục vụ bản build giao diện khi chạy production. `npm run build` tạo **một** thư mục `dist/` ở gốc. `dist/` được Git bỏ qua và không sửa trực tiếp.
+
+Dự án dùng npm workspaces với một `package-lock.json` ở gốc. Cài dependencies và chạy lệnh từ thư mục gốc; không tạo lockfile riêng trong `frontend/` hoặc `backend/`.
+
+## Chạy local
 
 ```bash
 npm install
-npm install --prefix frontend
-npm install --prefix backend
-```
-
-Tạo file môi trường:
-
-```bash
 copy backend\.env.example backend\.env
 copy frontend\.env.example frontend\.env
+npm run dev --prefix backend
+npm run dev --prefix frontend
 ```
 
-Điền secret thật vào `backend/.env`. Không commit `.env`.
+Frontend mặc định tại `http://localhost:5173`, backend tại `http://localhost:4000`. Điền secret thật vào `backend/.env` và không commit file này.
+Nếu muốn xem dữ liệu bác sĩ mô phỏng chỉ để demo local khi chưa có database, đặt `NODE_ENV=development` trong `backend/.env`. Khi chạy production, để `NODE_ENV=production` hoặc không đặt; bác sĩ mô phỏng không được công bố hay nhận đặt lịch.
 
-## Chạy Local
+## Chạy production độc lập
 
-Terminal backend:
+Từ thư mục gốc: `npm ci`, cấu hình `backend/.env` với `NODE_ENV=production`, tạo database mới bằng `supabase/schema.sql` rồi `supabase/seed.sql`, sau đó `npm run build` và `npm start`. Với database một phòng khám đang dùng, nâng cấp giữ dữ liệu theo `supabase/README.md`. Node phục vụ website và `/api` cùng một origin tại cổng `PORT` (mặc định 4000). Đặt reverse proxy HTTPS phía trước Node và cấu hình `FRONTEND_URL`, `ALLOWED_ORIGINS` theo tên miền thật. Chỉ đặt `TRUST_PROXY=true` khi proxy đã loại bỏ header `X-Forwarded-For` do client tự gửi và tạo lại header đáng tin. Cần giữ tiến trình Node hoạt động và theo dõi log, tải, lỗi và bản sao lưu dữ liệu.
+
+## Database
+
+Database mới: chạy `supabase/schema.sql`, rồi `supabase/seed.sql`. Để cấp tài khoản đăng nhập cho 10 bác sĩ ảo sau khi seed, chạy `npm run seed:virtual-doctors --prefix backend`; mật khẩu riêng của từng tài khoản được ghi vào `artifacts/virtual-doctor-credentials.json` ngoài Git. Database đang có dữ liệu không thể cập nhật cấu trúc bằng cách chạy lại schema/seed; các thay đổi cho database hiện hữu phải được rà soát và áp dụng trực tiếp lên đúng project mà không reset dữ liệu.
+
+Các seed bổ sung, khi cần:
 
 ```bash
-cd backend
-npm run dev
+npm run seed:reference --prefix backend
+npm run seed:admin --prefix backend
 ```
 
-Terminal frontend:
-
-```bash
-cd frontend
-npm run dev
-```
-
-Frontend mặc định chạy tại `http://localhost:5173`, backend tại `http://localhost:4000`.
-
-## Kiểm Chứng
-
-Chạy toàn bộ kiểm chứng cơ bản từ root:
+## Kiểm tra
 
 ```bash
 npm run verify
 ```
 
-Lệnh này chạy backend test và frontend production build. Đây là bằng chứng kỹ thuật tối thiểu trước khi demo.
+Lệnh này chạy unit/API tests, kiểm tra schema và seed bằng PostgreSQL nhúng, sau đó build frontend production. Việc kết nối Supabase/Firebase và thanh toán thật vẫn phải được kiểm tra trên môi trường triển khai.
 
-## Database Và Dữ Liệu Demo
+### Đối soát tiền cọc PayPal
 
-Khởi tạo Supabase theo thứ tự:
+Nếu PayPal đã duyệt đơn nhưng kết nối bị gián đoạn lúc capture, lịch giữ trạng thái `pending` thay vì bị hủy ngay. Tiến trình Node kiểm tra lại đơn PayPal sau 15 phút: chỉ xác nhận lịch khi thấy capture hoàn tất, chỉ giải phóng chỗ khi PayPal báo đơn `VOIDED`. Đơn vẫn `CREATED` hoặc `APPROVED` tiếp tục giữ chỗ để tránh hủy nhầm một khoản cọc đang xử lý. Nhân viên cần theo dõi các lịch `pending` trong admin và đối chiếu đơn trên PayPal; không hủy thủ công trước khi xác minh giao dịch. Cần kiểm thử tình huống mất kết nối, webhook trễ và capture lặp trên PayPal Sandbox trước khi thu tiền thật.
 
-1. Chạy `supabase/schema.sql`.
-2. Chạy `supabase/seed.sql`.
-3. Chạy seed bổ sung trong backend nếu cần:
+Đánh giá tải và phép thử cục bộ: [docs/LOAD_READINESS.md](docs/LOAD_READINESS.md). Lệnh `npm run check:load-local` không gửi yêu cầu đến production.
 
-```bash
-npm run seed:reference --prefix backend
-npm run seed:catalog --prefix backend
-npm run seed:health-news --prefix backend
-npm run seed:admin --prefix backend
-npm run seed:provider-test --prefix backend
-npm run sync:catalog-accounts --prefix backend
-```
+## Chức năng chính
 
-## Tài Liệu Bảo Vệ Đồ Án
-
-- Kịch bản demo: `docs/DEMO_GUIDE.md`
-- Checklist nghiệm thu: `docs/ACCEPTANCE_CHECKLIST.md`
-- Báo cáo kiểm chứng: `docs/VERIFICATION_REPORT.md`
-- Backend guide: `backend/README.md`
-- Supabase guide: `supabase/README.md`
-
-## Chức Năng Chính
-
-- Đăng ký, đăng nhập, Google login, OTP email.
-- Hồ sơ bệnh nhân và hồ sơ khám.
-- Tìm kiếm/xem bác sĩ, bệnh viện, phòng khám, chuyên khoa.
-- Đặt lịch khám, tạo số khám điện tử, phiếu khám điện tử.
-- Thanh toán PayPal/MoMo sandbox.
-- Workspace bác sĩ/phòng khám/bệnh viện.
-- Admin dashboard, duyệt đối tác, quản lý user/catalog/tin y tế.
-- Tin y tế, chatbot Gemini và nhận diện thẻ.
-
-## Ghi Chú Chất Lượng
-
-Project đã loại bỏ queue mock tĩnh. Số khám dùng bảng `queue_tickets` trong Supabase. Backend có CORS/security headers tách module và có test. Frontend dùng lazy loading và cache catalog ngắn hạn để giảm tải ban đầu.
+- Đăng ký, đăng nhập, Google login và OTP email.
+- Quản lý hồ sơ bệnh nhân; tìm bác sĩ/chuyên khoa của phòng khám.
+- Chọn khung giờ, đặt/hủy lịch, cấp số khám và xem phiếu khám.
+- Đặt lịch trực tuyến, thanh toán cọc PayPal trước khi xác nhận; nhân viên có thể thu cọc và tạo lịch tại quầy, xác minh danh tính rồi check-in.
+- Bác sĩ khám chuyên khoa và chuyển khoa; trưởng khoa tổng hợp kết quả, kê đơn và hoàn tất hồ sơ; bệnh nhân xem kết quả, đơn thuốc.
+- Báo cáo bệnh nhân, lịch khám, cọc đã thu, thuốc và vật tư theo thời gian, chuyên khoa, bác sĩ.
+- Trưởng khoa điều phối khung giờ làm việc cho tất cả bác sĩ trong phòng khám; Admin cũng có thể quản lý lịch toàn phòng khám và xử lý ngày nghỉ, lịch hẹn, người dùng, nội dung và nhật ký.
+- Nhận diện giấy tờ.

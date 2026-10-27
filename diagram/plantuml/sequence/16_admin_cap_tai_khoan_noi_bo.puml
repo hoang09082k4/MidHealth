@@ -1,0 +1,26 @@
+@startuml
+title Admin cấp tài khoản cho nhân sự nội bộ
+autonumber
+skinparam ParticipantFontSize 10
+actor "Admin" as Admin
+boundary "Giao diện quản trị\nD:\MidHealth\frontend\src\components\admin\admin_dashboard" as UI
+control "MidHealth API\nD:\MidHealth\backend\src\server\nD:\MidHealth\backend\src\doctor_account_service\nD:\MidHealth\backend\src\staff_account_service" as API
+participant "Firebase Authentication" as Firebase
+database "CSDL MidHealth — Supabase PostgreSQL\nD:\MidHealth\supabase\schema\nschema public\npublic.app_users\npublic.doctors" as DB
+
+Admin -> UI: Nhập thông tin nhân viên/bác sĩ
+UI -> API: POST /api/admin/staff-accounts\n(hoặc /api/admin/doctor-accounts)
+API -> API: Kiểm tra quyền Admin và dữ liệu
+API -> Firebase: Tạo thông tin xác thực
+Firebase --> API: UID / lỗi tạo tài khoản
+alt Tạo Firebase thành công
+  API -> DB: INSERT public.app_users; link public.doctors for doctor accounts
+  DB --> API: Tài khoản đã liên kết UID
+  API --> UI: Cấp tài khoản thành công
+  UI --> Admin: Hiển thị thông tin kết quả
+else Ghi tài khoản thất bại
+  API -> Firebase: Xóa tài khoản vừa tạo (rollback)
+  API --> UI: Báo lỗi cấp tài khoản
+  UI --> Admin: Hiển thị lỗi
+end
+@enduml

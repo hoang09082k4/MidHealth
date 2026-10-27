@@ -1,0 +1,16 @@
+@startuml
+title Tra cứu thông tin phòng khám và danh mục công khai
+autonumber
+skinparam ParticipantFontSize 10
+actor "Khách truy cập" as Guest
+boundary "Website MidHealth\nD:\MidHealth\frontend\src\lib\catalog" as UI
+control "MidHealth API\nD:\MidHealth\backend\src\server\nD:\MidHealth\backend\src\catalog_service\nD:\MidHealth\backend\src\clinic_service" as API
+database "CSDL MidHealth — Supabase PostgreSQL\nD:\MidHealth\supabase\schema\nschema public\npublic.clinic_profile\npublic.clinic_specialties\npublic.doctors" as DB
+
+Guest -> UI: Mở trang thông tin / tìm bác sĩ
+UI -> API: GET /api/clinic và /api/catalog
+API -> DB: SELECT public.clinic_profile, public.clinic_specialties, public.doctors
+DB --> API: Dữ liệu danh mục
+API --> UI: Thông tin hiển thị
+UI --> Guest: Trang phòng khám, dịch vụ, bác sĩ
+@enduml
