@@ -1,0 +1,30 @@
+@startuml
+title Thanh toán và xác nhận tiền cọc PayPal
+autonumber
+skinparam ParticipantFontSize 10
+actor "Bệnh nhân" as Patient
+boundary "Cổng bệnh nhân\nD:\MidHealth\frontend\src\lib\appointments\nD:\MidHealth\frontend\src\components\dat_lich_kham\dat_lich_bac_si" as UI
+control "MidHealth API\nD:\MidHealth\backend\src\server\nD:\MidHealth\backend\src\paypal_service" as API
+participant "PayPal" as PayPal
+database "CSDL MidHealth — Supabase PostgreSQL\nD:\MidHealth\supabase\schema\nschema public\npublic.appointments\npublic.payments\npublic.appointment_email_outbox" as DB
+
+Patient -> UI: Chọn thanh toán tiền cọc
+UI -> API: POST /api/payments/paypal/create-order
+API -> PayPal: Tạo order
+PayPal --> API: Order ID và URL duyệt
+API -> DB: INSERT public.payments (status=pending)
+API --> UI: Chuyển bệnh nhân sang PayPal
+Patient -> PayPal: Duyệt thanh toán
+PayPal -> API: GET /api/payments/paypal/return?token={orderId}
+API -> PayPal: Capture và xác minh order
+PayPal --> API: Capture thành công / chưa thanh toán
+alt Đã capture
+  API -> DB: UPDATE public.payments (status=paid); RPC public.confirm_clinic_deposit
+  DB --> API: appointments confirmed
+  API --> UI: Redirect về website, trạng thái success
+  UI --> Patient: Hiển thị lịch đã xác nhận
+else Chưa thanh toán
+  API --> UI: Redirect về website, trạng thái pending/review
+end
+UI --> Patient: Hiển thị kết quả thanh toán
+@enduml

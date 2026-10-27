@@ -1016,10 +1016,46 @@ export async function cancelAppointment(firebaseUser, appointmentId) {
   try {
     const owner = await findOwnerProfile(firebaseUser);
     if (!owner) return { ok: false, status: 403, data: { message: 'Không có quyền hủy lịch này.' } };
-    const { data, error } = await supabase.rpc('transition_clinic_appointment', { appointment_id_value: appointmentId, doctor_id_value: null, owner_id_value: owner.id, status_value: 'cancelled' });
-    if (error) return { ok: false, status: 409, data: { message: error.message } };
+    const { data, error } = await supabase.rpc('cancel_clinic_patient_appointment', { appointment_id_value: appointmentId, owner_id_value: owner.id });
+    if (error) {
+      const messages = {
+        'Paid appointment requires clinic cancellation': 'Lịch đã thanh toán. Vui lòng liên hệ phòng khám để được hỗ trợ hủy và xử lý khoản đã thanh toán.',
+        'Payment is being processed': 'Thanh toán đang được đối soát. Vui lòng chờ kết quả hoặc liên hệ phòng khám trước khi hủy.',
+        'Appointment has started': 'Lịch đã đến giờ khám hoặc đã bắt đầu. Vui lòng liên hệ phòng khám để được hỗ trợ.',
+        'Checked-in appointment cannot be cancelled': 'Lịch đã check-in và không thể tự hủy. Vui lòng trao đổi với nhân viên phòng khám.',
+        'Appointment is already closed': 'Lịch này đã kết thúc hoặc đã được xử lý.',
+      };
+      return { ok: false, status: 409, data: { message: messages[error.message] || 'Không thể tự hủy lịch này. Vui lòng tải lại hoặc liên hệ phòng khám.' } };
+    }
     if (!data?.length) return { ok: false, status: 404, data: { message: 'Không tìm thấy lịch khám.' } };
     await logAppointmentNotification({ eventType: 'appointment_cancelled_by_patient', appointment: data[0], owner, firebaseUser });
     return { ok: true, status: 200, data: data[0] };
   } catch (error) { return { ok: false, status: 500, data: { message: error.message } }; }
+}
+
+export async function reschedulePatientAppointment(firebaseUser, appointmentId, slotId) {
+  const ready = await requireSupabase(); if (!ready.ok) return ready;
+  if (!isUuid(appointmentId) || !isUuid(slotId)) return { ok: false, status: 400, data: { message: 'Mã lịch hoặc khung giờ mới không hợp lệ.' } };
+  try {
+    const owner = await findOwnerProfile(firebaseUser);
+    if (!owner) return { ok: false, status: 403, data: { message: 'Không tìm thấy tài khoản bệnh nhân.' } };
+    const { data: appointment, error: lookupError } = await supabase.from('appointments')
+      .select('id,owner_profile_id,status,payment_status,checked_in_at')
+      .eq('id', appointmentId).eq('owner_profile_id', owner.id).maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!appointment) return { ok: false, status: 404, data: { message: 'Không tìm thấy lịch khám trong tài khoản của bạn.' } };
+    if (!['pending', 'confirmed'].includes(appointment.status) || appointment.checked_in_at) return { ok: false, status: 409, data: { message: 'Lịch này không còn được phép đổi giờ. Vui lòng liên hệ phòng khám.' } };
+    if (appointment.payment_status === 'pending') return { ok: false, status: 409, data: { message: 'Thanh toán đang được đối soát; vui lòng chờ kết quả hoặc liên hệ phòng khám trước khi đổi lịch.' } };
+    const { data, error } = await supabase.rpc('reschedule_clinic_appointment', {
+      appointment_id_value: appointmentId, new_slot_id_value: slotId,
+    });
+    if (error) return { ok: false, status: 409, data: { message: error.message === 'New slot is unavailable'
+      ? 'Khung giờ vừa hết chỗ hoặc bác sĩ không nhận khám. Vui lòng tải lại lịch và chọn khung giờ khác.'
+      : 'Không thể đổi lịch này. Vui lòng tải lại hoặc liên hệ phòng khám.' } };
+    const updated = Array.isArray(data) ? data[0] : data;
+    if (!updated) return { ok: false, status: 409, data: { message: 'Lịch không còn khả dụng để đổi.' } };
+    try { await logAdminEvent({ actor: firebaseUser, actorRole: 'patient', eventType: 'appointment_rescheduled_by_patient', entityType: 'appointment', entityId: appointmentId,
+      message: 'Bệnh nhân tự đổi khung giờ khám.', metadata: { appointmentDate: updated.appointment_date } }); } catch { /* Audit must not undo a completed reschedule. */ }
+    return { ok: true, status: 200, data: updated };
+  } catch (error) { return { ok: false, status: 500, data: { message: error.message || 'Không thể đổi lịch khám.' } }; }
 }

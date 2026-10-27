@@ -1,0 +1,21 @@
+@startuml
+title Trưởng khoa/Admin xem và xuất báo cáo hoạt động
+autonumber
+skinparam ParticipantFontSize 10
+actor "Trưởng khoa / Admin" as Manager
+boundary "Giao diện báo cáo\nD:\MidHealth\frontend\src\components\admin\clinic_report\nD:\MidHealth\frontend\src\components\doctor\doctor_workspace" as UI
+control "MidHealth API\nD:\MidHealth\backend\src\server\nD:\MidHealth\backend\src\clinic_report_service" as API
+database "CSDL MidHealth — Supabase PostgreSQL\nD:\MidHealth\supabase\schema\nschema public\npublic.appointments\npublic.payments\npublic.clinical_encounters\npublic.clinic_profile\npublic.prescription_items\npublic.clinical_material_usage\npublic.app_users\npublic.doctors\npublic.clinic_specialties" as DB
+
+Manager -> UI: Chọn bộ lọc báo cáo
+UI -> API: GET /api/reports/clinic
+API -> DB: Check role; RPC public.clinic_activity_report (reads listed public tables)
+DB --> API: Dữ liệu báo cáo theo phạm vi
+API --> UI: Trả dữ liệu báo cáo
+UI --> Manager: Hiển thị bảng và biểu đồ
+opt Xuất CSV
+  Manager -> UI: Chọn xuất CSV
+  UI -> UI: Chuyển dữ liệu báo cáo thành CSV
+  UI --> Manager: Tải tệp CSV
+end
+@enduml

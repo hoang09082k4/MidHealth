@@ -107,6 +107,15 @@ export async function listDoctorSlots(doctorId, options = {}) {
   return parseResponse(response, 'Không thể tải khung giờ khám.');
 }
 
+export async function rescheduleAppointment(user, appointmentId, slotId) {
+  const response = await fetch(`${apiBaseUrl}/api/appointments/${encodeURIComponent(appointmentId)}/reschedule`, {
+    method: 'PATCH',
+    headers: await getAuthHeaders(user, { forceRefresh: true }),
+    body: JSON.stringify({ slotId }),
+  });
+  return parseResponse(response, 'Không thể đổi lịch khám.');
+}
+
 export async function listPatientProfiles(user) {
   const token = await getAuthToken(user);
   if (!token) throw new Error('Vui lòng đăng nhập để xem hồ sơ bệnh nhân.');

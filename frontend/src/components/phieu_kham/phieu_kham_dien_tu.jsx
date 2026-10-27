@@ -7,9 +7,8 @@ import {
   kiem_tra_bhyt,
   kiem_tra_ngay_sinh,
 } from '../../lib/patient_profile';
-import { cancelAppointment, listAppointments, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
-import { mergeAppointments, readLocalAppointments, saveLocalAppointments } from '../../lib/local_appointments';
-import { loadNotifications, markNotificationsRead } from '../../lib/notifications';
+import { cancelAppointment, createPayPalOrder, listAppointments, listPatientProfiles, listDoctorSlots, rescheduleAppointment, savePatientProfile } from '../../lib/appointments';
+import { buildNotifications, markNotificationsRead } from '../../lib/notifications';
 import { useReferenceData } from '../../lib/reference_data';
 
 function tao_ten_benh_nhan(user) {
@@ -34,6 +33,9 @@ function tao_ho_so_mac_dinh(appointment, user) {
     nationality: patientProfile.nationality || 'Việt Nam',
     job: patientProfile.job || patientProfile.occupation || '',
     insuranceCode: patientProfile.insuranceCode || patientProfile.healthInsuranceNumber || '',
+    medicalHistory: patientProfile.medicalHistory || patientProfile.medical_history || '',
+    bloodGroup: patientProfile.bloodGroup || patientProfile.blood_group || '',
+    allergies: patientProfile.allergies || '',
     email: patientProfile.email || user?.email || '',
     relationship: patientProfile.relationship || 'Tôi',
   };
@@ -59,6 +61,9 @@ function chuyen_ho_so_tu_api(profile) {
     nationality: profile.nationality || 'Việt Nam',
     job: profile.occupation || profile.job || '',
     insuranceCode: profile.health_insurance_number || profile.healthInsuranceNumber || profile.insuranceCode || '',
+    medicalHistory: profile.medical_history || profile.medicalHistory || '',
+    bloodGroup: profile.blood_group || profile.bloodGroup || '',
+    allergies: profile.allergies || '',
     email: profile.email || '',
     relationship: profile.relationship || (profile.is_primary || profile.isMain ? 'Tôi' : 'Khác'),
   };
@@ -93,6 +98,7 @@ function tao_ho_so_moi() {
     nationality: '',
     job: '',
     insuranceCode: '',
+    medicalHistory: '', bloodGroup: '', allergies: '',
     email: '',
     relationship: 'Khác',
   };
@@ -113,10 +119,6 @@ function HangThongTin({ label, value, highlight }) {
   );
 }
 
-function gop_lich_kham(appointments) {
-  return mergeAppointments(appointments);
-}
-
 function chuyen_ngay_loc(dateValue) {
   if (!dateValue) return '';
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) return dateValue;
@@ -124,26 +126,12 @@ function chuyen_ngay_loc(dateValue) {
   return match ? `${match[3]}-${match[2]}-${match[1]}` : '';
 }
 
-function loai_noi_kham(appointment) {
-  if (appointment.type === 'doctor') return 'doctor';
-  if (appointment.type === 'clinic') return 'clinic';
-  if (appointment.type === 'hospital') return 'hospital';
-  return 'all';
-}
 
-function loai_dich_vu(appointment) {
-  const content = [appointment.serviceName, appointment.department, appointment.doctorName, appointment.hospitalName].join(' ').toLowerCase();
-  if (content.includes('tư vấn') || content.includes('tu van')) return 'consult';
-  if (content.includes('tại nhà') || content.includes('tai nha')) return 'home';
-  return 'exam';
-}
 
 const FILTER_DEFAULT = {
   fromDate: '',
   toDate: '',
   status: 'all',
-  serviceType: 'all',
-  placeType: 'all',
 };
 
 const PAYMENT_FILTER_DEFAULT = {
@@ -225,9 +213,10 @@ function tao_dong_phieu_kham(appointment) {
       { label: 'Mã phiếu khám điện tử', value: appointment.appointmentCode },
       { label: 'STT', value: appointment.number },
       { label: 'Dịch vụ', value: appointment.serviceName },
-      { label: 'Cơ sở khám', value: appointment.hospitalName },
+      { label: 'Nơi khám', value: appointment.hospitalName },
+      { label: 'Điện thoại phòng khám', value: appointment.clinicPhone },
       { label: 'Ngày khám', value: appointment.dateDisplay },
-      { label: 'Giờ khám', value: appointment.time ? `${appointment.time} (Buổi chiều)` : '', highlight: true },
+      { label: 'Giờ khám', value: appointment.time ? `${appointment.time} (GMT+7)` : '', highlight: true },
       { label: 'Chuyên khoa', value: appointment.department },
     ],
     patientRows: [
@@ -243,6 +232,9 @@ function tao_dong_phieu_kham(appointment) {
       { label: 'Quốc tịch', value: lay_gia_tri_ho_so(patientProfile, appointment, ['nationality']) || 'Việt Nam' },
       { label: 'Nghề nghiệp', value: lay_gia_tri_ho_so(patientProfile, appointment, ['job']) },
       { label: 'Mã BHYT', value: lay_gia_tri_ho_so(patientProfile, appointment, ['insuranceCode']) },
+      { label: 'Nhóm máu', value: lay_gia_tri_ho_so(patientProfile, appointment, ['bloodGroup']) || 'Chưa ghi nhận' },
+      { label: 'Tiền sử bệnh', value: lay_gia_tri_ho_so(patientProfile, appointment, ['medicalHistory']) || 'Chưa ghi nhận' },
+      { label: 'Dị ứng', value: lay_gia_tri_ho_so(patientProfile, appointment, ['allergies']) || 'Chưa ghi nhận' },
       ...guardians.map((guardian, index) => ({
         label: `Người giám hộ ${index + 1}`,
         value: guardian,
@@ -286,9 +278,7 @@ function PhieuKhamChiTiet({ appointment, compact = false }) {
     <article className={compact ? 'ticket-detail-card compact' : 'ticket-detail-card'}>
       <div className="ticket-detail-head">
         <div>
-          <p className={appointment.status === 'Đã hủy' ? 'danger-text' : 'green-text'}>
-            {appointment.status === 'Đã hủy' ? 'Đã hủy' : 'Đã đặt lịch'}
-          </p>
+          <p className={['Đã hủy', 'Không đến khám'].includes(appointment.status) ? 'danger-text' : 'green-text'}>{appointment.status || 'Đã đặt lịch'}</p>
           <h3>{doctorName}</h3>
           <span>{appointment.address}</span>
         </div>
@@ -297,6 +287,7 @@ function PhieuKhamChiTiet({ appointment, compact = false }) {
       <section>
         <h4>Thông tin đặt khám</h4>
         <HienThiDongPhieu rows={bookingRows} />
+        {appointment.status === 'Đã đặt lịch' && <p>Vui lòng đến trước giờ hẹn khoảng 15 phút. Nếu dự kiến trễ, hãy liên hệ phòng khám; sau 15 phút kể từ giờ hẹn cộng thời gian bác sĩ trễ đã thông báo, phòng khám có thể ghi nhận không đến nếu bạn chưa check-in.</p>}
       </section>
 
       <section>
@@ -304,13 +295,55 @@ function PhieuKhamChiTiet({ appointment, compact = false }) {
         <HienThiDongPhieu rows={patientRows} />
       </section>
 
+      {appointment.checkedInAt && <p className="green-text">Đã đối chiếu họ tên và ngày sinh tại quầy tiếp nhận.</p>}
+      {appointment.rescheduledAt && appointment.status === 'Đã đặt lịch' && <p>Lịch khám đã được phòng khám chuyển sang bác sĩ hoặc khung giờ đang hiển thị. Nếu bạn không đồng ý, vui lòng liên hệ phòng khám.</p>}
+      {appointment.clinicianAbsent && <p className="danger-text">Bác sĩ vắng mặt. Vui lòng liên hệ phòng khám để đổi lịch hoặc hủy và xử lý thanh toán.</p>}
+      {appointment.clinicianAbsent && appointment.clinicPhone && <a href={`tel:${String(appointment.clinicPhone).replace(/[^+\d]/g, '')}`}>Gọi phòng khám: {appointment.clinicPhone}</a>}
+      {appointment.delayMinutes > 0 && <p>Giờ khám dự kiến trễ khoảng {appointment.delayMinutes} phút. {appointment.delayNote}</p>}
+      {appointment.status === 'Không đến khám' && <p>Nếu bạn đã đến phòng khám, vui lòng liên hệ quầy tiếp nhận để kiểm tra lại trạng thái.</p>}
+      {appointment.status === 'Đã hủy' && appointment.paymentStatus === 'paid' && <p className="danger-text">Lịch đã hủy nhưng khoản thanh toán vẫn được ghi nhận. Vui lòng liên hệ phòng khám để được xử lý hoàn tiền.</p>}
+
       <section>
         <h4>Kết quả</h4>
-        <div className="empty-result">
-          <span>▤</span>
-          <small>Đang chờ kết quả cập nhật</small>
-        </div>
+        {appointment.visitResult ? <HienThiDongPhieu rows={[
+          ['Bác sĩ', appointment.visitResult.clinicianName],
+          ['Tóm tắt lần khám', appointment.visitResult.summary],
+          ['Kết luận', appointment.visitResult.diagnosis],
+          ['Điều trị và chăm sóc', appointment.visitResult.carePlan],
+          ['Tái khám và lưu ý', appointment.visitResult.followUp],
+        ].filter(([, value]) => value)} /> : appointment.specialtyResults?.length
+          ? <div className="empty-result"><span>▤</span><small>Đã có kết quả chuyên khoa bên dưới. Kết luận chung sẽ hiển thị sau khi bác sĩ hoàn tất hồ sơ.</small></div>
+          : <div className="empty-result"><span>▤</span><small>Chưa có kết quả khám. Phiếu này chỉ xác nhận lịch hẹn.</small></div>}
       </section>
+      {appointment.specialtyResults?.length > 0 && <section className="patient-specialty-results">
+        <h4>Kết quả khám chuyên khoa</h4>
+        <p>Các kết quả đã được bác sĩ lưu cho lịch khám này.</p>
+        {appointment.specialtyResults.map((result, index) => <article className="patient-specialty-result" key={`${appointment.id}-${result.stage}-${index}`}>
+          <div className="patient-specialty-result-heading"><strong>{result.specialtyName || `Lượt chuyên khoa ${index + 1}`}</strong><span>{result.resultAuthor || result.doctorName || 'Bác sĩ điều trị'}</span></div>
+          {(result.resultUpdatedAt || result.completedAt) && <small>Cập nhật {new Date(result.resultUpdatedAt || result.completedAt).toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' })}</small>}
+          {result.result ? <HienThiDongPhieu rows={[
+            ['Lý do khám', result.result.chiefComplaint], ['Triệu chứng và diễn biến', result.result.symptoms], ['Tiền sử liên quan', result.result.history],
+            ['Huyết áp', result.result.bloodPressure], ['Mạch', result.result.pulse], ['Nhiệt độ', result.result.temperature], ['SpO₂', result.result.oxygenSaturation],
+            ['Khám thực thể', result.result.examination], ['Chẩn đoán chuyên khoa', result.result.diagnosis], ['Nhận định', result.result.assessment],
+            ['Kế hoạch xử trí', result.result.carePlan], ['Tư vấn và hướng dẫn', result.result.patientInstructions], ['Tái khám / dấu hiệu cần lưu ý', result.result.followUp],
+          ].filter(([, value]) => value)} /> : <>{result.symptoms && <p><strong>Triệu chứng và diễn biến:</strong> {result.symptoms}</p>}{result.diagnosis && <p><strong>Chẩn đoán chuyên khoa:</strong> {result.diagnosis}</p>}</>}
+          {(result.resultHistory?.length || 0) > 1 && <details><summary>Lịch sử chỉnh sửa ({result.resultHistory.length - 1})</summary>{result.resultHistory.slice(0, -1).map((revision, revisionIndex) => <article key={`${revision.updatedAt}-${revisionIndex}`}><p><strong>{revision.authorName}</strong> · {revision.updatedAt && new Date(revision.updatedAt).toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' })} — bản trước đã được thay thế bằng bản cập nhật mới hơn.</p><HienThiDongPhieu rows={[
+            ['Lý do khám', revision.details.chiefComplaint], ['Triệu chứng', revision.details.symptoms], ['Tiền sử liên quan', revision.details.history], ['Khám thực thể', revision.details.examination],
+            ['Chẩn đoán', revision.details.diagnosis], ['Nhận định', revision.details.assessment], ['Kế hoạch xử trí', revision.details.carePlan], ['Tư vấn', revision.details.patientInstructions], ['Tái khám', revision.details.followUp],
+          ].filter(([, value]) => value)} /></article>)}</details>}
+        </article>)}
+      </section>}
+      {appointment.healthProfileUpdates?.length > 0 && <section className="patient-specialty-results">
+        <h4>Cập nhật hồ sơ sức khỏe</h4>
+        <p>Thông tin được bác sĩ ghi nhận sau khi trao đổi hoặc đối chiếu trong lần khám này.</p>
+        {appointment.healthProfileUpdates.map((update, index) => <article className="patient-specialty-result" key={`${appointment.id}-health-${index}`}>
+          <div className="patient-specialty-result-heading"><strong>{update.authorName}</strong><span>{update.createdAt && new Date(update.createdAt).toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' })}</span></div>
+          <p>{update.content}</p>
+        </article>)}
+      </section>}
+      {appointment.visitResult && <section><h4>Đơn thuốc</h4>{appointment.prescription?.length
+        ? <ul>{appointment.prescription.map((item, index) => <li key={`${item.medicineName}-${index}`}><strong>{item.medicineName}</strong>: {item.dosage}, {item.frequency}, {item.duration}; số lượng {item.quantity}.</li>)}</ul>
+        : <p>Bác sĩ không kê thuốc trong lần khám này.</p>}</section>}
     </article>
   );
 }
@@ -318,7 +351,11 @@ function PhieuKhamChiTiet({ appointment, compact = false }) {
 function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onTabChange, onLogout }) {
   const [activeTab, setActiveTab] = useState(initialTab);
   const [selectedAppointment, setSelectedAppointment] = useState(appointment);
-  const [appointments, setAppointments] = useState(() => gop_lich_kham([appointment, ...readLocalAppointments(user)].filter(Boolean)));
+  const [appointments, setAppointments] = useState(() => [appointment].filter(Boolean));
+  const [appointmentsLoading, setAppointmentsLoading] = useState(true);
+  const [appointmentReload, setAppointmentReload] = useState(0);
+  const [paymentProvider, setPaymentProvider] = useState('');
+  const [paymentError, setPaymentError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filterDraft, setFilterDraft] = useState(FILTER_DEFAULT);
@@ -343,6 +380,12 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [cancelConfirmAppointment, setCancelConfirmAppointment] = useState(null);
   const [isCancellingAppointment, setIsCancellingAppointment] = useState(false);
+  const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
+  const [rescheduleSlots, setRescheduleSlots] = useState([]);
+  const [rescheduleSlotId, setRescheduleSlotId] = useState('');
+  const [rescheduleError, setRescheduleError] = useState('');
+  const [rescheduleLoading, setRescheduleLoading] = useState(false);
+  const [isRescheduling, setIsRescheduling] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isProfileSaving, setIsProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
@@ -351,12 +394,8 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
 
   const profile = profiles.find((item) => item.id === selectedProfileId) || profiles[0];
   const selectedProvince = useMemo(
-    () => addressData.find((item) => item.name === profileDraft.province),
+    () => addressData.find((item) => item.name === profileDraft.province || item.aliases?.includes(profileDraft.province)),
     [addressData, profileDraft.province],
-  );
-  const selectedDistrict = useMemo(
-    () => selectedProvince?.districts.find((item) => item.name === profileDraft.district),
-    [selectedProvince, profileDraft.district],
   );
 
   const patientName = profile.fullName || tao_ten_benh_nhan(user);
@@ -389,16 +428,14 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
     if (filters.fromDate && appointmentDate && appointmentDate < filters.fromDate) return false;
     if (filters.toDate && appointmentDate && appointmentDate > filters.toDate) return false;
     if (filters.status !== 'all' && item.status !== filters.status) return false;
-    if (filters.serviceType !== 'all' && loai_dich_vu(item) !== filters.serviceType) return false;
-    if (filters.placeType !== 'all' && loai_noi_kham(item) !== filters.placeType) return false;
     return true;
   }), [appointments, filters, searchTerm]);
   const visiblePayments = useMemo(() => appointments
     .map((item) => ({
       ...item,
       paymentCode: item.paymentCode || item.transactionCode || item.appointmentCode || item.ticket,
-      paymentAmount: item.paymentAmount || item.amount || item.price || item.fee,
-      paymentStatus: item.paymentStatus || item.payment_status || (item.isPaid ? 'Đã thanh toán' : ''),
+      paymentAmount: item.finalAmount ?? item.paymentAmount ?? item.amount ?? item.price ?? item.fee,
+      paymentStatus: ({ paid: 'Đã thanh toán', unpaid: 'Chưa thanh toán', refunded: 'Đã hoàn tiền', pending: 'Đang xử lý', failed: 'Thất bại' })[item.paymentStatus || item.payment_status] || item.paymentStatus || item.payment_status || (item.isPaid ? 'Đã thanh toán' : ''),
       paymentDate: item.paymentDate || item.paidAt || item.dateDisplay,
     }))
     .filter((item) => co_gia_tri(item.paymentStatus) || co_gia_tri(item.paymentAmount))
@@ -420,7 +457,9 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
       if (paymentFilters.status !== 'all' && item.paymentStatus !== paymentFilters.status) return false;
       return true;
     }), [appointments, paymentFilters, paymentSearchTerm]);
-  const activeAppointment = selectedAppointment || visibleAppointments[0] || appointments[0] || appointment;
+  const activeAppointment = visibleAppointments.find(item => item.id === selectedAppointment?.id) || visibleAppointments[0] || null;
+  const canChangeAppointment = activeAppointment?.id && ['Đã đặt lịch', 'Chờ thanh toán cọc'].includes(activeAppointment.status) && !appointmentsLoading && !appointmentError;
+  const canPayAppointment = canChangeAppointment && ['unpaid', 'pending', 'failed'].includes(activeAppointment.paymentStatus) && Number(activeAppointment.depositAmount) > 0;
   const canSubmitProfile = profileDraft.fullName.trim()
     && profileDraft.phone.length === 10
     && kiem_tra_ngay_sinh(profileDraft.birthDate)
@@ -443,21 +482,14 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
   }, [initialTab]);
 
   useEffect(() => {
-    setAppointments(gop_lich_kham([appointment, ...readLocalAppointments(user)].filter(Boolean)));
+    setAppointments([appointment].filter(Boolean));
     setSelectedAppointment(appointment || null);
   }, [appointment, user]);
 
   useEffect(() => {
-    let isMounted = true;
-    loadNotifications(user).then((items) => {
-      if (!isMounted) return;
-      setNotifications(items);
-      setSelectedNotificationId((current) => current || items[0]?.id || '');
-    });
-
-    return () => {
-      isMounted = false;
-    };
+    const items = buildNotifications(appointments, user);
+    setNotifications(items);
+    setSelectedNotificationId(current => items.some(item => item.id === current) ? current : items[0]?.id || '');
   }, [user, appointments]);
 
   const changeTab = (nextTab) => {
@@ -467,7 +499,8 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
 
   useEffect(() => {
     let isMounted = true;
-
+    setAppointmentError('');
+    setAppointmentsLoading(true);
     if (!user) return () => {
       isMounted = false;
     };
@@ -475,24 +508,21 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
     listAppointments(user)
       .then((items) => {
         if (!isMounted) return;
-        setAppointments((current) => {
-          const nextAppointments = gop_lich_kham([appointment, ...items, ...current].filter(Boolean));
-          saveLocalAppointments(user, nextAppointments);
-          return nextAppointments;
-        });
+        setAppointments(items);
       })
       .catch((error) => {
         if (isMounted) setAppointmentError(error.message || 'Không thể tải danh sách lịch hẹn.');
-      });
+      })
+      .finally(() => { if (isMounted) setAppointmentsLoading(false); });
 
     return () => {
       isMounted = false;
     };
-  }, [appointment, user]);
+  }, [appointment, user, appointmentReload]);
 
   useEffect(() => {
     const defaultProfile = tao_ho_so_mac_dinh(appointment, user);
-    setProfiles((current) => gop_ho_so([defaultProfile, ...current]));
+    setProfiles([defaultProfile]);
     setSelectedProfileId((current) => current || defaultProfile.id);
 
     if (!user) return;
@@ -508,7 +538,7 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
           nextProfiles.some((item) => item.id === current) ? current : nextProfiles[0]?.id || defaultProfile.id
         ));
       })
-      .catch(() => {});
+      .catch(error => { if (isMounted) setProfileError(error.message || 'Không thể tải hồ sơ bệnh nhân.'); });
 
     return () => {
       isMounted = false;
@@ -526,7 +556,7 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
   }, [selectedAppointment, visibleAppointments]);
 
   const handleCancel = async () => {
-    const targetAppointment = selectedAppointment || activeAppointment;
+    const targetAppointment = activeAppointment;
     if (!targetAppointment) return;
     setCancelConfirmAppointment(targetAppointment);
   };
@@ -536,24 +566,67 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
     if (!targetAppointment) return;
     setIsCancellingAppointment(true);
     try {
-      if (targetAppointment.id && user) {
-        await cancelAppointment(user, targetAppointment.id);
-      }
-      setSelectedAppointment((current) => ({ ...current, status: 'Đã hủy' }));
+      if (!targetAppointment.id || !user) throw new Error('Vui lòng đăng nhập và tải lại lịch khám trước khi hủy.');
+      await cancelAppointment(user, targetAppointment.id);
+      setSelectedAppointment((current) => current?.id === targetAppointment.id ? { ...current, status: 'Đã hủy' } : current);
       setAppointments((current) => {
         const nextAppointments = current.map((item) => (
           (item.id || item.appointmentCode) === (targetAppointment.id || targetAppointment.appointmentCode)
             ? { ...item, status: 'Đã hủy' }
             : item
         ));
-        saveLocalAppointments(user, nextAppointments);
         return nextAppointments;
       });
       setCancelConfirmAppointment(null);
     } catch (error) {
-      setProfileError(error.message || 'Không thể hủy lịch khám. Vui lòng thử lại.');
+      setAppointmentError(error.message || 'Không thể hủy lịch khám. Vui lòng thử lại.');
     } finally {
       setIsCancellingAppointment(false);
+    }
+  };
+
+  const openReschedule = async () => {
+    if (!activeAppointment?.doctorId || !activeAppointment.id) { setAppointmentError('Không đủ thông tin để tải lịch đổi. Vui lòng làm mới danh sách lịch khám.'); return; }
+    setIsRescheduleOpen(true); setRescheduleError(''); setRescheduleSlotId(''); setRescheduleLoading(true);
+    try {
+      const now = new Date();
+      const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now).map(part => [part.type, part.value]));
+      const fromDate = `${parts.year}-${parts.month}-${parts.day}`;
+      const slots = await listDoctorSlots(activeAppointment.doctorId, { fromDate, days: 14 });
+      const available = (slots || []).filter(slot => slot.status !== 'full' && slot.id !== activeAppointment.appointmentSlotId);
+      setRescheduleSlots(available);
+      if (!available.length) setRescheduleError('Bác sĩ chưa có khung giờ trống khác trong 14 ngày tới. Vui lòng liên hệ phòng khám.');
+    } catch (error) { setRescheduleError(error.message || 'Không tải được lịch trống.'); }
+    finally { setRescheduleLoading(false); }
+  };
+
+  const confirmReschedule = async () => {
+    if (!activeAppointment?.id || !rescheduleSlotId || isRescheduling) return;
+    setIsRescheduling(true); setRescheduleError('');
+    try {
+      await rescheduleAppointment(user, activeAppointment.id, rescheduleSlotId);
+      setIsRescheduleOpen(false); setRescheduleSlots([]); setRescheduleSlotId(''); setAppointmentReload(value => value + 1);
+    } catch (error) { setRescheduleError(error.message || 'Không đổi được lịch. Vui lòng tải lại lịch trống.'); }
+    finally { setIsRescheduling(false); }
+  };
+
+  const startPayment = async () => {
+    if (!canPayAppointment || paymentProvider) return;
+    setPaymentProvider('paypal');
+    setPaymentError('');
+    try {
+      const result = await createPayPalOrder(user, activeAppointment.id);
+      if (result.status === 'paid') { setAppointmentReload(current => current + 1); return; }
+      const redirect = new URL(result.approvalUrl);
+      const allowedDomain = 'paypal.com';
+      if (redirect.protocol !== 'https:' || !(redirect.hostname === allowedDomain || redirect.hostname.endsWith(`.${allowedDomain}`))) {
+        throw new Error('Cổng thanh toán chưa trả về đường dẫn hợp lệ. Vui lòng thử lại sau.');
+      }
+      window.location.assign(redirect.href);
+    } catch (error) {
+      setPaymentError(error.message || 'Chưa thể mở cổng thanh toán.');
+    } finally {
+      setPaymentProvider('');
     }
   };
 
@@ -627,9 +700,8 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
     setIsProfileSaving(true);
     setProfileMessage('');
     try {
-      if (user) {
-        savedProfile = await savePatientProfile(user, profileDraft);
-      }
+      if (!user) throw new Error('Vui lòng đăng nhập để lưu hồ sơ bệnh nhân.');
+      savedProfile = await savePatientProfile(user, profileDraft);
     } catch (error) {
       setProfileError(error.message || 'Không thể lưu hồ sơ khám điện tử.');
       setIsProfileSaving(false);
@@ -653,32 +725,8 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
     setProfiles((current) => current.map((item) => (
       item.id === selectedProfileId ? { ...item, ...normalizedSavedProfile, id: savedProfile?.id || item.id } : item
     )));
-    setSelectedAppointment((current) => ({
-      ...(current || activeAppointment || {}),
-      patientName: profileDraft.fullName,
-      phone: profileDraft.phone,
-      birthDate: profileDraft.birthDate,
-      gender: profileDraft.gender,
-      patientAddress: [profileDraft.address, profileDraft.ward, profileDraft.district, profileDraft.province].filter(Boolean).join(', ') || 'Chưa cập nhật',
-      patientProfile: { ...(current?.patientProfile || {}), ...profileDraft },
-    }));
-    setAppointments((current) => {
-      const nextAppointments = current.map((item) => (
-        (item.id || item.appointmentCode) === (activeAppointment.id || activeAppointment.appointmentCode)
-          ? {
-            ...item,
-            patientName: profileDraft.fullName,
-            phone: profileDraft.phone,
-            birthDate: profileDraft.birthDate,
-            gender: profileDraft.gender,
-            patientAddress: [profileDraft.address, profileDraft.ward, profileDraft.district, profileDraft.province].filter(Boolean).join(', ') || 'Chưa cập nhật',
-            patientProfile: { ...(item.patientProfile || {}), ...profileDraft },
-          }
-          : item
-      ));
-      saveLocalAppointments(user, nextAppointments);
-      return nextAppointments;
-    });
+    setSelectedProfileId(normalizedSavedProfile.id);
+    setAppointmentReload(current => current + 1);
     setIsEditingProfile(false);
     setIsProfileSaving(false);
     setProfileMessage('Đã cập nhật hồ sơ bệnh nhân.');
@@ -791,11 +839,14 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
           <button type="button" onClick={handleLogout}>Đăng xuất</button>
         </aside>
 
-        <main className="account-content">
+        <div className="account-content">
+        {appointmentError && <p className="appointment-load-error" role="alert">{appointmentError} <button type="button" disabled={appointmentsLoading} onClick={() => setAppointmentReload(current => current + 1)}>Thử lại</button></p>}
+        {profileError && !isEditingProfile && !isAddingProfile && <p className="profile-form-error" role="alert">{profileError}</p>}
         {activeTab === 'lich_kham' && (
           <>
             <div className="account-title-row">
               <h2>Lịch khám</h2>
+              <button type="button" disabled={appointmentsLoading} onClick={() => setAppointmentReload(current => current + 1)}>{appointmentsLoading ? 'Đang tải...' : 'Làm mới'}</button>
               <button type="button" onClick={() => { setFilterDraft(filters); setIsFilterOpen((current) => !current); }}>Lọc</button>
             </div>
             {isFilterOpen && (
@@ -815,24 +866,7 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
                     <option value="Đã đặt lịch">Đã đặt lịch</option>
                     <option value="Đã hủy">Đã hủy</option>
                     <option value="Đã khám">Đã khám</option>
-                  </select>
-                </label>
-                <label>
-                  Dịch vụ
-                  <select name="serviceType" value={filterDraft.serviceType} onChange={updateFilterDraft}>
-                    <option value="all">Tất cả</option>
-                    <option value="exam">Lịch khám</option>
-                    <option value="consult">Lịch tư vấn</option>
-                    <option value="home">Tại nhà</option>
-                  </select>
-                </label>
-                <label>
-                  Nơi khám
-                  <select name="placeType" value={filterDraft.placeType} onChange={updateFilterDraft}>
-                    <option value="all">Tất cả</option>
-                    <option value="doctor">Bác sĩ</option>
-                    <option value="clinic">Phòng khám</option>
-                    <option value="hospital">Bệnh viện</option>
+                    <option value="Không đến khám">Không đến khám</option>
                   </select>
                 </label>
                 <div className="appointment-filter-actions">
@@ -844,7 +878,7 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
             <div className="schedule-layout">
               <div>
                 <input className="account-search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Mã giao dịch, tên dịch vụ, tên bệnh nhân,..." />
-                {appointmentError && <p className="appointment-load-error">{appointmentError}</p>}
+                {appointmentsLoading && <p role="status">Đang tải lịch khám...</p>}
                 {visibleAppointments.length > 0 ? visibleAppointments.map((item) => {
                   const itemKey = item.id || item.appointmentCode || item.ticket;
                   const selectedKey = activeAppointment?.id || activeAppointment?.appointmentCode || activeAppointment?.ticket;
@@ -860,14 +894,20 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
                     </button>
                   );
                 }) : (
-                  <div className="empty-payment"><span>▤</span><p>Không có lịch khám phù hợp</p></div>
+                  !appointmentsLoading && !appointmentError && <div className="empty-payment"><span>▤</span><p>Không có lịch khám phù hợp</p></div>
                 )}
               </div>
               <div>
                 {activeAppointment && <PhieuKhamChiTiet appointment={activeAppointment} compact />}
-                {activeAppointment?.status !== 'Đã hủy' && activeAppointment?.status !== 'Đã khám' && (
-                  <button className="cancel-appointment" type="button" onClick={handleCancel}>Hủy lịch</button>
+                {activeAppointment && <p>Chi phí khám: <strong>{Number(activeAppointment.finalAmount || 0).toLocaleString('vi-VN')} ₫</strong> · Cọc: <strong>{Number(activeAppointment.depositAmount || 0).toLocaleString('vi-VN')} ₫</strong> · {({ paid: 'Đã thanh toán cọc', unpaid: 'Chưa thanh toán cọc', pending: 'Đang đối soát PayPal', failed: 'Chưa hoàn tất', refunded: 'Đã hoàn tiền' })[activeAppointment.paymentStatus] || 'Chưa có thông tin thanh toán'}</p>}
+                {canPayAppointment && <div className="clinic-actions"><button className="clinic-primary" type="button" disabled={Boolean(paymentProvider)} onClick={startPayment}>{paymentProvider ? 'Đang mở PayPal…' : 'Thanh toán PayPal'}</button></div>}
+                {paymentError && <p className="appointment-load-error" role="alert">{paymentError}</p>}
+                {canChangeAppointment && activeAppointment.paymentStatus !== 'pending' && <button className="clinic-secondary" type="button" disabled={Boolean(paymentProvider) || isRescheduling} onClick={openReschedule}>Đổi giờ khám</button>}
+                {canChangeAppointment && ['unpaid', 'failed'].includes(activeAppointment.paymentStatus) && (
+                  <button className="cancel-appointment" type="button" disabled={Boolean(paymentProvider) || isCancellingAppointment} onClick={handleCancel}>Hủy lịch</button>
                 )}
+                {canChangeAppointment && activeAppointment.paymentStatus === 'pending' && <p>Thanh toán đang được đối soát. Vui lòng liên hệ phòng khám nếu bạn cần hủy lịch.</p>}
+                {canChangeAppointment && ['paid', 'refunded'].includes(activeAppointment.paymentStatus) && <p>Lịch đã có giao dịch thanh toán. Vui lòng liên hệ phòng khám để được hỗ trợ hủy lịch và xử lý khoản đã thanh toán.</p>}
               </div>
             </div>
           </>
@@ -918,7 +958,7 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
                   <small>{item.paymentDate || item.dateDisplay}</small>
                   <em className={item.paymentStatus === 'Đã thanh toán' ? 'done-badge' : ''}>{item.paymentStatus}</em>
                 </span>
-                <b>{item.paymentAmount ? `${Number(item.paymentAmount).toLocaleString('vi-VN')}đ` : '--'}</b>
+                <b>{item.paymentAmount != null ? `${Number(item.paymentAmount).toLocaleString('vi-VN')}đ` : '--'}</b>
               </button>
             )) : (
               <div className="empty-payment"><span>▤</span><p>Chưa có thông tin thanh toán</p></div>
@@ -1038,9 +1078,7 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
                     <OChonHoSo label="Phường/Xã/Khu vực" name="district" value={profileDraft.district} placeholder="Chọn phường/xã/khu vực" onChange={updateProfileDraft}>
                       {(selectedProvince?.districts || []).map((district) => <option key={district.name}>{district.name}</option>)}
                     </OChonHoSo>
-                    <OChonHoSo label="Tổ/Ấp/Đơn vị chi tiết" name="ward" value={profileDraft.ward} placeholder="Chọn thông tin chi tiết" onChange={updateProfileDraft}>
-                      {(selectedDistrict?.wards || []).map((ward) => <option key={ward}>{ward}</option>)}
-                    </OChonHoSo>
+                    <ONhapHoSo label="Tổ/Ấp/Đơn vị chi tiết" name="ward" value={profileDraft.ward} placeholder="Tổ, ấp hoặc khu vực (không bắt buộc)" onChange={updateProfileDraft} />
                   </div>
 
                   <ONhapHoSo label="Địa chỉ cụ thể" name="address" value={profileDraft.address} placeholder="Số nhà, tên đường" onChange={updateProfileDraft} />
@@ -1055,6 +1093,9 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
                     {occupations.map((job) => <option key={job}>{job}</option>)}
                   </OChonHoSo>
                   <ONhapHoSo label="Mã thẻ BHYT" name="insuranceCode" value={profileDraft.insuranceCode} placeholder="Mã số trên thẻ Bảo hiểm y tế" onChange={updateProfileDraft} error={profileFieldErrors.insuranceCode} />
+                  <OChonHoSo label="Nhóm máu" name="bloodGroup" value={profileDraft.bloodGroup || ''} placeholder="Chưa xác định" onChange={updateProfileDraft}>{['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(group => <option key={group}>{group}</option>)}</OChonHoSo>
+                  <ONhapHoSo label="Tiền sử bệnh" name="medicalHistory" value={profileDraft.medicalHistory || ''} placeholder="Bệnh đã mắc hoặc đang điều trị" onChange={updateProfileDraft} />
+                  <ONhapHoSo label="Dị ứng" name="allergies" value={profileDraft.allergies || ''} placeholder="Thuốc, thức ăn hoặc chất gây dị ứng" onChange={updateProfileDraft} />
                   <ONhapHoSo label="Email" name="email" value={profileDraft.email} placeholder="Địa chỉ email của bạn" onChange={updateProfileDraft} />
                   {isAddingProfile && (
                     <div className="relationship-group">
@@ -1154,7 +1195,7 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
             </div>
           </>
         )}
-        </main>
+        </div>
       </section>
 
       {isLogoutConfirmOpen && (
@@ -1184,7 +1225,7 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
               <h2 id="cancel-appointment-title">Hủy lịch khám</h2>
             </header>
             <section>
-              <p>Bạn muốn hủy lịch khám này?</p>
+              <p>Lịch chưa thanh toán sẽ được hủy và khung giờ được trả lại. Bạn có chắc muốn tiếp tục?</p>
               <small>{cancelConfirmAppointment.appointmentCode || cancelConfirmAppointment.doctorName || cancelConfirmAppointment.hospitalName || ''}</small>
             </section>
             <footer>
@@ -1196,6 +1237,18 @@ function TrangPhieuKhamDienTu({ appointment, user, initialTab = 'lich_kham', onT
           </article>
         </div>
       )}
+      {isRescheduleOpen && <div className="app-confirm-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !isRescheduling) setIsRescheduleOpen(false); }}>
+        <article className="app-confirm-modal appointment-reschedule-modal" role="dialog" aria-modal="true" aria-labelledby="reschedule-appointment-title">
+          <header><span>Đổi lịch hẹn</span><h2 id="reschedule-appointment-title">Chọn giờ khám mới</h2></header>
+          <section>
+            <p>Chọn một khung giờ còn trống với cùng bác sĩ. Lịch cũ chỉ được thay sau khi hệ thống xác nhận giữ được khung giờ mới.</p>
+            {rescheduleLoading && <p role="status">Đang tải lịch trống…</p>}
+            {!rescheduleLoading && rescheduleSlots.length > 0 && <label className="reschedule-slot-field">Khung giờ mới<select value={rescheduleSlotId} onChange={event => setRescheduleSlotId(event.target.value)}><option value="">Chọn ngày và giờ</option>{rescheduleSlots.map(slot => <option value={slot.id} key={slot.id}>{slot.date.split('-').reverse().join('/')} · {slot.label}</option>)}</select></label>}
+            {rescheduleError && <p className="appointment-load-error" role="alert">{rescheduleError}</p>}
+          </section>
+          <footer><button type="button" disabled={isRescheduling} onClick={() => setIsRescheduleOpen(false)}>Giữ lịch hiện tại</button><button className="confirm" type="button" disabled={isRescheduling || rescheduleLoading || !rescheduleSlotId} onClick={confirmReschedule}>{isRescheduling ? 'Đang đổi lịch…' : 'Xác nhận đổi giờ'}</button></footer>
+        </article>
+      </div>}
     </>
   );
 }

@@ -1,0 +1,62 @@
+@startuml
+left to right direction
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam linetype polyline
+skinparam ArrowThickness 1
+skinparam nodesep 40
+skinparam ranksep 40
+skinparam actorStyle stickman
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  FontColor #000000
+}
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  FontColor #000000
+  ArrowColor #000000
+}
+title Use case quản trị hệ thống MidHealth
+
+actor "Admin" as Admin
+
+usecase "Đăng nhập\ncổng quản trị" as Login
+usecase "Quản lý tài khoản\nvà quyền truy cập" as Accounts
+usecase "Tạo tài khoản nhân viên" as CreateStaff
+usecase "Cấp tài khoản cho hồ sơ\nbác sĩ / trưởng khoa" as CreateClinician
+usecase "Đặt lại mật khẩu" as ResetCredentials
+usecase "Quản lý hồ sơ bác sĩ,\nchuyên khoa và phí khám" as DoctorCatalog
+usecase "Cập nhật thông tin\nphòng khám" as ClinicProfile
+usecase "Quản lý lịch bác sĩ,\nkhung giờ và ngày nghỉ" as Schedules
+usecase "Theo dõi và cập nhật\nlịch hẹn" as Appointments
+usecase "Ghi nhận bác sĩ trễ / vắng\nhoặc người bệnh vắng" as Disruptions
+usecase "Chuyển lịch hẹn sang\nkhung giờ khác" as Reschedule
+usecase "Chọn khung giờ thay thế" as SelectReplacementSlot
+usecase "Xem báo cáo hoạt động\nvà tiền cọc" as Reports
+usecase "Xuất báo cáo CSV" as Export
+usecase "Xem nhật ký quản trị" as Audit
+
+Admin --> Login
+Login --> Accounts
+Login --> DoctorCatalog
+Login --> ClinicProfile
+Login --> Schedules
+Login --> Appointments
+Login --> Reports
+Login --> Audit
+CreateStaff ..> Accounts : <<extend>>
+' Điều kiện mở rộng: khi tạo nhân viên
+CreateClinician ..> Accounts : <<extend>>
+' Điều kiện mở rộng: khi cấp tài khoản bác sĩ
+ResetCredentials ..> Accounts : <<extend>>
+' Điều kiện mở rộng: khi đặt lại mật khẩu
+Disruptions ..> Appointments : <<extend>>
+' Điều kiện mở rộng: khi phát sinh sự cố
+Reschedule ..> Appointments : <<extend>>
+' Điều kiện mở rộng: khi cần đổi lịch
+Reschedule ..> SelectReplacementSlot : <<include>>
+Export ..> Reports : <<extend>>
+' Điều kiện mở rộng: khi tải CSV
+@enduml

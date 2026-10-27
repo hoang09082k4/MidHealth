@@ -33,6 +33,7 @@ import {
   listPatientProfiles,
   processAppointmentEmailOutbox,
   saveMedicalProfile,
+  reschedulePatientAppointment,
 } from './appointment_service.js';
 import { getCatalog } from './catalog_service.js';
 import { getReferenceData } from './reference_service.js';
@@ -1071,6 +1072,20 @@ async function routeRequest(request, response) {
     }
     const appointmentId = decodeURIComponent(url.pathname.replace('/api/appointments/', '').replace('/cancel', '')).trim();
     const result = await cancelAppointment(user, appointmentId);
+    sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
+    return;
+  }
+
+  if (request.method === 'PATCH' && url.pathname.endsWith('/reschedule') && url.pathname.startsWith('/api/appointments/')) {
+    const user = await getUserFromRequest(request);
+    if (!user) { sendJson(response, 401, { message: 'Vui lòng đăng nhập để đổi lịch khám.' }); return; }
+    const access = await ensurePatientAccess(user);
+    if (!access.ok) { sendJson(response, access.status, access.data); return; }
+    let payload;
+    try { payload = await readBody(request); }
+    catch { sendJson(response, 400, { message: 'Yêu cầu đổi lịch không hợp lệ.' }); return; }
+    const appointmentId = decodeURIComponent(url.pathname.replace('/api/appointments/', '').replace('/reschedule', '')).trim();
+    const result = await reschedulePatientAppointment(user, appointmentId, payload.slotId);
     sendJson(response, result.status, result.ok ? { data: result.data } : result.data);
     return;
   }

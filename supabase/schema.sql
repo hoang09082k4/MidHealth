@@ -806,6 +806,26 @@ end $$;
 revoke execute on function public.transition_clinic_appointment(uuid,uuid,uuid,text) from public, anon, authenticated;
 grant execute on function public.transition_clinic_appointment(uuid,uuid,uuid,text) to service_role;
 
+-- Patient self-cancellation must not release a paid, in-flight, checked-in, or started visit.
+create or replace function public.cancel_clinic_patient_appointment(appointment_id_value uuid, owner_id_value uuid)
+returns setof public.appointments language plpgsql security definer set search_path = public as $$
+declare a public.appointments;
+begin
+  select * into a from public.appointments
+    where id = appointment_id_value and owner_profile_id = owner_id_value for update;
+  if not found then return; end if;
+  if a.status in ('cancelled','completed','no_show') then raise exception 'Appointment is already closed'; end if;
+  if a.checked_in_at is not null then raise exception 'Checked-in appointment cannot be cancelled'; end if;
+  if a.payment_status in ('paid','refunded') then raise exception 'Paid appointment requires clinic cancellation'; end if;
+  if a.payment_status = 'pending' then raise exception 'Payment is being processed'; end if;
+  if ((a.appointment_date + coalesce(a.appointment_time, '00:00'::time)) at time zone 'Asia/Ho_Chi_Minh') <= now() then
+    raise exception 'Appointment has started';
+  end if;
+  return query select * from public.transition_clinic_appointment(a.id, null, a.owner_profile_id, 'cancelled');
+end $$;
+revoke execute on function public.cancel_clinic_patient_appointment(uuid,uuid) from public, anon, authenticated;
+grant execute on function public.cancel_clinic_patient_appointment(uuid,uuid) to service_role;
+
 create or replace function public.complete_clinic_visit(appointment_id_value uuid, clinician_name_value text,
   summary_value text, diagnosis_value text, care_plan_value text, follow_up_value text, actor_id_value uuid)
 returns setof public.appointments language plpgsql security definer set search_path = public as $$

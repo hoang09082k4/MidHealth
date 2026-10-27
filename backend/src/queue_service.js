@@ -99,9 +99,7 @@ export function queueEtaText(ticket) {
 export function mapQueueTicketResponse(ticket = {}) {
   const appointment = Array.isArray(ticket.appointments) ? ticket.appointments[0] : ticket.appointments;
   const doctor = Array.isArray(appointment?.doctors) ? appointment.doctors[0] : appointment?.doctors;
-  const facility = Array.isArray(appointment?.medical_facilities) ? appointment.medical_facilities[0] : appointment?.medical_facilities;
   const specialty = Array.isArray(appointment?.clinic_specialties) ? appointment.clinic_specialties[0] : appointment?.clinic_specialties;
-  const service = Array.isArray(appointment?.facility_services) ? appointment.facility_services[0] : appointment?.facility_services;
 
   return {
     id: ticket.id,
@@ -109,8 +107,8 @@ export function mapQueueTicketResponse(ticket = {}) {
     appointmentCode: ticket.appointment_code || '',
     patientCode: ticket.patient_code || '',
     patient: appointment?.patient_name || 'Bệnh nhân',
-    department: specialty?.name || service?.name || appointment?.appointment_type || 'Khám tổng quát',
-    doctor: doctor?.full_name || facility?.name || 'Chờ phân công',
+    department: specialty?.name || 'Khám tổng quát',
+    doctor: doctor?.full_name || 'Chờ phân công',
     room: ticket.room || 'Đang cập nhật',
     number: ticket.queue_number,
     current: ticket.current_number,
@@ -125,20 +123,6 @@ export function mapQueueTicketResponse(ticket = {}) {
 export function canReadQueueTicket(ticket = {}, owner = null, privileged = false) {
   if (privileged) return true;
   return Boolean(owner?.id && ticket.owner_profile_id === owner.id);
-}
-
-async function nextQueueNumber() {
-  const { data, error } = await supabase
-    .from('queue_tickets')
-    .select('queue_number')
-    .order('queue_number', { ascending: false })
-    .limit(1);
-  if (error) throw error;
-  return (data?.[0]?.queue_number || 0) + 1;
-}
-
-function isUniqueViolation(error) {
-  return error?.code === '23505' || String(error?.message || '').toLowerCase().includes('duplicate key');
 }
 
 async function findOwnerProfile(firebaseUser) {
@@ -157,16 +141,16 @@ async function findOwnerProfile(firebaseUser) {
 function queueSelect() {
   return `
     *,
-    appointments(
+    appointments!inner(
       id,
+      status,
+      checked_in_at,
       patient_name,
       appointment_type,
       appointment_date,
       appointment_time_text,
       doctors(full_name),
-      medical_facilities(name),
-      clinic_specialties(name),
-      facility_services(name)
+      clinic_specialties(name)
     )
   `;
 }
@@ -179,6 +163,7 @@ export async function listQueueTickets(options = {}) {
     let query = supabase
       .from('queue_tickets')
       .select(queueSelect())
+      .not('appointments.checked_in_at', 'is', null)
       .order('created_at', { ascending: false })
       .limit(100);
 
@@ -209,51 +194,11 @@ export async function getQueueTicket(ticketCodeValue, options = {}) {
       .eq('ticket_code', ticketCodeValueNormalized)
       .maybeSingle();
     if (error) throw error;
-    if (!data) return { ok: false, status: 404, data: { message: 'Không tìm thấy số khám.' } };
+    if (!data || !data.appointments?.checked_in_at) return { ok: false, status: 404, data: { message: 'Số khám chỉ có sau khi check-in.' } };
     if (!canReadQueueTicket(data, owner, options.privileged)) {
       return { ok: false, status: 403, data: { message: 'Ban khong co quyen xem so kham nay.' } };
     }
     return { ok: true, status: 200, data: mapQueueTicketResponse(data) };
-  } catch (error) {
-    return { ok: false, status: 500, data: { message: error.message } };
-  }
-}
-
-export async function createQueueTicket(firebaseUser, payload = {}) {
-  const ready = requireSupabase();
-  if (!ready.ok) return ready;
-
-  try {
-    const owner = await findOwnerProfile(firebaseUser);
-    let lastError;
-
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const number = await nextQueueNumber();
-      const ticketRow = {
-        appointment_id: optionalUuid(payload.appointmentId),
-        owner_profile_id: owner?.id || null,
-        patient_medical_profile_id: optionalUuid(payload.patientMedicalProfileId),
-        ticket_code: formatQueueTicketCode(number),
-        appointment_code: clean(payload.appointmentCode) || formatAppointmentCode(number),
-        patient_code: clean(payload.patientCode) || formatPatientCode(number),
-        queue_number: number,
-        current_number: toSafeNumber(payload.currentNumber ?? payload.current, Math.max(number - 6, 1)),
-        room: clean(payload.room) || 'Đang cập nhật',
-        status: normalizeQueueStatus(payload.status) || 'waiting',
-        estimated_minutes: toSafeNumber(payload.estimatedMinutes, 15),
-      };
-
-      const { data, error } = await supabase
-        .from('queue_tickets')
-        .insert(ticketRow)
-        .select(queueSelect())
-        .single();
-      if (!error) return { ok: true, status: 201, data: mapQueueTicketResponse(data) };
-      if (!isUniqueViolation(error)) throw error;
-      lastError = error;
-    }
-
-    throw lastError || new Error('Không thể tạo số khám.');
   } catch (error) {
     return { ok: false, status: 500, data: { message: error.message } };
   }

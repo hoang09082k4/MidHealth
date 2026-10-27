@@ -1,4 +1,4 @@
-export const STANDARD_HEALTH_INSURANCE_RATE = 0.8;
+// Indicative prices are used only by the offline demonstration catalog.
 
 export const specialtyPriceByName = {
   'Nhi khoa': 180000,
@@ -45,18 +45,16 @@ export function specialtyBasePrice(specialtyName) {
   return specialtyPriceByName[normalizedName] || 180000;
 }
 
-export function calculateAppointmentPrice({ specialtyName, hasStandardInsurance = false } = {}) {
-  const originalAmount = specialtyBasePrice(specialtyName);
-  const insuranceDiscount = hasStandardInsurance
-    ? Math.round(originalAmount * STANDARD_HEALTH_INSURANCE_RATE)
-    : 0;
-  const finalAmount = Math.max(originalAmount - insuranceDiscount, 0);
-
+export function calculateAppointmentPrice({ consultationFee } = {}) {
+  const originalAmount = Number(consultationFee);
+  if (consultationFee === null || consultationFee === undefined || !Number.isSafeInteger(originalAmount) || originalAmount < 0) {
+    throw new Error('Phí khám chưa được cấu hình hợp lệ.');
+  }
   return {
     originalAmount,
-    insuranceDiscount,
-    finalAmount,
-    insuranceRate: hasStandardInsurance ? STANDARD_HEALTH_INSURANCE_RATE : 0,
+    insuranceDiscount: 0,
+    finalAmount: originalAmount,
+    insuranceRate: 0,
     currency: 'VND',
   };
 }
