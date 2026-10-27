@@ -522,9 +522,9 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const showDoctorBooking = (doctor) => {
+  const showDoctorBooking = (doctor, initialReason = '') => {
     pushUrl(bookingRouteToUrl('doctor', doctor));
-    setAppRoute({ page: 'booking', booking: { kind: 'doctor', slug: decodeURIComponent(bookingSlug(doctor)), screen: 'detail' } });
+    setAppRoute({ page: 'booking', booking: { kind: 'doctor', slug: decodeURIComponent(bookingSlug(doctor)), screen: 'detail', initialReason } });
     setIsAuthPage(false);
     setSelectedDoctor(doctor);
 
@@ -607,6 +607,7 @@ function App() {
             doctor={selectedDoctor}
             services={catalog.services}
             initialScreen={appRoute.booking?.kind === 'doctor' ? appRoute.booking.screen : 'detail'}
+            initialReason={appRoute.booking?.initialReason || ''}
             user={user}
             onBackHome={showHome}
             onScreenChange={(screen) => updateBookingScreen('doctor', selectedDoctor, screen)}

@@ -10,6 +10,7 @@ import {
 import { createAppointment, createPayPalOrder, listDoctorSlots, listPatientProfiles, savePatientProfile } from '../../lib/appointments';
 import { doctorImageName, doctorImagePath } from '../../lib/doctor_images';
 import { useReferenceData } from '../../lib/reference_data';
+import { rankAvailableSlots, hasEmergencyHint } from '../../lib/booking_recommendations';
 import TrangPhieuKham, { PhieuKhamChiTiet, co_gia_tri, tao_dong_phieu_kham } from '../phieu_kham/phieu_kham_dien_tu';
 
 const CANVAS_FONT = 'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
@@ -325,12 +326,12 @@ function ProfileModal({ mode, profile, errors, isSaving, onClose, onChange, onSa
   );
 }
 
-function TrangDatLichBacSi({ doctor, services = [], initialScreen = 'detail', user, onBackHome, onScreenChange, onSignOut, onOpenAuth }) {
+function TrangDatLichBacSi({ doctor, services = [], initialScreen = 'detail', initialReason = '', user, onBackHome, onScreenChange, onSignOut, onOpenAuth }) {
   const clinic = useClinic();
   const specialtyFee = ((doctor.specialtyId && services.find(service => service.specialtyId === doctor.specialtyId))
     || services.find(service => service.name === doctor.specialty))?.fee;
   const consultationFee = doctor.consultationFee ?? specialtyFee;
-  const [reason, setReason] = useState('');
+  const [reason, setReason] = useState(initialReason);
   const [screen, setScreen] = useState(initialScreen === 'success' ? 'detail' : initialScreen);
   const [rangeStart, setRangeStart] = useState(todayValue());
   const [rawSlots, setRawSlots] = useState([]);
@@ -365,6 +366,8 @@ function TrangDatLichBacSi({ doctor, services = [], initialScreen = 'detail', us
   const notice = cleanNoticeText(doctor.notice || doctor.unavailable_note || '');
   const currentSlots = selectedDate?.slots || [];
   const visibleSlots = showMoreSlots ? currentSlots : currentSlots.slice(0, 8);
+  const recommendedSlots = useMemo(() => rankAvailableSlots(currentSlots), [currentSlots]);
+  const recommendedSlotId = recommendedSlots[0]?.id;
 
   useEffect(() => {
     onScreenChange?.(screen);
@@ -655,11 +658,11 @@ function TrangDatLichBacSi({ doctor, services = [], initialScreen = 'detail', us
       {!isSlotLoading && dates.length === 0 && <p className="empty-slot-note">Hiện chưa có lịch khám phù hợp</p>}
       {selectedDate && (
         <>
-          <div className="slot-title">Khung giờ khám (GMT+7)</div>
+          <div className="slot-title">Khung giờ khám (GMT+7){recommendedSlotId && <span className="slot-recommendation-note"> · Gợi ý: giờ còn nhiều chỗ hơn</span>}</div>
           <div className="time-slot-grid compact">
             {visibleSlots.map((slot) => (
-              <button className={selectedTime?.id === slot.id ? 'selected' : ''} key={slot.id} type="button" disabled={slot.status === 'full'} onClick={() => chooseSlot(slot)}>
-                {slot.label}{slot.status === 'full' ? ' · Hết chỗ' : ''}
+              <button className={`${selectedTime?.id === slot.id ? 'selected' : ''} ${slot.id === recommendedSlotId ? 'recommended' : ''}`} key={slot.id} type="button" disabled={slot.status === 'full'} onClick={() => chooseSlot(slot)}>
+                {slot.label}{slot.status === 'full' ? ' · Hết chỗ' : slot.id === recommendedSlotId ? ' · Gợi ý' : ''}
               </button>
             ))}
           </div>
@@ -796,7 +799,15 @@ function TrangDatLichBacSi({ doctor, services = [], initialScreen = 'detail', us
                       )}
                     </div>
                     <h3 className="optional-title">Thông tin khám</h3>
-                    <label className="booking-note">Lý do khám (không bắt buộc)<textarea maxLength={2000} value={reason} onChange={event => setReason(event.target.value)} placeholder="Bạn có thể trao đổi trực tiếp với bác sĩ khi đến khám" /></label>
+                    {selectedPatient && (selectedPatient.medicalHistory || selectedPatient.allergies || selectedPatient.bloodGroup) && <aside className="booking-patient-health-note">
+                      <strong>Thông tin sức khỏe trong hồ sơ đã chọn</strong>
+                      {selectedPatient.allergies && <p><b>Dị ứng bạn đã khai:</b> {selectedPatient.allergies}</p>}
+                      {selectedPatient.medicalHistory && <p><b>Tiền sử bạn đã khai:</b> {selectedPatient.medicalHistory}</p>}
+                      {selectedPatient.bloodGroup && <p><b>Nhóm máu đã ghi nhận:</b> {selectedPatient.bloodGroup}</p>}
+                      <small>Hãy kiểm tra thông tin còn chính xác và báo trực tiếp với nhân viên y tế khi khám. Đây là thông tin do bạn cung cấp, không thay thế xác minh chuyên môn.</small>
+                    </aside>}
+                    <label className="booking-note">Triệu chứng hoặc lý do khám (không bắt buộc)<textarea maxLength={2000} value={reason} onChange={event => setReason(event.target.value)} placeholder="Mô tả ngắn điều bạn muốn bác sĩ hỗ trợ; không cần tự kết luận bệnh" /></label>
+                    {hasEmergencyHint(reason) && <p className="booking-emergency-note" role="alert">Thông tin bạn nhập có dấu hiệu cần được đánh giá khẩn cấp. Hãy gọi 115 hoặc đến cơ sở cấp cứu gần nhất, không chờ lịch khám thông thường.</p>}
                     <label className="booking-note">
                       Ghi chú (không bắt buộc)
                       <textarea maxLength={5000} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Thông tin bạn muốn phòng khám lưu ý" />

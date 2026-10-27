@@ -3723,6 +3723,22 @@ select.has-error:focus,
   resize: vertical;
 }
 
+.booking-emergency-note{padding:.85rem 1rem;border-left:4px solid #dc2626;border-radius:8px;background:#fff1f2;color:#991b1b;font-weight:600;line-height:1.5}
+.booking-urgent-note{margin:0;padding:.85rem 1rem;border-left:4px solid #d97706;border-radius:8px;background:#fff8e8;color:#78400b;font-weight:600;line-height:1.5}
+.booking-personal-followups{display:grid;gap:.7rem;margin:1rem 0;padding:1rem;border:1px solid #c7d2fe;border-radius:14px;background:#f8faff}
+.booking-personal-followups h2{margin:0;color:#163b67;font-size:1.1rem}
+.booking-personal-followups>p,.booking-personal-followups article p{margin:.25rem 0;color:#475569;line-height:1.5}
+.booking-personal-followups article{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.6rem;padding:.75rem 0;border-top:1px solid #dbeafe}
+.booking-personal-followups article strong{color:#1e3a5f}
+.booking-patient-health-note{margin:.75rem 0;padding:.85rem 1rem;border-radius:10px;background:#f1f5f9;color:#334155;line-height:1.5}
+.booking-patient-health-note p{margin:.4rem 0}
+.booking-patient-health-note small{color:#64748b}
+.appointment-reschedule-modal{max-width:540px}
+.reschedule-slot-field{display:grid;gap:.45rem;margin:.8rem 0;font-weight:600}
+.reschedule-slot-field select{width:100%;padding:.75rem;border:1px solid #cbd5e1;border-radius:9px;font:inherit;background:#fff}
+.slot-recommendation-note{font-size:.85em;color:#15803d;font-weight:500}
+.time-slot-grid.compact button.recommended{border-color:#16a34a;background:#f0fdf4}
+
 .upload-box {
   display: grid;
   place-items: center;
@@ -10975,6 +10991,8 @@ select.has-error:focus,
 .home-original-hero .hero-search input { font-size: 1rem; }
 .home-original-hero .hero-search > span { font-size: 1.5rem; }
 .home-original-hero .hero-search > button[type="submit"] { font-size: 1.4rem; }
+.hero-symptom-jump { display:block; margin:12px auto 0; padding:7px 10px; border:0; background:transparent; color:#fff; font:inherit; font-weight:650; text-decoration:underline; text-underline-offset:3px; cursor:pointer; }
+.hero-symptom-jump:hover { color:#e6f0ff; }
 
 .specialty-section {
   padding-top: 100px;
@@ -10988,6 +11006,21 @@ select.has-error:focus,
 
 .specialty-section .plain-head p { font-size: 1.15rem; }
 .specialty-section .specialty-grid { gap: 34px; margin-top: 62px; }
+.specialty-symptom-guide { display:grid; gap:10px; width:min(100%,1180px); margin:0 auto 34px; padding:18px 20px; border:1px solid #d9e5f3; border-radius:14px; background:#f7faff; text-align:left; }
+.specialty-symptom-guide > label { color:#17324d; font-size:1.05rem; font-weight:750; }
+.specialty-symptom-guide > input { width:100%; min-height:48px; padding:10px 14px; border:1px solid #bdccdc; border-radius:9px; background:#fff; color:#17324d; font:inherit; }
+.specialty-symptom-result { display:grid; gap:10px; padding:14px 0; border-top:1px solid #dce6f2; }
+.specialty-symptom-result > strong { color:#17324d; font-size:1.05rem; }
+.specialty-symptom-result > small { color:#8a4b08; font-weight:650; }
+.specialty-suggested-doctors { display:grid; grid-template-columns:repeat(3,minmax(220px,1fr)); gap:14px; }
+.specialty-suggested-doctors .doctor-card { height:320px; min-height:320px; }
+.specialty-suggested-doctors .doctor-avatar { width:108px; height:108px; }
+.specialty-no-doctor { color:#64748b; }
+.specialty-ambiguity-note { color:#64748b; font-size:.9rem; }
+.specialty-contact-link { color:#176bdd; font-weight:650; }
+.specialty-emergency-block { color:#9a3412; font-weight:700; }
+@media(max-width:900px){.specialty-suggested-doctors{grid-template-columns:repeat(2,minmax(200px,1fr))}}
+@media(max-width:600px){.specialty-suggested-doctors{grid-template-columns:1fr}.specialty-symptom-guide{padding:14px}}
 .specialty-section .specialty-item {
   min-height: 160px;
   padding: 12px 8px;
@@ -14480,20 +14513,7 @@ button:disabled { cursor:not-allowed; opacity:.55; }
 .clinic-form-grid .clinic-status-field { align-self: start; }
 .clinic-form-grid .clinic-featured-toggle { align-self: end; }
 
-.doctor-card .doctor-demo-label {
-  display: inline-block;
-  width: fit-content;
-  margin: 0 auto 6px;
-  padding: 3px 8px;
-  border: 1px solid #cbd9ec;
-  border-radius: 5px;
-  color: #46617f;
-  font-size: var(--text-caption);
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-/* Keep the portrait and text rows stable when a simulated profile has a label. */
+/* Keep doctor portrait and text rows aligned across the directory. */
 .doctor-directory-grid .doctor-card {
   height: auto;
   min-height: 390px;
@@ -14525,11 +14545,6 @@ button:disabled { cursor:not-allowed; opacity:.55; }
   gap: 7px;
   padding: 0 20px 16px;
   text-align: center;
-}
-
-.doctor-directory-grid .doctor-card .doctor-demo-label {
-  flex: 0 0 auto;
-  margin: 0 0 2px;
 }
 
 .doctor-directory-grid .doctor-card h3,

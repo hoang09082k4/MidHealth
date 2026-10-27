@@ -21,9 +21,10 @@ function TrangChu({ catalog = fallbackCatalog, onBookDoctor, onSelectSpecialty, 
           <span aria-hidden="true">⌕</span><input aria-label="Tìm bác sĩ hoặc chuyên khoa" placeholder="Bác sĩ, chuyên khoa..." autoComplete="off" value={keyword} onChange={event => setKeyword(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') setKeyword(''); }} /><button type="submit" aria-label="Tìm kiếm">⌕</button>
           {keyword.trim() && <div className="hero-search-results">{results.length ? results.map(result => <button className="hero-search-result" type="button" key={result.kind + result.item.id} onClick={() => openResult(result)}><span>{result.label}</span><strong>{result.item.name}</strong>{result.detail && <p>{result.detail}</p>}</button>) : <p className="hero-search-empty">Không tìm thấy bác sĩ hoặc chuyên khoa phù hợp.</p>}</div>}
         </form>
+        <button className="hero-symptom-jump" type="button" onClick={() => document.getElementById('specialty')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Chưa biết chọn chuyên khoa? Gợi ý theo triệu chứng ↓</button>
       </div><div className="hero-banner-visual" aria-hidden="true"><img src="/image_chung/image_banner.png" alt="" /></div>
     </section>
-    <TheChuyenKhoa specialties={catalog.specialties} onSelectSpecialty={onSelectSpecialty} />
+    <TheChuyenKhoa specialties={catalog.specialties} doctors={catalog.doctors} onSelectSpecialty={onSelectSpecialty} onBookDoctor={onBookDoctor} clinic={clinic} />
     {doctors.length > 0 && <section className="content-section" id="doctor">
       <div className="section-head"><span className="clinic-eyebrow">ĐỒNG HÀNH CÙNG BẠN</span><h2>Đội ngũ bác sĩ của {clinic.name}</h2><p>Tìm hiểu chuyên môn, chọn bác sĩ và xem lịch tiếp nhận tại phòng khám.</p></div>
       {doctors.length ? <div className="doctor-directory-grid">{doctors.map(doctor => <TheBacSi key={doctor.id} doctor={doctor} onBook={onBookDoctor} />)}</div>
