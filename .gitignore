@@ -3,6 +3,12 @@ dist
 .env
 .DS_Store
 *.log
+~$*.docx
 backend/nodejs/
 .agents/
-frontend/backend/
+artifacts/
+.secrets/
+
+# Keep internal workflow and refactor notes out of GitHub
+/docs/WORD_WORKFLOW_GAP.md
+/docs/SINGLE_CLINIC_REFACTOR_AUDIT.md

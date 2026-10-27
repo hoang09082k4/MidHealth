@@ -1,11 +1,6 @@
 import { config } from './config.js';
 
 const localCorsOriginPattern = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
-const vercelCorsOriginPattern = /^https:\/\/[a-z0-9-]+\.vercel\.app$/i;
-
-function allowsVercelPreviewOrigins() {
-  return String(process.env.ALLOW_VERCEL_PREVIEW_ORIGINS || '').toLowerCase() === 'true';
-}
 
 export function normalizeCorsOrigin(value) {
   const origin = String(value || '').trim().replace(/\/+$/, '');
@@ -24,15 +19,13 @@ export function isCorsOriginAllowed(origin) {
     [
       ...config.allowedOrigins,
       config.frontendUrl,
-      process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '',
     ]
       .map(normalizeCorsOrigin)
       .filter(Boolean),
   );
 
   return configuredOrigins.has(normalizedOrigin)
-    || localCorsOriginPattern.test(normalizedOrigin)
-    || (allowsVercelPreviewOrigins() && vercelCorsOriginPattern.test(normalizedOrigin));
+    || localCorsOriginPattern.test(normalizedOrigin);
 }
 
 export function applyCorsHeaders(request, response) {

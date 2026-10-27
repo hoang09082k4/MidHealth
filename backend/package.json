@@ -4,16 +4,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "build": "npm run build --prefix ../frontend && node ../scripts/copy-dist.cjs ../frontend/dist dist",
-    "test": "node --test tests/api_routes.test.js tests/authorization_policy.test.js tests/cors_policy.test.js tests/queue_policy.test.js tests/security_headers.test.js tests/vercel_config.test.js",
+    "build": "npm run build --prefix ../frontend",
+    "test": "node --import ./tests/setup.js --test --test-isolation=none tests/*.test.js",
     "check:env": "node scripts/check_env.js",
-    "dev": "node src/server.js",
+    "dev": "node scripts/dev.js",
     "start": "node src/server.js",
     "seed:admin": "node scripts/seed_admin_account.js",
-    "seed:provider-test": "node scripts/seed_provider_test_account.js",
-    "seed:catalog": "node scripts/seed_catalog.js",
-    "sync:catalog-accounts": "node scripts/sync_catalog_accounts.js",
-    "seed:health-news": "node scripts/seed_health_news_content.js",
     "seed:reference": "node scripts/seed_reference_data.js"
   },
   "engines": {
@@ -21,6 +17,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.1",
-    "nodemailer": "^8.0.8"
+    "firebase-admin": "^14.5.0",
+    "nodemailer": "^10.0.10"
   }
 }

@@ -2,22 +2,26 @@
   "name": "midhealth",
   "private": true,
   "version": "1.0.0",
-  "main": "api/[...path].js",
+  "main": "backend/src/server.js",
   "workspaces": [
     "backend",
     "frontend"
   ],
   "scripts": {
     "test": "npm test --prefix backend",
-    "build": "npm run build --prefix frontend && node scripts/copy-dist.cjs frontend/dist dist",
+    "build": "npm run build --prefix frontend",
     "check:env": "npm run check:env --prefix backend",
-    "verify": "npm test --prefix backend && npm run build --prefix frontend"
+    "verify": "npm test --prefix backend && npm run check:database && npm run build",
+    "check:database": "node scripts/check-database.mjs",
+    "check:load-local": "node scripts/check-load-local.mjs",
+    "start": "node backend/src/server.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.1",
-    "nodemailer": "^8.0.8"
+    "nodemailer": "^10.0.10"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
     "supabase": "^2.102.0"
   },
   "engines": {
